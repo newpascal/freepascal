@@ -1,0 +1,55 @@
+#
+#   Makefile.fpc for Compiler units for IDE inclusion
+#
+
+[package]
+main=ide
+
+[target]
+units=compunit
+
+[compiler]
+options=-Ur -dNOCATCH
+unitdir=$(COMPILERDIR) $(COMPILERDIR)/$(CPU_TARGET) $(COMPILERDIR)/targets $(COMPILERDIR)/systems
+includedir=$(COMPILERDIR) $(COMPILERDIR)/$(CPU_TARGET)
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../..
+
+[prerules]
+COMPILERDIR=$(FPCDIR)/compiler
+
+# Use 1.0.2 and 1.0.4 require -Ca to generate simple ppu
+ifneq ($(findstring 1.0.2,$(FPC_VERSION)),)
+override FPCOPT+=-Ca
+endif
+ifneq ($(findstring 1.0.4,$(FPC_VERSION)),)
+override FPCOPT+=-Ca
+endif
+
+# Add required defines
+override FPCOPT+=-dBrowserCol -dGDB
+ifeq ($(CPU_TARGET),i386)
+# the x86 dir doesn't hurt for 1.0.x though we could leave it away
+override FPCOPT+= -Fu$(COMPILERDIR)/x86
+#-dSUPPORT_MMX
+endif
+ifeq ($(CPU_TARGET),x86_64)
+override FPCOPT+= -Fu$(COMPILERDIR)/x86 -dNOOPT
+endif
+
+[rules]
+.PHONY: compiler_ppuclean all clean install
+
+compiler_ppuclean:
+        $(MAKE) -C $(COMPILERDIR) ppuclean
+
+all: compiler_ppuclean fpc_all
+
+clean: cleanall
+
+# Nothing to install
+install:

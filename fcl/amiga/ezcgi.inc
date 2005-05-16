@@ -1,0 +1,15 @@
+Uses Dos;
+
+{ Declared EXPLICITLY with Ansistring, so NO mistaking is possible }
+
+Function Getenv (Var EnvVar  : AnsiString): AnsiString;
+
+begin
+  Result:=Dos.Getenv(EnvVar);
+end;
+{
+  $Log: ezcgi.inc,v $
+  Revision 1.2  2005/02/14 17:13:11  peter
+    * truncate log
+
+}

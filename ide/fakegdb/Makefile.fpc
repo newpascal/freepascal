@@ -1,0 +1,20 @@
+#
+#   Makefile.fpc for Fake GDB
+#
+
+[package]
+main=ide
+
+[target]
+units=gdbcon gdbint
+
+[default]
+fpcdir=../..
+
+[install]
+fpcpackage=y
+
+[rules]
+gdbint$(PPUEXT): gdbint.pas
+
+gdbcon$(PPUEXT): gdbcon.pas gdbint$(PPUEXT)

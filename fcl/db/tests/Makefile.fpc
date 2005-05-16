@@ -1,0 +1,18 @@
+#
+#   Makefile.fpc for TDataSet Tests
+#
+
+[target]
+programs=testds createds tested
+
+[require]
+packages=fcl
+
+[compiler]
+options=-S2
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../../..

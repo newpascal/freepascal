@@ -1,0 +1,684 @@
+#
+# $Id: install.dat,v 1.39 2005/03/06 18:00:07 hajny Exp $
+#
+# Install file for Go32v2/Win32/OS2/EMX
+#
+# Warning: no package should contain more than 16 files
+
+title=Free Pascal Compiler 1.9.6
+version=1.9.6
+
+#
+# General
+#
+basepath=c:\pp
+docsub=doc
+helpidx=fpctoc.htm
+
+#
+# Go32v2 packages
+#
+pack=~D~os/Go32v2
+binsub=\bin\go32v2
+ppc386=ppc386
+targetname=go32v2
+cfgfile=fpc.cfg
+idecfgfile=fp.cfg
+ideinifile=fp.ini
+
+filecheck=*dos.zip
+# Dos 1
+package=basedos.zip,~B~asic system for Go32v2 (required)
+# Dos 2
+package=aslddos.zip,GNU ~L~inker and GNU Assembler for Go32v2 (required)
+# Dos 3
+package=idedos.zip,~I~DE with integrated debugger/compiler (BETA)
+# Dos 4
+package=utildos.zip,~E~xtra Utilities
+# Dos 5
+package=makedos.zip,GNU ~U~tilities (needed for Makefile usage)
+# Dos 6
+package=gdbdos.zip,GNU ~D~ebugger for Go32v2
+# Dos 7
+package=ufcldos.zip,~F~ree Component Libary (FCL)
+# Dos 8
+package=ugdbintdos.zip[ugdbdos.zip],GDB Interfacing units
+# Dos 9
+package=upaszlibdos.zip[upzldos.zip],PasZLib units
+# Dos 10
+package=uregexprdos.zip[uregdos.zip],Regular expression units
+# Dos 11
+package=uunzipdos.zip[uzipdos.zip],Unzip units
+# Dos 12
+package=unetdbdos.zip[undbdos.zip],NetDB units
+# Dos 13
+package=upasjpegdos.zip[upjpdos.zip],Pas~J~PEG units
+# Dos 14
+package=umd5dos.zip,Unit for MD~5~ processing
+# Dos 15
+package=ufvdos.zip,Free ~V~ision (FV)
+
+
+#
+# Win32 packages
+#
+pack=~W~in32
+binsub=\bin\i386-win32
+ppc386=ppc386
+targetname=i386-win32
+cfgfile=fpc.cfg
+idecfgfile=fp.cfg
+ideinifile=fp.ini
+setpathfile=setpath.bat
+filecheck=*.i386-win32.zip
+# Win32 1
+package=base.i386-win32.zip,~B~asic system for Win32 (required)
+# Win32 2
+package=asld.i386-win32.zip,GNU ~L~inker and GNU Assembler for Win32 (required)
+# Win32 3
+package=ide.i386-win32.zip,~I~DE with integrated debugger/compiler (BETA)
+# Win32 4
+package=utils.i386-win32.zip,~E~xtra Utilities
+# Win32 5
+package=make.i386-win32.zip,GNU ~U~tilities (needed for Makefile usage)
+# Win32 6
+package=gdb.i386-win32.zip,GNU ~D~ebugger for Win32
+# Win32 7
+package=units-fcl.i386-win32.zip,~F~ree Component Libary (FCL)
+# Win32 8
+package=units-fpgtk.i386-win32.zip,fpGTK units
+# Win32 9
+package=units-sqlite.i386-win32.zip,SQLite interface units
+# Win32 10
+package=units-cdrom.i386-win32.zip,CD-ROM interface units
+# Win32 11
+package=units-odbc.i386-win32.zip,ODBC interface units
+# Win32 12
+package=units-winver.i386-win32.zip,Windows version detection unit
+# Win32 13
+package=units-tcl.i386-win32.zip,TCL interface units
+
+
+#
+# Win32 packages 2nd part
+#
+pack=Win~3~2-2
+filecheck=*.i386-win32.zip
+# Win32-2 1
+package=units-opengl.i386-win32.zip,OpenGL units
+# Win32-2 2
+package=units-gtk.i386-win32.zip,GTK units
+# Win32-2 4
+package=units-ibase.i386-win32.zip,Interbase interface units
+# Win32-2 5
+package=units-mysql.i386-win32.zip,MySQL interface units
+# Win32-2 6
+package=units-mmsystem.i386-win32.zip,MMSystem interface units
+# Win32-2 7
+package=units-gdbint.i386-win32.zip,GDB Interfacing units
+# Win32-2 8
+package=units-paszlib.i386-win32.zip,PasZLib units
+# Win32-2 9
+package=units-regexpr.i386-win32.zip,Regular expression units
+# Win32-2 10
+package=units-unzip.i386-win32.zip,Unzip units
+# Win32-2 11
+package=units-zlib.i386-win32.zip,ZLib interface units
+# Win32-2 12
+package=units-netdb.i386-win32.zip,NetDB units
+# Win32-2 14
+package=units-pasjpeg.i386-win32.zip,Pas~J~PEG units
+# Win32-2 15
+package=units-md5.i386-win32.zip,Unit for MD~5~ processing
+# Win32-2 16
+package=units-fv.i386-win32.zip,Free ~V~ision (FV)
+
+
+#
+# OS/2 packages
+#
+pack=~O~S/2
+binsub=\bin\os2
+ppc386=ppc386
+targetname=i386-os2
+cfgfile=fpc.cfg
+idecfgfile=fp.cfg
+ideinifile=fp.ini
+filecheck=*os2.zip
+# OS/2 1
+package=baseos2.zip,~B~asic system for OS/2 (required)
+# OS/2 2
+package=asldos2.zip,GNU ~L~inker and GNU assembler for OS/2 (required)
+# OS/2 3
+package=ideos2.zip,~I~DE with integrated compiler (BETA - no debugger)
+# OS/2 4
+package=utilsos2.zip[utilos2.zip],~E~xtra Utilities
+# OS/2 5
+package=makeos2.zip,GNU ~U~tilities (needed for Makefile usage)
+# OS/2 6
+package=gdbos2.zip,GNU ~D~ebugger for EMX and PMGDB front-end
+# OS/2 7
+package=ufclos2.zip,~F~ree Component Library (FCL)
+# OS/2 9
+package=ufvos2.zip,Free ~V~ision (FV)
+# OS/2 10
+package=uclkdllos2.zip[uclkos2.zip],CLKDLL interface unit (eCS 1.1+)
+# OS/2 11
+package=ulvmos2.zip,LVM interface unit (OS/2 v4.5 / eCS)
+# OS/2 12
+package=upasjpegos2.zip[upjpos2.zip],Pas~J~PEG units
+# OS/2 13
+package=umd5os2.zip,Unit for MD~5~ processing
+
+
+#
+# OS/2 packages 2nd part
+#
+pack=OS/~2~-2
+filecheck=*os2.zip
+# OS/2-2 1
+#package=ugdbintos2.zip[ugdbos2.zip],GDB interfacing units
+# OS/2-2 2
+package=upaszlibos2.zip[upzlos2.zip],PasZLib units
+# OS/2-2 3
+package=uregexpros2.zip[uregos2.zip],Regular expression units
+# OS/2-2 4
+package=urexxos2.zip,REXX SAA interface units
+# OS/2-2 5
+package=uunzipos2.zip[uzipos2.zip],Unzip units
+# OS/2-2 6
+package=uftpapios2.zip[uftpos2.zip],FTP API interface units
+# OS/2-2 7
+package=uhwvideoos2.zip[uhwvos2.zip],HW Video interface units
+# OS/2-2 8
+package=ummtkos2.zip,MMOS/2 interface units
+# OS/2-2 9
+package=ux11os2.zip,X11 interface units
+# OS/2-2 10
+package=ugtkos2.zip,GTK interface units
+# OS/2-2 11
+package=ufpgtkos2.zip[ufpgtos2.zip],fpGTK units
+# OS/2-2 12
+package=uimlibos2.zip[uimlbos2.zip],ImLib interface units
+# OS/2-2 13
+package=ulibpngos2.zip[ulpngos2.zip],LibPNG interface units
+# OS/2-2 14
+package=utclos2.zip,TCL interface units
+# OS/2-2 15
+package=uzlibos2.zip,ZLib interface units
+# OS/2-2 16
+package=unetdbos2.zip[undbos2.zip],NetDB units
+
+
+#
+# EMX packages
+#
+pack=~E~MX
+binsub=\bin\emx
+ppc386=ppc386
+targetname=emx
+cfgfile=fpc.cfg
+idecfgfile=fp.cfg
+ideinifile=fp.ini
+filecheck=*emx.zip
+# EMX 1
+package=baseemx.zip,~B~asic system for EMX (required)
+# EMX 2
+package=asldemx.zip,GNU ~L~inker and GNU assembler for EMX (required)
+# EMX 3
+package=ideemx.zip,~I~DE with integrated compiler (BETA - no debugger)
+# EMX 4
+package=utilsemx.zip[utilemx.zip],~E~xtra Utilities
+# EMX 5
+package=makeemx.zip,GNU ~U~tilities (needed for Makefile usage)
+# EMX 6
+package=gdbemx.zip,GNU ~D~ebugger for EMX and PMGDB front-end
+# EMX 7
+package=ufclemx.zip,~F~ree Component Library (FCL)
+# EMX 9
+package=ufvemx.zip,Free ~V~ision (FV)
+# EMX 10
+package=uclkdllemx.zip[uclkemx.zip],CLKDLL interface unit (eCS 1.1+)
+# EMX 11
+package=ulvmemx.zip,LVM interface unit (OS/2 v4.5 / eCS)
+# EMX 12
+package=upasjpegemx.zip[upjpemx.zip],Pas~J~PEG units
+# EMX 13
+package=umd5emx.zip,Unit for MD~5~ processing
+
+
+#
+# EMX packages 2nd part
+#
+pack=E~M~X-2
+filecheck=*emx.zip
+# EMX-2 1
+#package=ugdbintemx.zip[ugdbemx.zip],GDB interfacing units
+# EMX-2 2
+package=upaszlibemx.zip[upzlemx.zip],PasZLib units
+# EMX-2 3
+package=uregexpremx.zip[uregemx.zip],Regular expression units
+# EMX-2 4
+package=urexxemx.zip,REXX SAA interface units
+# EMX-2 5
+package=uunzipemx.zip[uzipemx.zip],Unzip units
+# EMX-2 6
+package=uftpapiemx.zip[uftpemx.zip],FTP API interface units
+# EMX-2 7
+package=uhwvideoemx.zip[uhwvemx.zip],HW Video interface units
+# EMX-2 8
+package=ummtkemx.zip,MMOS/2 interface units
+# EMX-2 9
+package=ux11emx.zip,X11 interface units
+# EMX-2 10
+package=ugtkemx.zip,GTK interface units
+# EMX-2 11
+package=ufpgtkemx.zip,fpGTK units
+# EMX-2 12
+package=uimlibemx.zip[uimlbemx.zip],ImLib interface units
+# EMX-2 13
+package=ulibpngemx.zip[ulpngemx.zip],LibPNG interface units
+# EMX-2 14
+package=utclemx.zip,TCL interface units
+# EMX-2 15
+package=uzlibemx.zip,ZLib interface units
+# EMX-2 16
+package=unetdbemx.zip[undbemx.zip],NetDB units
+
+
+#
+# Common packages
+#
+pack=Commo~n~
+# Common 1
+package=docs-pdf.zip,Documentation (~P~DF)
+# Common 2
+package=doc-html.zip[doc-htm.zip],Documentation (~H~MTL)
+# Common 3
+package=demo.zip,D~e~mos
+
+
+#
+# Source packages
+#
+pack=~S~ources
+filecheck=*.source.zip[*src.zip]
+# Source 1
+package=base.source.zip[basesrc.zip],~B~asic Makefiles for the sources
+# Source 2
+package=compiler.source.zip[compsrc.zip],~C~ompiler sources
+# Source 3
+package=rtl.source.zip[rtlsrc.zip],~R~un time library sources
+# Source 4
+package=fcl.source.zip[fclsrc.zip],~F~ree component library (FCL) sources
+# Source 5
+package=utils.source.zip[utilsrc.zip],~U~tils sources
+# Source 6
+package=installer.source.zip[instsrc.zip],~I~nstaller sources
+# Source 7
+package=doc.source.zip[docsrc.zip],~D~ocumentation sources (LaTeX)
+# Source 8
+package=units-cdrom.source.zip[ucdrsrc.zip],CD-ROM interface units
+# Source 9
+package=units-unzip.source.zip[uzipsrc.zip],Unzip units
+# Source 10
+package=units-regexpr.source.zip[uregsrc.zip],Regular expression units
+# Source 11
+package=units-paszlib.source.zip[upzlsrc.zip],PasZLib units
+# Source 12
+package=units-rexx.source.zip[urexxsrc.zip],REXX SAA interface units
+# Source 13
+package=units-zlib.source.zip[uzlibsrc.zip],ZLib interface units
+# Source 14
+package=units-netdb.source.zip[undbsrc.zip],NetDB units
+# Source 15
+package=units-mmsystem.source.zip,Win32 MMSystem interface units
+# Source 16
+package=units-gdbint.source.zip[ugdbsrc.zip],GDB interface units
+
+#
+# Source packages 2nd part
+#
+pack=So~u~rces 2
+filecheck=*.source.zip[*src.zip]
+# Source-2 1
+package=units-opengl.source.zip[uoglsrc.zip],OpenGL interface units
+# Source-2 2
+package=units-gtk.source.zip[ugtksrc.zip],GTK interface units
+# Source-2 3
+package=units-odbc.source.zip[uodbcsrc.zip],ODBC interface units
+# Source-2 4
+package=units-ibase.source.zip[uibassrc.zip],Interbase interface units
+# Source-2 5
+package=units-mysql.source.zip[umysqsrc.zip],MySQL interface units
+# Source-2 6
+package=units-ftpapi.source.zip[uftpsrc.zip],OS/2 FTP API interface units
+# Source-2 7
+package=units-hwvideo.source.zip[uhwvsrc.zip],OS/2 HWVideo interface units
+# Source-2 8
+package=units-mmtk.source.zip[ummtksrc.zip],MMOS/2 interface units
+# Source-2 9
+package=units-clkdll.source.zip[uclksrc.zip],CLKDLL interface unit (eCS 1.1+)
+# Source-2 10
+package=units-lvm.source.zip[ulvmsrc.zip],OS/2 LVM interface unit
+# Source-2 11
+package=units-pasjpeg.source.zip[upjpsrc.zip],PasJPEG units
+# Source-2 12
+package=units-fv.source.zip[ufvsrc.zip],Free ~V~ision (FV)
+# Source-2 13
+package=units-libpng.source.zip[ulpngsrc.zip],LibPNG interface units
+# Source-2 14
+package=units-imlib.source.zip[uimlbsrc.zip],ImLib interface units
+# Source-2 15
+package=units-fpgtk.source.zip[ufpgtsrc.zip],fpGTK units
+# Source-2 16
+package=units-sqlite.source.zip[usqltsrc.zip],SQLite interface units
+
+#
+# Source packages 3rd part
+#
+pack=Sources 3
+filecheck=*.source.zip[*src.zip]
+# Source-3 1
+package=units-winver.source.zip[uwversrc.zip],Windows version detection unit
+# Source-3 2
+package=units-tcl.source.zip[utclsrc.zip],TCL interface units
+
+
+defaultcfg=
+#
+# Example fpc.cfg for Free Pascal Compiler
+#
+
+# ----------------------
+# Defines (preprocessor)
+# ----------------------
+
+#
+# nested #IFNDEF, #IFDEF, #ENDIF, #ELSE, #DEFINE, #UNDEF are allowed
+#
+# -d is the same as #DEFINE
+# -u is the same as #UNDEF
+#
+
+#
+# Some examples (for switches see below, and the -? helppages)
+#
+# Try compiling with the -dRELEASE or -dDEBUG on the commandline
+#
+
+# For a release compile with optimizes and strip debuginfo
+#IFDEF RELEASE
+  -OG2p3
+  -Xs
+  #WRITE Compiling Release Version
+#ENDIF
+
+# For a debug version compile with debuginfo and all codegeneration checks on
+#IFDEF DEBUG
+  -g
+  -Crtoi
+  #WRITE Compiling Debug Version
+#ENDIF
+
+# ----------------
+# Parsing switches
+# ----------------
+
+# All assembler blocks are intel styled by default
+#-Rintel
+
+# All assembler blocks are AT&T styled by default
+#-Ratt
+
+# All assembler blocks are directly copied to asm
+#-Rdirect
+
+# Semantic checking
+#  -S2        switch some Delphi 2 extensions on
+#  -Sc        supports operators like C (*=,+=,/= and -=)
+#  -Sd        tries to be Delphi compatible
+#  -Se<x>     compiler stops after the <x> errors (default is 1)
+#  -Sg        allow LABEL and GOTO
+#  -Sh        Use ansistrings
+#  -Si        support C++ styled INLINE
+#  -Sm        support macros like C (global)
+#  -So        tries to be TP/BP 7.0 compatible
+#  -Sp        tries to be gpc compatible
+#  -Ss        constructor name must be init (destructor must be done)
+#  -St        allow static keyword in objects
+# Allow goto, inline, C-operators
+-Sgic
+
+# ---------------
+# Code generation
+# ---------------
+
+# Uncomment the next line if you always want static/dynamic units by default
+# (can be overruled with -CD, -CS at the commandline)
+#-CS
+#-CD
+
+# Set the default heapsize to 8Mb
+#-Ch8000000
+
+# Set default codegeneration checks (iocheck, overflow, range, stack)
+#-Ci
+#-Co
+#-Cr
+#-Ct
+
+# Optimizer switches
+# -Og        generate smaller code
+# -OG        generate faster code (default)
+# -Or        keep certain variables in registers (still BUGGY!!!)
+# -Ou        enable uncertain optimizations (see docs)
+# -O1        level 1 optimizations (quick optimizations)
+# -O2        level 2 optimizations (-O1 + slower optimizations)
+# -O3        level 3 optimizations (same as -O2u)
+# -Op        target processor
+#     -Op1  set target processor to 386/486
+#     -Op2  set target processor to Pentium/PentiumMMX (tm)
+#     -Op3  set target processor to PPro/PII/c6x86/K6 (tm)
+
+# Optimize always for Size and PentiumII
+#-Og2p3
+
+
+# -----------------------
+# Set Filenames and Paths
+# -----------------------
+
+# Both slashes and backslashes are allowed in paths
+
+# path to the messagefile, not necessary anymore but can be used to override
+# the default language
+#-Fr%basepath%/msg/errore.msg
+#-Fr%basepath%/msg/errorn.msg
+#-Fr%basepath%/msg/errores.msg
+#-Fr%basepath%/msg/errord.msg
+#-Fr%basepath%/msg/errorr.msg
+
+# path to the gcclib
+#-Fl%basepath%/lib
+
+# searchpath for includefiles
+# release them only if you know what you do
+# because this could cause a rebuild of the runtime library
+# if you tell them compiler/ide to build the project (FK)
+#-Fi%basepath%/source/rtl/inc;%basepath%/source/rtl/i386
+
+# searchpath for objectfiles
+#-Fo%basepath%/source/rtl/inc;%basepath%/source/rtl/i386
+
+# searchpath for units and other system dependent things
+-Fu%basepath%/units/%fpctargetmacro%
+-Fu%basepath%/units/%fpctargetmacro%/*
+-Fu%basepath%/units/%fpctargetmacro%/rtl
+
+# searchpath for libraries
+#-Fl%basepath%/lib
+#-Fl/lib;/usr/lib
+
+# searchpath for tools
+-FD%basepath%/bin/%fpctargetmacro%
+
+# -------------
+# Linking
+# -------------
+
+# generate always debugging information for GDB (slows down the compiling
+# process)
+#-gl
+
+# always pass an option to the linker
+#-k-s
+
+# Always strip debuginfo from the executable
+-Xs
+
+
+# -------------
+# Miscellaneous
+# -------------
+
+# Write always a nice FPC logo ;)
+-l
+
+# Verbosity
+# e : Show errors (default)       d : Show debug info
+# w : Show warnings               u : Show used files
+# n : Show notes                  t : Show tried files
+# h : Show hints                  m : Show defined macros
+# i : Show general info           p : Show compiled procedures
+# l : Show linenumbers            c : Show conditionals
+# a : Show everything             0 : Show nothing (except errors)
+
+# Display Info, Warnings, Notes and Hints
+-viwn
+# If you don't want so much verbosity use
+#-vw
+
+endcfg
+
+# the IDE configuration files
+
+defaultidecfg=
+#IFDEF NORMAL
+ -T%targetos%
+ -Sg
+ -O1
+ -OG
+ -Op3
+ -Ratt
+ -Fu%basepath%\units\%fpctargetmacro%
+ -Fu%basepath%\units\%fpctargetmacro%\*
+ -Fu%basepath%\units\%fpctargetmacro%\rtl
+ -Cs131072
+ -Ch2097152
+ -g-
+ -p-
+ -b-
+#ENDIF
+
+#IFDEF DEBUG
+ -T%targetos%
+ -Sg
+ -Cr
+ -Ci
+ -Co
+ -OG
+ -Op3
+ -Ratt
+ -Fu%basepath%\units\%fpctargetmacro%
+ -Fu%basepath%\units\%fpctargetmacro%\*
+ -Fu%basepath%\units\%fpctargetmacro%\rtl
+ -Cs131072
+ -Ch2097152
+ -g
+ -p-
+ -b-
+#ENDIF
+
+#IFDEF RELEASE
+ -T%targetos%
+ -Sg
+ -O1
+ -O2
+ -OG
+ -Op3
+ -Ratt
+ -Fu%basepath%\units\%fpctargetmacro%
+ -Fu%basepath%\units\%fpctargetmacro%\*
+ -Fu%basepath%\units\%fpctargetmacro%\rtl
+ -Cs131072
+ -Ch2097152
+ -g-
+ -p-
+ -b-
+#ENDIF
+endcfg
+
+defaultideini=
+[Compile]
+CompileMode=DEBUG
+
+[Help]
+Files="%basepath%\doc\fpctoc.htx"
+
+[Editor]
+DefaultTabSize=8
+DefaultFlags=20599
+DefaultSaveExt=.pas
+DefaultIndentSize=1
+
+[Highlight]
+Exts="*.pas;*.pp;*.inc"
+NeedsTabs="make*;make*.*"
+
+[SourcePath]
+SourceList=""
+
+[Mouse]
+DoubleDelay=8
+ReverseButtons=0
+AltClickAction=6
+CtrlClickAction=1
+
+[Search]
+FindFlags=4
+
+[Breakpoints]
+Count=0
+
+[Watches]
+Count=0
+
+[Preferences]
+DesktopFileFlags=209
+CenterCurrentLineWhileDebugging=1
+AutoSaveFlags=7
+MiscOptions=6
+DesktopLocation=1
+
+[Misc]
+ShowReadme=1
+
+[Files]
+OpenExts="*.pas;*.pp;*.inc"
+
+endcfg
+
+
+defaultsetpath=
+@echo off
+echo Setting PATH for use with %targetname% Free Pascal Compiler
+set A=%basepath%\bin\%targetname%;%PATH%
+set Path=
+set PATH=%A%
+set A=
+endcfg
+
+#
+# That's all folks
+#

@@ -1,0 +1,497 @@
+{
+    $Id: ossysc.inc,v 1.36 2005/02/14 17:13:30 peter Exp $
+    Copyright (c) 2002 by Marco van de Voort
+
+    The base Linux syscalls required to implement the system unit. These
+    are aliased for use in other units (to avoid poluting the system units
+    interface)
+
+    See the file COPYING.FPC, included in this distribution,
+    for details about the copyright.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+ ****************************************************************************
+}
+
+{*****************************************************************************
+                     --- Main:The System Call Self ---
+*****************************************************************************}
+
+function Fptime(tloc:pTime): TTime; [public, alias : 'FPC_SYSC_TIME'];
+
+begin
+  Fptime:=do_syscall(syscall_nr_time,TSysParam(tloc));
+End;
+
+{*****************************************************************************
+               --- File:File handling related calls ---
+*****************************************************************************}
+
+function Fpopen(path: pchar; flags : cint; mode: mode_t):cint; [public, alias : 'FPC_SYSC_OPEN'];
+
+Begin
+ Fpopen:=do_syscall(syscall_nr_open,TSysParam(path),TSysParam(flags),TSysParam(mode));
+End;
+
+function Fpclose(fd : cint): cint; [public, alias : 'FPC_SYSC_CLOSE'];
+
+begin
+ Fpclose:=do_syscall(syscall_nr_close,fd);
+end;
+
+function Fplseek(fd : cint; offset : off_t; whence : cint): off_t; [public, alias : 'FPC_SYSC_LSEEK'];
+{
+Must be adapted/overloaded for 64-bit support, but that is a different call under
+Linux?
+}
+begin
+  Fplseek:=do_syscall(syscall_nr_lseek,tsysparam(fd),tsysparam(offset),tsysparam(whence));
+end;
+
+function Fpread(fd: cint; buf: pchar; nbytes : size_t): ssize_t; [public, alias : 'FPC_SYSC_READ'];
+
+begin
+  Fpread:=do_syscall(syscall_nr_read,Fd,TSysParam(buf),nbytes);
+end;
+
+function Fpwrite(fd: cint;buf:pchar; nbytes : size_t): ssize_t; [public, alias : 'FPC_SYSC_WRITE'];
+
+begin
+ Fpwrite:=do_syscall(syscall_nr_write,Fd,TSysParam(buf),nbytes);
+end;
+
+function Fpunlink(path: pchar): cint; [public, alias : 'FPC_SYSC_UNLINK'];
+
+begin
+  Fpunlink:=do_syscall(syscall_nr_unlink,TSysParam(path));
+end;
+
+function Fprename(old : pchar; newpath: pchar): cint; [public, alias : 'FPC_SYSC_RENAME'];
+
+begin
+  Fprename:=do_syscall(syscall_nr_rename,TSysParam(old),TSysParam(newpath));
+end;
+
+function Fpstat(path: pchar; var buf : stat):cint; [public, alias : 'FPC_SYSC_STAT'];
+
+begin
+ Fpstat:=do_syscall(syscall_nr_stat,TSysParam(path),TSysParam(@buf));
+end;
+
+
+{*****************************************************************************
+               --- Directory:Directory related calls ---
+*****************************************************************************}
+
+function Fpchdir(path : pchar): cint; [public, alias : 'FPC_SYSC_CHDIR'];
+
+begin
+ Fpchdir:=do_syscall(syscall_nr_chdir,TSysParam(path));
+end;
+
+function Fpmkdir(path : pchar; mode: mode_t):cint; [public, alias : 'FPC_SYSC_MKDIR'];
+
+begin
+  Fpmkdir:=do_syscall(syscall_nr_mkdir,TSysParam(path),TSysParam(mode));
+end;
+
+function Fprmdir(path : pchar): cint;  [public, alias : 'FPC_SYSC_RMDIR'];
+
+begin
+ Fprmdir:=do_syscall(syscall_nr_rmdir,TSysParam(path));
+end;
+
+function Fpopendir(dirname : pchar): pdir;  [public, alias : 'FPC_SYSC_OPENDIR'];
+
+var
+  fd:integer;
+  st:stat;
+  ptr:pdir;
+
+begin
+  Fpopendir:=nil;
+  if Fpstat(dirname,st)<0 then
+   exit;
+{ Is it a dir ? }
+  if not((st.st_mode and $f000)=$4000)then
+   begin
+     errno:=ESysENOTDIR;
+     exit
+   end;
+{ Open it}
+  fd:=Fpopen(dirname,O_RDONLY,438);
+  if fd<0 then
+   exit;
+  new(ptr);
+  if ptr=nil then
+   exit;
+  getmem(ptr^.dd_buf,sizeof(dirent));
+  if ptr^.dd_buf=nil then
+   exit;
+  ptr^.dd_fd:=fd;
+  ptr^.dd_loc:=0;
+  ptr^.dd_size:=0;
+  ptr^.dd_nextoff:=0;
+  ptr^.dd_max:=sizeof(ptr^.dd_buf^);
+  Fpopendir:=ptr;
+end;
+
+function Fpclosedir(dirp : pdir): cint; [public, alias : 'FPC_SYSC_CLOSEDIR'];
+
+begin
+  Fpclosedir:=Fpclose(dirp^.dd_fd);
+  freemem(dirp^.dd_buf,sizeof(dirent));
+  dispose(dirp);
+end;
+
+Function Fpreaddir(dirp : pdir) : pdirent; [public, alias: 'FPC_SYSC_READDIR'];
+var bytes : longint;
+    dp    : pdirent;
+begin
+  repeat
+    if dirp^.dd_nextoff >= dirp^.dd_size then
+      begin
+        bytes := do_SysCall(SysCall_nr_getdents,TSysParam(dirp^.dd_fd),TSysParam(dirp^.dd_buf),TSysParam(dirp^.dd_max));
+        if bytes <= 0 then
+          begin
+            fpreaddir := nil;
+            exit;
+          end;
+        dirp^.dd_size := bytes;
+        dirp^.dd_nextoff := 0;
+      end;
+    dp := pdirent(ptrint(dirp^.dd_buf)+dirp^.dd_nextoff);
+    inc(dirp^.dd_nextoff,dp^.d_reclen);
+    inc(dirp^.dd_loc,dp^.d_reclen);
+  until dp^.d_fileno <> 0; // Don't show deleted files
+  Fpreaddir := dp;
+end;
+
+
+{*****************************************************************************
+        --- Process:Process & program handling - related calls ---
+*****************************************************************************}
+
+procedure Fpexit(status : cint); [public, alias : 'FPC_SYSC_EXIT'];
+
+begin
+  do_syscall(syscall_nr_exit,status);
+end;
+
+{
+  Change action of process upon receipt of a signal.
+  Signum specifies the signal (all except SigKill and SigStop).
+  If Act is non-nil, it is used to specify the new action.
+  If OldAct is non-nil the previous action is saved there.
+}
+
+
+{$ifdef cpusparc}
+procedure Fprt_sigreturn_stub;assembler;nostackframe;
+asm
+  mov syscall_nr_rt_sigreturn,%g1
+  ta  0x10
+end;
+{$endif cpusparc}
+
+
+function Fpsigaction(sig: cint; act : psigactionrec; oact : psigactionrec): cint; [public, alias : 'FPC_SYSC_SIGACTION'];
+{
+  Change action of process upon receipt of a signal.
+  Signum specifies the signal (all except SigKill and SigStop).
+  If Act is non-nil, it is used to specify the new action.
+  If OldAct is non-nil the previous action is saved there.
+}
+begin
+{$ifdef cpusparc}
+  { Sparc has an extra stub parameter }
+  Fpsigaction:=do_syscall(syscall_nr_rt_sigaction,TSysParam(sig),TSysParam(act),TSysParam(oact),TSysParam(PtrInt(@Fprt_sigreturn_stub)-8),TSysParam(8));
+{$else cpusparc}
+  Fpsigaction:=do_syscall(syscall_nr_rt_sigaction,TSysParam(sig),TSysParam(act),TSysParam(oact),TSysParam(8));
+{$endif cpusparc}
+end;
+
+
+function Fpftruncate(fd : cint; flength : off_t): cint; [public, alias : 'FPC_SYSC_FTRUNCATE'];
+{ See notes lseek. This one is completely similar for the parameter (but
+doesn't have the returnvalue 64-bit problem)}
+
+begin
+ Fpftruncate:=Do_syscall(syscall_nr_ftruncate,TSysParam(fd),TSysParam(flength));
+end;
+
+function Fpfstat(fd : cint; var sb : stat): cint;  [public, alias : 'FPC_SYSC_FSTAT'];
+
+begin
+  FpFStat:=do_SysCall(syscall_nr_fstat,TSysParam(fd),TSysParam(@sb));
+end;
+
+
+{$ifndef FPC_SYSTEM_HAS_FPFORK}
+function Fpfork : pid_t;  [public, alias : 'FPC_SYSC_FORK'];
+{
+  This function issues the 'fork' System call. the program is duplicated in memory
+  and Execution continues in parent and child process.
+  In the parent process, fork returns the PID of the child. In the child process,
+  zero is returned.
+  A negative value indicates that an error has occurred, the error is returned in
+  LinuxError.
+}
+
+Begin
+ Fpfork:=Do_syscall(SysCall_nr_fork);
+End;
+{$endif FPC_SYSTEM_HAS_FPFORK}
+
+// Look at execve variants later, when overloaded is determined.
+{
+function Fpexecve(path : pathstr; argv : ppchar; envp: ppchar): cint;
+}
+{
+  Replaces the current program by the program specified in path,
+  arguments in args are passed to Execve.
+  environment specified in ep is passed on.
+}
+
+{
+Begin
+  path:=path+#0;
+  do_syscall(syscall_nr_Execve,TSysParam(@path[1]),TSysParam(Argv),TSysParam(envp));
+End;
+}
+{
+function Fpexecve(path : pchar; argv : ppchar; envp: ppchar): cint;  [public, alias : 'FPC_SYSC_EXECVE'];
+}
+{
+  Replaces the current program by the program specified in path,
+  arguments in args are passed to Execve.
+  environment specified in ep is passed on.
+}
+{
+Begin
+  do_syscall(syscall_nr_Execve,TSysParam(path),TSysParam(Argv),TSysParam(envp));
+End;
+}
+
+{$ifdef CPUARM}
+{$define WAIT4}
+{$endif CPUARM}
+
+{$ifdef CPUx86_64}
+{$define WAIT4}
+{$endif CPUx86_64}
+
+{$ifdef CPUSPARC}
+{$define WAIT4}
+{$endif CPUSPARC}
+
+
+function Fpwaitpid(pid : pid_t; stat_loc : pcint; options: cint): pid_t; [public, alias : 'FPC_SYSC_WAITPID'];
+{
+  Waits until a child with PID Pid exits, or returns if it is exited already.
+  Any resources used by the child are freed.
+  The exit status is reported in the adress referred to by Status. It should
+  be a longint.
+}
+
+begin
+{$ifdef WAIT4}
+ FpWaitPID:=do_syscall(syscall_nr_Wait4,PID,TSysParam(Stat_loc),options,0);
+{$else WAIT4}
+ FpWaitPID:=do_syscall(syscall_nr_WaitPID,PID,TSysParam(Stat_loc),options);
+{$endif WAIT4}
+end;
+
+function Fpaccess(pathname : pchar; amode : cint): cint; [public, alias : 'FPC_SYSC_ACCESS'];
+{
+  Test users access rights on the specified file.
+  Mode is a mask xosisting of one or more of R_OK, W_OK, X_OK, F_OK.
+  R,W,X stand for read,write and Execute access, simultaneously.
+  F_OK checks whether the test would be allowed on the file.
+  i.e. It checks the search permissions in all directory components
+  of the path.
+  The test is done with the real user-ID, instead of the effective.
+  If access is denied, or an error occurred, false is returned.
+  If access is granted, true is returned.
+  Errors other than no access,are reported in unixerror.
+}
+
+begin
+ FpAccess:=do_syscall(syscall_nr_access,TSysParam(pathname),amode);
+end;
+
+(* overloaded
+function Fpaccess(pathname : pathstr; amode : cint): cint;
+
+{
+  Test users access rights on the specified file.
+  Mode is a mask xosisting of one or more of R_OK, W_OK, X_OK, F_OK.
+  R,W,X stand for read,write and Execute access, simultaneously.
+  F_OK checks whether the test would be allowed on the file.
+  i.e. It checks the search permissions in all directory components
+  of the path.
+  The test is done with the real user-ID, instead of the effective.
+  If access is denied, or an error occurred, false is returned.
+  If access is granted, true is returned.
+  Errors other than no access,are reported in unixerror.
+}
+
+begin
+ pathname:=pathname+#0;
+ Access:=do_syscall(syscall_nr_access, TSysParam(@pathname[1]),mode)=0;
+end;
+*)
+
+Function FpDup(fildes:cint):cint; [public, alias : 'FPC_SYSC_DUP'];
+
+begin
+  Fpdup:=Do_syscall(syscall_nr_dup,TSysParam(fildes));
+end;
+
+Function FpDup2(fildes,fildes2:cint):cint; [public, alias : 'FPC_SYSC_DUP2'];
+
+begin
+ Fpdup2:=do_syscall(syscall_nr_dup2,TSysParam(fildes),TSysParam(fildes2));
+end;
+
+
+type
+  tmmapargs = packed record
+    address : TSysParam;
+    size    : TSysParam;
+    prot    : TSysParam;
+    flags   : TSysParam;
+    fd      : TSysParam;
+    offset  : TSysParam;
+  end;
+
+
+{$ifdef cpui386}
+{$define OLDMMAP}
+{$endif cpui386}
+
+{$ifdef cpum68k}
+{$define OLDMMAP}
+{$endif cpum68k}
+
+{$ifdef cpuarm}
+{$define OLDMMAP}
+{$endif cpuarm}
+
+
+Function Fpmmap(adr:pointer;len:size_t;prot:cint;flags:cint;fd:cint;off:off_t):pointer;  [public, alias : 'FPC_SYSC_MMAP'];
+// OFF_T procedure, and returns a pointer, NOT cint.
+
+{$ifdef OLDMMAP}
+var
+  mmapargs : tmmapargs;
+begin
+  mmapargs.address:=TSysParam(adr);
+  mmapargs.size:=TSysParam(len);
+  mmapargs.prot:=TSysParam(prot);
+  mmapargs.flags:=TSysParam(flags);
+  mmapargs.fd:=TSysParam(fd);
+  mmapargs.offset:=TSysParam(off);
+  Fpmmap:=pointer(do_syscall(syscall_nr_mmap,TSysParam(@MMapArgs)));
+end;
+{$else OLDMMAP}
+begin
+  Fpmmap:= pointer(do_syscall(syscall_nr_mmap,TSysParam(adr),TSysParam(len),
+    TSysParam(prot),TSysParam(flags),TSysParam(fd),TSysParam(off)));
+end;
+{$endif OLDMMAP}
+
+
+Function Fpmunmap(adr:pointer;len:size_t):cint; [public, alias :'FPC_SYSC_MUNMAP'];
+begin
+  Fpmunmap:=do_syscall(syscall_nr_munmap,TSysParam(Adr),TSysParam(Len));
+end;
+
+{
+  Interface to Unix ioctl call.
+  Performs various operations on the filedescriptor Handle.
+  Ndx describes the operation to perform.
+  Data points to data needed for the Ndx function. The structure of this
+  data is function-dependent.
+}
+
+// prototype is cint __P(cint,culong,....)
+// actual meaning of return value depends on request.
+
+Function FpIOCtl(fd:cint;request:culong;Data: Pointer):cint;  [public, alias : 'FPC_SYSC_IOCTL'];
+// This was missing here, instead hardcoded in Do_IsDevice
+begin
+  FpIOCtl:=do_SysCall(syscall_nr_ioctl,tsysparam(fd),tsysparam(Request),TSysParam(data));
+end;
+
+
+Function FpGetPid:pid_t;   [public, alias : 'FPC_SYSC_GETPID'];
+{
+  Get Process ID.
+}
+
+begin
+ FpGetPID:=do_syscall(syscall_nr_getpid);
+end;
+
+Function FpReadLink(name,linkname:pchar;maxlen:size_t):cint;  [public, alias : 'FPC_SYSC_READLINK'];
+
+begin
+  Fpreadlink:=do_syscall(syscall_nr_readlink, TSysParam(name),TSysParam(linkname),maxlen);
+end;
+
+
+function FPSigProcMask(how:cint;nset : psigset;oset : psigset):cint; [public, alias : 'FPC_SYSC_SIGPROCMASK'];
+
+{
+  Change the list of currently blocked signals.
+  How determines which signals will be blocked :
+   SigBlock   : Add SSet to the current list of blocked signals
+   SigUnBlock : Remove the signals in SSet from the list of blocked signals.
+   SigSetMask : Set the list of blocked signals to SSet
+  if OldSSet is non-null, the old set will be saved there.
+}
+
+begin
+  FPsigprocmask:=do_syscall(syscall_nr_rt_sigprocmask,TSysParam(how),TSysParam(nset),TSysParam(oset),TSysParam(8));
+end;
+
+
+Function FpNanoSleep(req : ptimespec;rem : ptimespec):cint; [public, alias : 'FPC_SYSC_NANOSLEEP'];
+begin
+  FpNanoSleep:=Do_SysCall(syscall_nr_nanosleep,TSysParam(req),TSysParam(rem));
+end;
+
+// The following belongs here, but this should be researched more.
+// function Fpgetcwd(pt:pchar; _size:size_t):pchar;[public, alias :'FPC_SYSC_GETCWD'];
+
+function fpgettimeofday(tp: ptimeval;tzp:ptimezone):cint; [public, alias: 'FPC_SYSC_GETTIMEOFDAY'];
+
+begin
+ fpgettimeofday:=do_syscall(syscall_nr_gettimeofday,TSysParam(tp),TSysParam(tzp));
+end;
+
+{
+ $Log: ossysc.inc,v $
+ Revision 1.36  2005/02/14 17:13:30  peter
+   * truncate log
+
+ Revision 1.35  2005/02/13 21:47:56  peter
+   * include file cleanup part 2
+
+ Revision 1.34  2005/02/13 20:01:38  peter
+   * include file cleanup
+
+ Revision 1.33  2005/02/06 12:16:52  peter
+   * bsd thread updates
+
+ Revision 1.32  2005/01/31 20:13:24  peter
+   * rt_sigaction for all cpus
+
+ Revision 1.31  2005/01/31 19:22:48  peter
+   * i386 also needs rtsignal
+
+}

@@ -1,0 +1,712 @@
+{
+    $Id: sysutils.pp,v 1.10 2005/02/26 14:38:14 florian Exp $
+    This file is part of the Free Pascal run time library.
+    Copyright (c) 1999-2004 by the Free Pascal development team.
+
+    Sysutils unit for netware (libc)
+
+    See the file COPYING.FPC, included in this distribution,
+    for details about the copyright.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+ **********************************************************************}
+
+unit sysutils;
+interface
+
+{$MODE objfpc}
+{ force ansistrings }
+{$H+}
+
+uses Libc,DOS;
+
+
+TYPE
+  TNetwareLibcFindData =
+  RECORD
+    DirP  : Pdirent;          { used for opendir }
+    EntryP: Pdirent;          { and readdir }
+    Magic : longint;          { to avoid abends with uninitialized TSearchRec }
+    _mask : string;           { search mask i.e. *.* }
+    _dir  : string;           { directory where to search }
+    _attr : longint;          { specified attribute }
+    fname : string;           { full pathname of found file }
+  END;
+
+{$DEFINE HAS_SLEEP}
+{ Include platform independent interface part }
+{$i sysutilh.inc}
+
+
+
+{ additional NetWare file flags}
+CONST
+  faSHARE              = M_A_SHARE shr 16;              // Sharable file
+
+  //faNO_SUBALLOC        = $00000800;                   // Don't sub alloc. this file
+  faTRANS              = M_A_TRANS shr 16;              // Transactional file (TTS usable)
+  //faREADAUD            = $00004000;                   // clib only: Read audit
+  //faWRITAUD            = $00008000;                   // clib only: Write audit
+
+  faIMMPURG            = M_A_IMMPURG shr 16;            // Immediate purge
+  faNORENAM            = M_A_NORENAM shr 16;            // Rename inhibit
+  faNODELET            = M_A_NODELET shr 16;            // Delete inhibit
+  faNOCOPY             = M_A_NOCOPY shr 16;             // Copy inhibit
+
+  //faFILE_MIGRATED      = $00400000;                   // clib only: File has been migrated
+  //faDONT_MIGRATE       = $00800000;                   // clib only: Don't migrate this file
+  faIMMEDIATE_COMPRESS = M_A_IMMCOMPRESS shr 16;        // Compress this file immediately
+  faFILE_COMPRESSED    = M_A_FILE_COMPRESSED shr 16;    // File is compressed
+  faDONT_COMPRESS      = M_A_DONT_COMPRESS shr 16;      // Don't compress this file
+  faCANT_COMPRESS      = M_A_CANT_COMPRESS shr 16;      // Can't compress this file
+  //faATTR_ARCHIVE       = $40000000;                   // clib only: Entry has had an EA modified,
+                                                        // an ownerID changed, or trustee
+                                                        // info changed, etc.
+  faSetNetwareAttrs    = M_A_BITS_SIGNIFICANT;          // if this is set, netware flags are changed also
+
+
+
+implementation
+
+  uses
+    sysconst;
+
+{ Include platform independent implementation part }
+{$i sysutils.inc}
+
+
+{****************************************************************************
+                              File Functions
+****************************************************************************}
+
+Function FileOpen (Const FileName : string; Mode : Integer) : Longint;
+VAR NWOpenFlags : longint;
+BEGIN
+  NWOpenFlags:=0;
+  Case (Mode and 3) of
+    0 : NWOpenFlags:=NWOpenFlags or O_RDONLY;
+    1 : NWOpenFlags:=NWOpenFlags or O_WRONLY;
+    2 : NWOpenFlags:=NWOpenFlags or O_RDWR;
+  end;
+  FileOpen := Fpopen (pchar(FileName),NWOpenFlags);
+
+  //!! We need to set locking based on Mode !!
+end;
+
+
+Function FileCreate (Const FileName : String) : Longint;
+begin
+  FileCreate:=Fpopen(Pchar(FileName),O_RdWr or O_Creat or O_Trunc or O_Binary);
+  if FileCreate >= 0 then
+    FileSetAttr (Filename, 0);  // dont know why but open always sets ReadOnly flag
+end;
+
+Function FileCreate (Const FileName : String; mode:longint) : Longint;
+begin
+  FileCreate:=FileCreate (FileName);
+end;
+
+
+Function FileRead (Handle : Longint; Var Buffer; Count : longint) : Longint;
+begin
+  FileRead:=libc.fpread (Handle,@Buffer,Count);
+end;
+
+
+Function FileWrite (Handle : Longint; const Buffer; Count : Longint) : Longint;
+begin
+  FileWrite:=libc.fpwrite (Handle,@Buffer,Count);
+end;
+
+
+Function FileSeek (Handle,FOffset,Origin : Longint) : Longint;
+begin
+  FileSeek:=libc.fplseek (Handle,FOffset,Origin);
+end;
+
+
+Function FileSeek (Handle : Longint; FOffset,Origin : Int64) : Int64;
+begin
+  FileSeek:=libc.fplseek64 (Handle,FOffset,Origin);
+end;
+
+
+Procedure FileClose (Handle : Longint);
+begin
+  libc.fpclose(Handle);
+end;
+
+Function FileTruncate (Handle,Size: Longint) : boolean;
+begin
+  FileTruncate:=(libc.fpchsize(Handle,Size) = 0);
+end;
+
+Function FileLock (Handle,FOffset,FLen : Longint) : Longint;
+begin
+  {$warning FileLock not implemented}
+  //FileLock := _lock (Handle,FOffset,FLen);
+  FileLock := -1;
+end;
+
+Function FileLock (Handle : Longint; FOffset,FLen : Int64) : Longint;
+begin
+  {$warning need to add 64bit FileLock call }
+  //FileLock := FileLock (Handle, longint(FOffset),longint(FLen));
+  FileLock := -1;
+end;
+
+Function FileUnlock (Handle,FOffset,FLen : Longint) : Longint;
+begin
+  //FileUnlock := _unlock (Handle,FOffset,FLen);
+  {$warning FileUnLock not implemented}
+  FileUnlock := -1;
+end;
+
+Function FileUnlock (Handle : Longint; FOffset,FLen : Int64) : Longint;
+begin
+  {$warning need to add 64bit FileUnlock call }
+  //FileUnlock := FileUnlock (Handle, longint(FOffset),longint(FLen));
+  FileUnlock := -1;
+end;
+
+Function FileAge (Const FileName : String): Longint;
+var Info : TStat;
+    TM  : TTM;
+begin
+  If Fpstat (pchar(FileName),Info) <> 0 then
+    exit(-1)
+  else
+    begin
+      localtime_r (Info.st_mtim.tv_sec,tm);
+      with TM do
+        result:=DateTimeToFileDate(EncodeDate(tm_year+1900,tm_mon+1,tm_mday)+EncodeTime(tm_hour,tm_min,tm_sec,0));
+    end;
+end;
+
+
+Function FileExists (Const FileName : String) : Boolean;
+VAR Info : TStat;
+begin
+  FileExists:=(Fpstat(pchar(filename),Info) = 0);
+end;
+
+
+Function UnixToWinAge(UnixAge : time_t): Longint;
+Var tm : TTm;
+begin
+  libc.localtime_r (UnixAge, tm);
+  with tm do
+    Result:=DateTimeToFileDate(EncodeDate(tm_year+1900,tm_mon+1,tm_mday)+EncodeTime(tm_hour,tm_min,tm_sec,0));
+end;
+
+
+{returns true if attributes match}
+function find_setfields (var f : TsearchRec; var AttrsOk : boolean) : longint;
+var
+  StatBuf : TStat;
+  fname   : string;
+begin
+  result := 0;
+  with F do
+  begin
+    if FindData.Magic = $AD02 then
+    begin
+      attr := (Pdirent(FindData.EntryP)^.d_mode shr 16) and $ffff;
+      size := Pdirent(FindData.EntryP)^.d_size;
+      name := strpas (Pdirent(FindData.EntryP)^.d_name);
+      fname := FindData._dir + name;
+      if Fpstat (pchar(fname),StatBuf) = 0 then
+        time := UnixToWinAge (StatBuf.st_mtim.tv_sec)
+      else
+        time := 0;
+      AttrsOk := false;
+      if (f.FindData._attr and faHidden) = 0 then
+        if attr and faHidden > 0 then exit;
+      if (f.FindData._attr and faDirectory) = 0 then
+        if attr and faDirectory > 0 then exit;
+      if (f.FindData._attr and faSysFile) = 0 then
+        if attr and faSysFile > 0 then exit;
+      AttrsOk := true;
+    end else
+    begin
+      FillChar (f,sizeof(f),0);
+      result := 18;
+    end;
+  end;
+end;
+
+function findfirst(const path : string;attr : longint;var Rslt : TsearchRec) : longint;
+var
+  path0 : string;
+  p     : longint;
+begin
+  IF path = '' then
+  begin
+    result := 18;
+    exit;
+  end;
+  Rslt.FindData._attr := attr;
+  p := length (path);
+  while (p > 0) and (not (path[p] in ['\','/'])) do
+    dec (p);
+  if p > 0 then
+  begin
+    Rslt.FindData._mask := copy (path,p+1,255);
+    Rslt.FindData._dir := copy (path,1,p);
+  end else
+  begin
+    Rslt.FindData._mask := path;
+    Rslt.FindData._dir := GetCurrentDir;
+    if (Rslt.FindData._dir[length(Rslt.FindData._dir)] <> '/') and
+       (Rslt.FindData._dir[length(Rslt.FindData._dir)] <> '\') then
+      Rslt.FindData._dir := Rslt.FindData._dir + '/';
+  end;
+  if Rslt.FindData._mask = '*' then Rslt.FindData._mask := '';
+  if Rslt.FindData._mask = '*.*' then Rslt.FindData._mask := '';
+  //writeln (stderr,'mask: "',Rslt._mask,'" dir:"',path0,'"');
+  Pdirent(Rslt.FindData.DirP) := opendir (pchar(Rslt.FindData._dir));
+  if Rslt.FindData.DirP = nil then
+    result := 18
+  else begin
+    Rslt.FindData.Magic := $AD02;
+    result := findnext (Rslt);
+  end;
+end;
+
+
+function findnext(var Rslt : TsearchRec) : longint;
+var attrsOk : boolean;
+begin
+  if Rslt.FindData.Magic <> $AD02 then
+  begin
+    result := 18;
+    exit;
+  end;
+  result:=0;
+  repeat
+    Pdirent(Rslt.FindData.EntryP) := readdir (Pdirent(Rslt.FindData.DirP));
+    if Rslt.FindData.EntryP = nil then
+      result := 18
+    else
+    result := find_setfields (Rslt,attrsOk);
+    if (result = 0) and (attrsOk) then
+    begin
+      if Rslt.FindData._mask = #0 then exit;
+      if fnmatch(@Rslt.FindData._mask[1],Pdirent(Rslt.FindData.EntryP)^.d_name,FNM_CASEFOLD) = 0 then
+        exit;
+    end;
+  until result <> 0;
+end;
+
+
+Procedure FindClose(Var f: TSearchRec);
+begin
+  if F.FindData.Magic <> $AD02 then exit;
+  doserror:=0;
+  closedir (Pdirent(f.FindData.DirP));
+  FillChar (f,sizeof(f),0);
+end;
+
+
+
+Function FileGetDate (Handle : Longint) : Longint;
+Var Info : TStat;
+    _PTM : PTM;
+begin
+  If Fpfstat(Handle,Info) <> 0 then
+    Result:=-1
+  else
+    begin
+      _PTM := localtime (Info.st_mtim.tv_sec);
+      IF _PTM = NIL THEN
+        exit(-1)
+      else
+        with _PTM^ do
+          Result:=DateTimeToFileDate(EncodeDate(tm_year+1900,tm_mon+1,tm_mday)+EncodeTime(tm_hour,tm_min,tm_sec,0));
+    end;
+end;
+
+
+Function FileSetDate (Handle,Age : Longint) : Longint;
+Begin
+  {dont know how to do that, utime needs filename}
+  result := -1;
+end;
+
+
+Function FileGetAttr (Const FileName : String) : Longint;
+Var Info : TStat;
+begin
+  If Fpstat (pchar(FileName),Info) <> 0 then
+    Result:=-1
+  Else
+    Result := (Info.st_mode shr 16) and $ffff;
+end;
+
+
+Function FileSetAttr (Const Filename : String; Attr: longint) : Longint;
+var
+  StatBuf : TStat;
+  newMode : longint;
+begin
+  if Fpstat (pchar(Filename),StatBuf) = 0 then
+  begin
+    {what should i do here ?
+     only support sysutils-standard attributes or also support the extensions defined
+     only for netware libc ?
+     For now i allow the complete attributes if the bit faSetNetwareAttrs is set. Otherwise
+     only the standard attributes can be modified}
+    if attr and faSetNetwareAttrs > 0 then
+    begin
+      newmode := ((attr shl 16) and $ffff0000) or M_A_BITS_SIGNIFICANT;
+    end else
+    begin
+      attr := (attr and $2f) shl 16;
+      newmode := StatBuf.st_mode and ($ffff0000-M_A_RDONLY-M_A_HIDDEN- M_A_SYSTEM-M_A_SUBDIR-M_A_ARCH);
+      newmode := newmode or (attr shl 16) or M_A_BITS_SIGNIFICANT;
+    end;
+    if Fpchmod (pchar(Filename),newMode) < 0 then
+      result := ___errno^ else
+      result := 0;
+  end else
+    result := ___errno^;
+end;
+
+
+Function DeleteFile (Const FileName : String) : Boolean;
+
+begin
+  Result:= (libc.UnLink (pchar(FileName)) = 0);
+end;
+
+
+Function RenameFile (Const OldName, NewName : String) : Boolean;
+
+begin
+  RenameFile:=(libc.rename(pchar(OldName),pchar(NewName)) = 0);
+end;
+
+
+{****************************************************************************
+                              Disk Functions
+****************************************************************************}
+
+{
+  The Diskfree and Disksize functions need a file on the specified drive, since this
+  is required for the statfs system call.
+  These filenames are set in drivestr[0..26], and have been preset to :
+   0 - '.'      (default drive - hence current dir is ok.)
+   1 - '/fd0/.'  (floppy drive 1 - should be adapted to local system )
+   2 - '/fd1/.'  (floppy drive 2 - should be adapted to local system )
+   3 - '/'       (C: equivalent of dos is the root partition)
+   4..26          (can be set by you're own applications)
+  ! Use AddDisk() to Add new drives !
+  They both return -1 when a failure occurs.
+}
+Const
+  FixDriveStr : array[0..3] of pchar=(
+    '.',
+    'a:.',
+    'b:.',
+    'sys:/'
+    );
+var
+  Drives   : byte;
+  DriveStr : array[4..26] of pchar;
+
+Procedure AddDisk(const path:string);
+begin
+  if not (DriveStr[Drives]=nil) then
+   FreeMem(DriveStr[Drives],StrLen(DriveStr[Drives])+1);
+  GetMem(DriveStr[Drives],length(Path)+1);
+  StrPCopy(DriveStr[Drives],path);
+  inc(Drives);
+  if Drives>26 then
+   Drives:=4;
+end;
+
+
+Function DiskFree(Drive: Byte): int64;
+//var fs : Tstatfs;
+Begin
+{  if ((Drive<4) and (not (fixdrivestr[Drive]=nil)) and fsstat(StrPas(fixdrivestr[drive]),fs)) or
+     ((not (drivestr[Drive]=nil)) and fsstat(StrPas(drivestr[drive]),fs)) then
+   Diskfree:=int64(fs.bavail)*int64(fs.bsize)
+  else
+   Diskfree:=-1;}
+  DiskFree := -1;
+  ConsolePrintf ('warning: fpc sysutils.diskfree not implemented'#13#10);
+  {$warning DiskFree not implemented (does it make sense ?) }
+End;
+
+
+
+Function DiskSize(Drive: Byte): int64;
+//var fs : statfs;
+Begin
+{  if ((Drive<4) and (not (fixdrivestr[Drive]=nil)) and fsstat(StrPas(fixdrivestr[drive]),fs)) or
+     ((not (drivestr[Drive]=nil)) and fsstat(StrPas(drivestr[drive]),fs)) then
+   DiskSize:=int64(fs.blocks)*int64(fs.bsize)
+  else
+   DiskSize:=-1;}
+  DiskSize := -1;
+  ConsolePrintf ('warning: fpc sysutils.disksize not implemented'#13#10);
+  {$warning DiskSize not implemented (does it make sense ?) }
+End;
+
+
+Function GetCurrentDir : String;
+begin
+  GetDir (0,Result);
+end;
+
+
+Function SetCurrentDir (Const NewDir : String) : Boolean;
+begin
+  Libc.FpChDir(pchar(NewDir));
+  result := (___errno^ = 0);
+end;
+
+
+Function CreateDir (Const NewDir : String) : Boolean;
+begin
+  Libc.FpMkDir(pchar(NewDir),0);
+  result := (___errno^ = 0);
+end;
+
+
+Function RemoveDir (Const Dir : String) : Boolean;
+begin
+  libc.FpRmDir(pchar(Dir));
+  result := (___errno^ = 0);
+end;
+
+
+function DirectoryExists (const Directory: string): boolean;
+var Info : TStat;
+begin
+  If Fpstat (pchar(Directory),Info) <> 0 then
+    exit(false)
+  else
+    Exit ((Info.st_mode and M_A_SUBDIR) <> 0);
+end;
+
+
+{****************************************************************************
+                              Misc Functions
+****************************************************************************}
+
+procedure Beep;
+begin
+  RingBell;
+end;
+
+
+{****************************************************************************
+                              Locale Functions
+****************************************************************************}
+
+Procedure GetLocalTime(var SystemTime: TSystemTime);
+var t : TTime;
+    tm: Ttm;
+begin
+  libc.time(t);
+  libc.localtime_r(t,tm);
+  with SystemTime do
+  begin
+    Hour := tm.tm_hour;
+    Minute := tm.tm_min;
+    Second := tm.tm_sec;
+    MilliSecond := 0;
+    Day := tm.tm_mday;
+    Month := tm.tm_mon+1;
+    Year := tm.tm_year+1900;
+  end;
+end;
+
+
+Procedure InitAnsi;
+Var i : longint;
+begin
+  {  Fill table entries 0 to 127  }
+  for i := 0 to 96 do
+    UpperCaseTable[i] := chr(i);
+  for i := 97 to 122 do
+    UpperCaseTable[i] := chr(i - 32);
+  for i := 123 to 191 do
+    UpperCaseTable[i] := chr(i);
+  Move (CPISO88591UCT,UpperCaseTable[192],SizeOf(CPISO88591UCT));
+
+  for i := 0 to 64 do
+    LowerCaseTable[i] := chr(i);
+  for i := 65 to 90 do
+    LowerCaseTable[i] := chr(i + 32);
+  for i := 91 to 191 do
+    LowerCaseTable[i] := chr(i);
+  Move (CPISO88591LCT,UpperCaseTable[192],SizeOf(CPISO88591UCT));
+end;
+
+
+Procedure InitInternational;
+begin
+  InitInternationalGeneric;
+  InitAnsi;
+end;
+
+function SysErrorMessage(ErrorCode: Integer): String;
+
+begin
+  Result:='';  // only found perror that prints the message
+end;
+
+{****************************************************************************
+                              OS utility functions
+****************************************************************************}
+
+Function GetEnvironmentVariable(Const EnvVar : String) : String;
+
+begin
+  Result:=StrPas(libc.getenv(PChar(EnvVar)));
+end;
+
+Function GetEnvironmentVariableCount : Integer;
+
+begin
+  Result:=FPCCountEnvVar(EnvP);
+end;
+
+Function GetEnvironmentString(Index : Integer) : String;
+
+begin
+  Result:=FPCGetEnvStrFromP(Envp,Index);
+end;
+
+
+function ExecuteProcess(Const Path: AnsiString; Const ComLine: AnsiString):integer;
+var
+  params:array of AnsiString;
+  count,i: longint;
+  Buf  : pchar;
+  p    : pchar;
+  CLine: AnsiString;
+begin
+  cLine := ComLine;
+  buf:=pchar(CLine);
+  count:=0;
+  while(buf^<>#0) do
+  begin
+    while (buf^ in [' ',#9,#10]) do
+      inc(buf);
+    inc(count);
+    while not (buf^ in [' ',#0,#9,#10]) do
+      inc(buf);
+  end;
+  i := 0;
+  setlength(params,count);
+  buf:=pchar(CLine);
+  while(buf^<>#0) do
+  begin
+    while (buf^ in [' ',#9,#10]) do
+      inc(buf);
+    p := buf;
+    while not (buf^ in [' ',#0,#9,#10]) do
+      inc(buf);
+    if buf^ <> #0 then
+    begin
+      buf^ := #0;
+      inc(buf);
+    end;
+    params[i]:=p;
+    inc(i);
+  end;
+  result := ExecuteProcess (Path, params);
+end;
+
+
+{******************************************************************************
+                               --- Exec ---
+******************************************************************************}
+
+const maxargs=256;
+function ExecuteProcess (const Path: AnsiString;
+                                  const ComLine: array of AnsiString): integer;
+var c : comstr;
+    i : integer;
+    args : array[0..maxargs+1] of pchar;
+    arg0 : string;
+    numargs,wstat : integer;
+    Wiring : TWiring;
+    newPath : string;
+    e : EOSError;
+begin
+  if pos ('.',path) = 0 then
+    arg0 := fexpand(path+'.nlm')
+  else
+    arg0 := fexpand (path);
+  args[0] := pchar(arg0);
+  numargs := 0;
+  for I := 0 to High (ComLine) do
+    if numargs < maxargs then
+    begin
+      inc(numargs);
+      args[numargs] := pchar(ComLine[i]);
+    end;
+  args[numargs+1] := nil;
+  Wiring.infd := StdInputHandle;  //textrec(Stdin).Handle;
+  Wiring.outfd:= textrec(stdout).Handle;
+  Wiring.errfd:= textrec(stderr).Handle;
+  i := procve(args[0],
+              PROC_CURRENT_SPACE+PROC_INHERIT_CWD,
+              envP,         // const char * env[] If passed as NULL, the child process inherits the parent.s environment at the time of the call.
+              @Wiring,      // wiring_t *wiring, Pass NULL to inherit system defaults for wiring.
+              nil,          // struct fd_set *fds, Not currently implemented. Pass in NULL.
+              nil,          // void *appdata, Not currently implemented. Pass in NULL.
+              0,            // size_t appdata_size, Not currently implemented. Pass in 0
+              nil,          // void *reserved, Reserved. Pass NULL.
+              @args);       // const char *argv[]
+  if i <> -1 then
+  begin
+    Fpwaitpid(i,@wstat,0);
+    result := wstat;
+  end else
+  begin
+    e:=EOSError.CreateFmt(SExecuteProcessFailed,[arg0,___errno^]);
+    e.ErrorCode:=___errno^;
+    raise e;
+  end;
+end;
+
+
+procedure Sleep(milliseconds: Cardinal);
+begin
+  libc._delay (milliseconds);
+end;
+
+
+
+{****************************************************************************
+                              Initialization code
+****************************************************************************}
+
+Initialization
+  InitExceptions;       { Initialize exceptions. OS independent }
+  InitInternational;    { Initialize internationalization settings }
+Finalization
+  DoneExceptions;
+end.
+{
+
+  $Log: sysutils.pp,v $
+  Revision 1.10  2005/02/26 14:38:14  florian
+    + SysLocale
+
+  Revision 1.9  2005/02/14 17:13:30  peter
+    * truncate log
+
+  Revision 1.8  2005/01/04 11:25:34  armin
+  * rtl code cleanup, compat fixes between clib and libc
+
+}

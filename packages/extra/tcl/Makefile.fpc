@@ -1,0 +1,20 @@
+#
+#   Makefile.fpc for Tcl/Tk bindings
+#
+[package]
+name=tcl
+version=2.0.0
+
+[target]
+units=tcl80
+examples=tcl_demo
+
+[require]
+libc=y
+packages=fcl
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../../..

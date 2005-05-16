@@ -1,0 +1,21 @@
+#
+# Makefile.fpc for SQL IBConnection
+#
+
+[package]
+main=fcl
+
+[target]
+units=ibconnection
+
+[require]
+packages=ibase
+
+[compiler]
+options=-S2
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../../../..

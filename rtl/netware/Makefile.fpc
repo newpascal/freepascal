@@ -1,0 +1,263 @@
+#
+#   Makefile.fpc for Free Pascal Netware RTL (clib)
+#
+
+[package]
+main=rtl
+
+[target]
+loaders=nwpre prelude
+units=$(SYSTEMUNIT) objpas macpas strings \
+      lineinfo winsock heaptrc matrix \
+      dos crt objects sysconst \
+      initc sysutils types typinfo classes \
+      cpu mmx getopts \
+      dateutils strutils convutils \
+      charset ucomplex variants \
+      rtlconsts math varutils freebidi utf8bidi \
+      mouse video keyboard cmem sockets \
+      aio nwsnut nwserv nwnit nwprot netware nwcalls ctypes
+rsts=math varutils variants typinfo classes dateutils sysconst convutils rtlconsts
+
+[require]
+nortl=y
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../..
+target=netware
+
+[compiler]
+includedir=$(INC) $(PROCINC)
+sourcedir=$(INC) $(PROCINC)
+
+
+[prerules]
+RTL=..
+INC=$(RTL)/inc
+PROCINC=$(RTL)/$(CPU_TARGET)
+
+UNITPREFIX=rtl
+
+ifeq ($(findstring 1.0.,$(FPC_VERSION)),)
+SYSTEMUNIT=system
+else
+SYSTEMUNIT=sysnetwa
+endif
+
+# Use new feature from 1.0.5 version
+# that generates release PPU files
+# which will not be recompiled
+# ifdef RELEASE
+override FPCOPT+=-Ur
+# endif
+
+#debug, -a: dont delete asm, -al include lines
+#override FPCOPT+=-a
+#override FPCOPT+=-al
+
+
+# for netware always use multithread
+override FPCOPT+=-dMT
+
+# and alway use smartlinking
+CREATESMART=1
+
+# Paths
+OBJPASDIR=$(RTL)/objpas
+
+# Imp-Files
+IMPFILES=aio.imp audnlm32.imp \
+calnlm32.imp ccs.imp ccs-os.imp clibaux.imp \
+clibctx.imp clib.imp clxnlm32.imp dplsv386.imp \
+dsapi.imp dsevent.imp lib0.imp \
+locnlm32.imp ndpsrpc.imp netnlm32.imp nit.imp \
+nlmlib.imp nwpsrv3x.imp nwpsrv.imp nwsnut.imp \
+requestr.imp socklib.imp streams.imp threads.imp \
+tli.imp vollib.imp ws2_32.imp ws2nlm.imp unicode.imp
+
+
+[rules]
+SYSTEMPPU=$(addsuffix $(PPUEXT),$(SYSTEMUNIT))
+
+# Get the system independent include file names.
+# This will set the following variables :
+# SYSINCNAMES
+include $(INC)/makefile.inc
+SYSINCDEPS=$(addprefix $(INC)/,$(SYSINCNAMES))
+
+# Get the processor dependent include file names.
+# This will set the following variables :
+# CPUINCNAMES
+include $(PROCINC)/makefile.cpu
+SYSCPUDEPS=$(addprefix $(PROCINC)/,$(CPUINCNAMES))
+
+# Put system unit dependencies together.
+SYSDEPS=$(SYSINCDEPS) $(SYSCPUDEPS)
+
+copyimpfiles:
+	$(COPY) $(IMPFILES) $(COMPILER_UNITTARGETDIR)
+
+#
+# Loaders
+#
+
+nwpre$(OEXT) : nwpre.as
+        $(AS) -o $(UNITTARGETDIRPREFIX)nwpre$(OEXT) nwpre.as
+
+prelude$(OEXT) : prelude.as
+        $(AS) -o $(UNITTARGETDIRPREFIX)prelude$(OEXT) prelude.as
+
+#
+# System Units (System, Objpas, Strings)
+#
+
+# always copy the imp files to the ppu dir, does not work
+# with system.pp copyimpfile nwsys.inc ...
+# because this will always build system.ppu
+$(SYSTEMUNIT)$(PPUEXT) : $(SYSTEMUNIT).pp nwsys.inc $(SYSDEPS)
+	$(COPY) $(IMPFILES) $(COMPILER_UNITTARGETDIR)
+        $(COMPILER) -Us -Sg $(SYSTEMUNIT).pp
+
+objpas$(PPUEXT): $(OBJPASDIR)/objpas.pp $(INC)/except.inc $(SYSTEMUNIT)$(PPUEXT)
+        $(COMPILER) -I$(OBJPASDIR) $(OBJPASDIR)/objpas.pp
+
+strings$(PPUEXT) : $(INC)/strings.pp $(INC)/stringsi.inc\
+                   $(PROCINC)/strings.inc $(PROCINC)/stringss.inc\
+                   $(SYSTEMUNIT)$(PPUEXT)
+
+#
+# System Dependent Units
+#
+
+netware$(PPUEXT) : netware.pp $(SYSTEMUNIT)$(PPUEXT)
+
+winsock$(PPUEXT) : winsock.pp $(SYSTEMUNIT)$(PPUEXT)
+
+sockets$(PPUEXT) : sockets.pp netware$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT) \
+                   $(INC)/sockets.inc $(INC)/socketsh.inc
+
+#dynlibs$(PPUEXT) : $(INC)/dynlibs.pp windows$(PPUEXT)
+
+initc$(PPUEXT) : initc.pp $(SYSTEMUNIT)$(PPUEXT)
+
+
+#
+# TP7 Compatible RTL Units
+#
+
+dos$(PPUEXT) : dos.pp $(INC)/filerec.inc $(INC)/textrec.inc strings$(PPUEXT) nwserv$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
+
+crt$(PPUEXT) : crt.pp $(INC)/textrec.inc $(SYSTEMUNIT)$(PPUEXT) objpas$(PPUEXT) dos$(PPUEXT)
+
+objects$(PPUEXT) : $(INC)/objects.pp $(SYSTEMUNIT)$(PPUEXT)
+
+#
+# Delphi Compatible Units
+#
+
+sysutils$(PPUEXT) : sysutils.pp $(wildcard $(OBJPASDIR)/sysutils/*.inc) \
+                    objpas$(PPUEXT) dos$(PPUEXT) nwsys.inc sysconst$(PPUEXT)
+        $(COMPILER) -Fi$(OBJPASDIR)/sysutils sysutils.pp
+
+classes$(PPUEXT) : classes.pp $(wildcard $(OBJPASDIR)/classes/*.inc) \
+                   sysutils$(PPUEXT) typinfo$(PPUEXT) rtlconsts$(PPUEXT) \
+                   sysconst$(PPUEXT) types$(PPUEXT)
+        $(COMPILER) -Fi$(OBJPASDIR)/classes classes.pp
+
+typinfo$(PPUEXT): $(OBJPASDIR)/typinfo.pp objpas$(PPUEXT)
+        $(COMPILER) -Sg $(OBJPASDIR)/typinfo.pp
+
+math$(PPUEXT): $(OBJPASDIR)/math.pp objpas$(PPUEXT) sysutils$(PPUEXT)
+        $(COMPILER) $(OBJPASDIR)/math.pp
+
+gettext$(PPUEXT): $(OBJPASDIR)/gettext.pp objpas$(PPUEXT) sysutils$(PPUEXT)
+        $(COMPILER) $(OBJPASDIR)/gettext.pp
+
+varutils$(PPUEXT) : varutils.pp $(OBJPASDIR)/cvarutil.inc \
+                    objpas$(PPUEXT) $(OBJPASDIR)/varutilh.inc
+        $(COMPILER) -I$(OBJPASDIR) varutils.pp
+
+freebidi$(PPUEXT) : $(OBJPASDIR)/freebidi.pp
+
+utf8bidi$(PPUEXT) : $(OBJPASDIR)/utf8bidi.pp freebidi$(PPUEXT)
+        $(COMPILER) -Sc $(OBJPASDIR)/utf8bidi.pp
+
+variants$(PPUEXT) : $(INC)/variants.pp sysutils$(PPUEXT) sysconst$(PPUEXT) varutils$(PPUEXT) typinfo$(PPUEXT) rtlconsts$(PPUEXT)
+        $(COMPILER) -Fi$(INC) $(INC)/variants.pp
+
+types$(PPUEXT) : $(OBJPASDIR)/types.pp objpas$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
+        $(COMPILER) $(OBJPASDIR)/types.pp
+
+rtlconsts$(PPUEXT) : $(OBJPASDIR)/rtlconsts.pp
+        $(COMPILER) $(OBJPASDIR)/rtlconsts.pp
+
+sysconst$(PPUEXT) : $(OBJPASDIR)/sysconst.pp objpas$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
+        $(COMPILER) $(OBJPASDIR)/sysconst.pp
+
+dateutils$(PPUEXT) : $(OBJPASDIR)/dateutils.pp
+        $(COMPILER) -I$(OBJPASDIR) $(OBJPASDIR)/dateutils.pp
+
+convutils$(PPUEXT) : $(OBJPASDIR)/convutils.pp
+        $(COMPILER) -I$(OBJPASDIR) $(OBJPASDIR)/convutils.pp
+
+strutils$(PPUEXT) : $(OBJPASDIR)/strutils.pp
+        $(COMPILER) -I$(OBJPASDIR) $(OBJPASDIR)/strutils.pp
+
+#
+# Mac Pascal Model
+#
+
+macpas$(PPUEXT) : $(INC)/macpas.pp system$(PPUEXT)
+        $(COMPILER) $(INC)/macpas.pp $(REDIR)
+
+#
+# Other system-independent RTL Units
+#
+
+cpu$(PPUEXT) : $(PROCINC)/cpu.pp $(SYSTEMUNIT)$(PPUEXT)
+
+mmx$(PPUEXT) : $(PROCINC)/mmx.pp cpu$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
+
+getopts$(PPUEXT) : $(INC)/getopts.pp $(SYSTEMUNIT)$(PPUEXT)
+
+heaptrc$(PPUEXT) : $(INC)/heaptrc.pp $(SYSTEMUNIT)$(PPUEXT)
+        $(COMPILER) -Sg $(INC)/heaptrc.pp
+
+lineinfo$(PPUEXT) : $(INC)/lineinfo.pp $(SYSTEMUNIT)$(PPUEXT)
+
+charset$(PPUEXT) : $(INC)/charset.pp $(SYSTEMUNIT)$(PPUEXT)
+
+ucomplex$(PPUEXT) : $(INC)/ucomplex.pp math$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
+
+mouse$(PPUEXT) : $(INC)/mouseh.inc $(SYSTEMUNIT)$(PPUEXT)
+
+video$(PPUEXT) : $(INC)/video.inc $(SYSTEMUNIT)$(PPUEXT)
+
+keyboard$(PPUEXT) : $(INC)/keyboard.inc $(INC)/keybrdh.inc $(SYSTEMUNIT)$(PPUEXT)
+
+cmem$(PPUEXT) : $(INC)/cmem.pp $(SYSTEMUNIT)$(PPUEXT)
+
+ctypes$(PPUEXT) :  $(INC)/ctypes.pp $(SYSTEMUNIT)$(PPUEXT)
+
+#
+# Other system-dependent RTL Units
+#
+
+callspec$(PPUEXT) : $(INC)/callspec.pp $(SYSTEMUNIT)$(PPUEXT)
+
+aio$(PPUEXT) : aio.pp $(SYSTEMUNIT)$(PPUEXT)
+
+nwsnut$(PPUEXT) : nwsnut.pp nwserv$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
+
+nwserv$(PPUEXT) : $(SYSTEMUNIT)$(PPUEXT)
+
+nwcalls$(PPUEXT) : $(SYSTEMUNIT)$(PPUEXT)
+
+#
+# Netware-.imp files need to be installed in the unit-dir
+#
+override INSTALLPPUFILES+=$(IMPFILES)
+override CLEANPPUFILES+=$(addprefix $(COMPILER_UNITTARGETDIR)/,$(IMPFILES))

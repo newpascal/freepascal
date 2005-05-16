@@ -1,0 +1,352 @@
+#
+# Makefile.fpc for Free Pascal Tests directory
+#
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=..
+rule=allexectests
+
+[rules]
+unexport FPC_VERSION
+
+################################
+# Test environment setup
+#
+
+ifndef TEST_FPC
+#Use development version of the compiler
+TEST_FPC=$(wildcard $(dir $(CURDIR))compiler/$(notdir $(FPC)))
+ifeq ($(TEST_FPC), )
+$(error "*** ERROR: TEST_FPC is missing ***")
+endif
+endif
+
+#Defaults *not* to OPT
+ifndef TEST_OPT
+TEST_OPT=
+endif
+
+# Retrieve Test compiler info
+ifndef TEST_FPC_VERSION
+TEST_FPC_COMPILERINFO:=$(shell $(TEST_FPC) -iVSPTPSOTO)
+TEST_FPC_VERSION:=$(word 1,$(TEST_FPC_COMPILERINFO))
+endif
+export TEST_FPC TEST_FPC_VERSION TEST_FPC_COMPILERINFO
+ifneq ($(words $(TEST_FPC_COMPILERINFO)),5)
+TEST_FPC_COMPILERINFO+=$(shell $(TEST_FPC) -iSP)
+TEST_FPC_COMPILERINFO+=$(shell $(TEST_FPC) -iTP)
+TEST_FPC_COMPILERINFO+=$(shell $(TEST_FPC) -iSO)
+TEST_FPC_COMPILERINFO+=$(shell $(TEST_FPC) -iTO)
+endif
+ifndef TEST_CPU_SOURCE
+TEST_CPU_SOURCE:=$(word 2,$(TEST_FPC_COMPILERINFO))
+endif
+ifndef TEST_CPU_TARGET
+TEST_CPU_TARGET:=$(word 3,$(TEST_FPC_COMPILERINFO))
+endif
+ifndef TEST_OS_SOURCE
+TEST_OS_SOURCE:=$(word 4,$(TEST_FPC_COMPILERINFO))
+endif
+ifndef TEST_OS_TARGET
+TEST_OS_TARGET:=$(word 5,$(TEST_FPC_COMPILERINFO))
+endif
+TEST_FULL_TARGET=$(TEST_CPU_TARGET)-$(TEST_OS_TARGET)
+
+ifndef TEST_CCOMPILER
+ifeq ($(CPU_TARGET),$(TEST_CPU_TARGET))
+ifeq ($(OS_TARGET),$(TEST_OS_TARGET))
+TEST_CCOMPILER:=$(strip $(wildcard $(addsuffix /gcc$(SRCEXEEXT),$(SEARCHPATH))))
+ifneq ($(TEST_CCOMPILER),)
+TEST_CCOMPILER:=$(firstword $(TEST_CCOMPILER))
+endif
+endif
+endif
+endif
+
+# Target dir where the ppu and binaries are created
+TEST_OUTPUTDIR=output/$(TEST_FULL_TARGET)
+
+
+################################
+# Misc
+#
+
+ifndef FAILLIST
+export FAILLIST:=$(TEST_OUTPUTDIR)/faillist
+endif
+
+ifndef LONGLOG
+export LONGLOG:=$(TEST_OUTPUTDIR)/longlog
+endif
+
+ifndef LOG
+export LOG:=$(TEST_OUTPUTDIR)/log
+endif
+
+
+# Subdirs available in the test subdir
+TESTSUBDIRS=cg cg/cdecl units/system units/dos units/crt units/objects units/strings units/sysutils units/math
+
+# All full dirnames in the test/ dir including the subdir self
+TESTDIRS:=test $(addprefix test/,$(TESTSUBDIRS))
+
+# Unix like OS ?
+ifneq ($(findstring $(TEST_OS_TARGET),$(UNIXs)),)
+INUNIX=1
+endif
+
+# For unixes by default no graph tests
+ifdef INUNIX
+NOGRAPH=1
+endif
+
+.PHONY: utils units copyfiles testprep
+
+################################
+# Utilities
+#
+
+utils:
+        $(MAKE) -C utils utils
+
+utilsdb:
+        $(MAKE) -C utils utilsdb
+
+ifndef DBDIGEST
+DBDIGEST=utils/dbdigest
+endif
+
+ifndef DIGEST
+DIGEST=utils/digest
+endif
+
+ifndef DOTEST
+DOTEST=utils/dotest
+endif
+
+
+################################
+# Units
+#
+
+units:
+        $(MAKE) -C units FPC_VERSION= FPC=$(TEST_FPC) CPU_TARGET=$(TEST_CPU_TARGET) OS_TARGET=$(TEST_OS_TARGET) \
+                         OPT="$(TEST_OPT)" CCOMPILER=$(TEST_CCOMPILER) BINUTILSPREFIX=$(TEST_BINUTILSPREFIX)
+
+################################
+# Copy test environment dependent files ctest.o to test/cg etc
+#
+
+copyfiles: $(TEST_OUTPUTDIR)
+        $(COPY) test/cg/obj/$(TEST_OS_TARGET)/$(TEST_CPU_TARGET)/ctest.o test/cg
+        -$(MKDIRTREE) $(TEST_OUTPUTDIR)/test/units/system
+        $(COPY) test/units/system/test*.txt $(TEST_OUTPUTDIR)/test/units/system
+
+################################
+# Preparation for tests
+#
+
+testprep: testprep-stamp.$(TEST_FULL_TARGET)
+testprep-stamp.$(TEST_FULL_TARGET): $(TEST_OUTPUTDIR) utils units copyfiles
+        $(ECHO) $(DATE) > testprep-stamp.$(TEST_FULL_TARGET)
+
+$(TEST_OUTPUTDIR):
+        $(MKDIRTREE) $@
+
+################################
+# Dotest options
+#
+
+ifneq ($(TEST_FPC),ppc386$(EXEEXT))
+ifeq ($(findstring -c$(TEST_FPC),$(DOTESTOPT)),)
+override DOTESTOPT+=-c$(TEST_FPC)
+endif
+endif
+
+ifneq ($(OS_TARGET),$(TEST_OS_TARGET))
+override DOTESTOPT+=-Y-T$(TEST_OS_TARGET)
+endif
+ifneq ($(TEST_BINUTILSPREFIX),)
+override DOTESTOPT+=-Y-XP$(TEST_BINUTILSPREFIX) -Y-Xd
+endif
+ifdef TEST_RSH
+override DOTESTOPT+=-R$(TEST_RSH)
+endif
+ifdef TEST_SSH
+override DOTESTOPT+=-R$(TEST_SSH) -S
+endif
+ifdef TEST_REMOTEPATH
+override DOTESTOPT+=-P$(TEST_REMOTEPATH)
+endif
+ifdef TEST_DELTEMP
+override DOTESTOPT+=-T
+endif
+ifdef TEST_VERBOSE
+override DOTESTOPT+=-V
+endif
+ifdef TEST_REMOTEOPT
+override DOTESTOPT+="-U$(TEST_REMOTEOPT)"
+endif
+ifdef TEST_PUTTY
+override DOTESTOPT+=-R$(TEST_PUTTY) -W
+endif
+
+ifdef TEST_OPT
+#  handles several options as well
+override DOTESTOPT+=$(addprefix -Y, $(TEST_OPT))
+endif
+
+ifdef TEST_REMOTEPW
+#  handles several options as well
+override DOTESTOPT+=-U-pw -U$(TEST_REMOTEPW)
+endif
+
+
+ifdef GRAPH
+override DOTESTOPT+=-g
+endif
+
+ifdef INTERACTIVE
+override DOTESTOPT+=-i
+endif
+
+ifdef DOALL
+override DOTESTOPT+=-a
+endif
+
+ifdef EMULATOR
+override DOTESTOPT+=-M$(EMULATOR)
+endif
+
+
+################################
+# Run tests
+#
+
+DIRS=webtbs webtbf tbs tbf $(TESTDIRS)
+
+vpath %.log $(TEST_OUTPUTDIR)
+vpath %.elg $(TEST_OUTPUTDIR)
+
+%.log : %.pp
+        $(DOTEST) $(DOTESTOPT) $<
+
+%.elg : %.pp
+        $(DOTEST) $(DOTESTOPT) -e $<
+
+
+################################
+# Compile tests
+#
+
+.PHONY: alltbs alltbf allwebtbs allwebtbf alltest alltests
+
+alltbs : testprep $(patsubst %.pp,%.log,$(wildcard tbs/t*.pp))
+alltbf : testprep $(patsubst %.pp,%.log,$(wildcard tbf/t*.pp))
+
+allwebtbs : testprep $(patsubst %.pp,%.log,$(wildcard webtbs/t*.pp))
+allwebtbf : testprep $(patsubst %.pp,%.log,$(wildcard webtbf/t*.pp))
+
+alltest : testprep $(patsubst %.pp,%.log,$(wildcard $(addsuffix /t*.pp,$(TESTDIRS))))
+
+alltests: alltest alltbs alltbf allwebtbs allwebtbf
+
+################################
+# Compile and Run tests
+#
+
+.PHONY: allexectbs allexectbf allexecwebtbs allexecwebtbf allexectest allexectests
+
+allexectbs : testprep $(patsubst %.pp,%.elg,$(wildcard tbs/t*.pp))
+allexectbf : testprep $(patsubst %.pp,%.elg,$(wildcard tbf/t*.pp))
+
+allexecwebtbs : testprep $(patsubst %.pp,%.elg,$(wildcard webtbs/t*.pp))
+allexecwebtbf : testprep $(patsubst %.pp,%.elg,$(wildcard webtbf/t*.pp))
+
+allexectest : testprep $(patsubst %.pp,%.elg,$(wildcard $(addsuffix /t*.pp,$(TESTDIRS))))
+
+allexectests: allexectest allexectbs allexectbf allexecwebtbs allexecwebtbf
+
+################################
+# Clean
+#
+
+.PHONY: clean distclean clean_test
+
+clean_test:
+        -$(DELTREE) output/$(TEST_FULL_TARGET)
+        -$(DEL) $(LOG) $(LONGLOG) $(FAILLIST)
+        -$(DEL) core gmon.out testprep-stamp.$(TEST_FULL_TARGET)
+
+clean:
+        $(MAKE) clean_test CPU_TARGET=$(TEST_CPU_TARGET) OS_TARGET=$(TEST_OS_TARGET)
+        $(MAKE) -C units clean CPU_TARGET=$(TEST_CPU_TARGET) OS_TARGET=$(TEST_OS_TARGET)
+
+distclean: clean fpc_distclean
+        $(DELTREE) output
+        $(MAKE) -C utils distclean
+        -$(DEL) testprep-stamp.*
+
+#cleanall: clean
+#        $(MAKE) -C utils cleanall
+
+################################
+# Main rules
+#
+
+.PHONY: all full digest dailytest onlyknown onlygraph onlyinteractive
+
+digest : utils
+        -$(DIGEST) $(LOG)
+
+dbdigest: utilsdb
+        -$(DBDIGEST) -v $(TEST_FPC_VERSION) -o $(TEST_OS_TARGET) -c $(TEST_CPU_TARGET) -l $(LOG) $(DBDIGESTOPT)
+
+all : allexectests
+
+full : clean allexectests digest
+
+fulldb : clean allexectests digest dbdigest
+
+onlyknown :
+        $(MAKE) full "DOTESTOPT= $(DOTESTOPT) -k-"
+
+onlygraph :
+        $(MAKE) full "DOTESTOPT= $(DOTESTOPT) -g-"
+
+onlyinteractive :
+        $(MAKE) "DOTESTOPT= $(DOTESTOPT) -i-"
+
+info :
+        @$(ECHO) "This Makefile allows to test the compiler"
+        @$(ECHO)
+        @$(ECHO) "Targets:"
+        @$(ECHO) "  all   - continue all tests"
+        @$(ECHO) "  full  - clean and run all tests"
+        @$(ECHO) "  dailytest - run full and save results"
+        @$(ECHO) "              in files having the date as extension"
+        @$(ECHO) "  onlyknown - run only known bugs"
+        @$(ECHO) "  onlygraph - run only graph tests"
+        @$(ECHO) "  onlyinteractive - run only interactive tests"
+        @$(ECHO) "  digest    - compute and print test statistics"
+        @$(ECHO)
+        @$(ECHO) "Host environment:"
+        @$(ECHO) "  $(FULL_TARGET)"
+        @$(ECHO) "  compiler: $(FPC) ver: $(FPC_VERSION)"
+        @$(ECHO)
+        @$(ECHO) "Test environment:"
+        @$(ECHO) "  $(TEST_FULL_TARGET)"
+        @$(ECHO) "  compiler: $(TEST_FPC) ver: $(TEST_FPC_VERSION)"
+
+override DATESUFFIX:=$(shell $(DATE) +%Y.%m.%d)
+
+ifneq ($(wildcard log.$(DATESUFFIX)),)
+override DATESUFFIX=$(shell $(DATE) +%Y.%m.%d.%H.%M)
+endif
+
+ifneq ($(wildcard lastdate.txt),)
+LASTDATESUFFIX:=$(shell cat lastdate.txt)
+endif

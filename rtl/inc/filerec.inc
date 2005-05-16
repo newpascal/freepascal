@@ -1,0 +1,48 @@
+{
+    $Id: filerec.inc,v 1.8 2005/02/26 15:42:45 florian Exp $
+    This file is part of the Free Pascal run time library.
+    Copyright (c) 1999-2000 by the Free Pascal development team
+
+    FileRec record definition
+
+
+    See the file COPYING.FPC, included in this distribution,
+    for details about the copyright.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+ **********************************************************************}
+
+{
+  This file contains the definition of the filerec record.
+  It is put separately, so it is available outside the system
+  unit without sacrificing TP compatibility.
+}
+
+const
+  filerecnamelength = 255;
+type
+  FileRec = Packed Record
+    Handle    : THandle;
+    Mode      : longint;
+    RecSize   : SizeInt;
+    _private  : array[1..3 * SizeOf(SizeInt) + 5 * SizeOf (pointer)] of byte;
+{$ifndef FPC_HASUSERDATA32}    
+    UserData  : array[1..16] of byte;
+{$else FPC_HASUSERDATA32}    
+    UserData  : array[1..32] of byte;
+{$endif FPC_HASUSERDATA32}
+    name      : array[0..filerecnamelength] of char;
+  End;
+
+{
+  $Log: filerec.inc,v $
+  Revision 1.8  2005/02/26 15:42:45  florian
+    * userdata in file/textrecs now 32 bytes
+
+  Revision 1.7  2005/02/14 17:13:22  peter
+    * truncate log
+
+}

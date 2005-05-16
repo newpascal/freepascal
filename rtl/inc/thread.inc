@@ -1,0 +1,545 @@
+{
+    $Id: thread.inc,v 1.30 2005/04/20 07:41:48 hajny Exp $
+    This file is part of the Free Pascal Run time library.
+    Copyright (c) 2000 by the Free Pascal development team
+
+    OS independent thread functions/overloads
+
+    See the File COPYING.FPC, included in this distribution,
+    for details about the copyright.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+ **********************************************************************}
+
+
+Var
+  CurrentTM : TThreadManager;
+
+{*****************************************************************************
+                           Threadvar initialization
+*****************************************************************************}
+
+    procedure InitThread(stklen:cardinal);
+      begin
+        SysResetFPU;
+        { ExceptAddrStack and ExceptObjectStack are threadvars       }
+        { so every thread has its on exception handling capabilities }
+        SysInitExceptions;
+        { Open all stdio fds again }
+        SysInitStdio;
+        InOutRes:=0;
+        // ErrNo:=0;
+        { Stack checking }
+        StackLength:=stklen;
+        StackBottom:=Sptr - StackLength;
+        ThreadID := CurrentTM.GetCurrentThreadID();
+      end;
+
+{*****************************************************************************
+                            Overloaded functions
+*****************************************************************************}
+{$ifndef CPU64}
+{$ifndef unix}
+{$endif unix}
+{$endif CPU64}
+
+    function BeginThread(ThreadFunction : tthreadfunc) : DWord;
+      var
+        dummy : TThreadID;
+      begin
+        BeginThread:=BeginThread(nil,DefaultStackSize,ThreadFunction,nil,0,dummy);
+      end;
+
+
+    function BeginThread(ThreadFunction : tthreadfunc;p : pointer) : DWord;
+      var
+        dummy : TThreadID;
+      begin
+        BeginThread:=BeginThread(nil,DefaultStackSize,ThreadFunction,p,0,dummy);
+      end;
+
+
+    function BeginThread(ThreadFunction : tthreadfunc;p : pointer;var ThreadId : TThreadID) : DWord;
+      begin
+        BeginThread:=BeginThread(nil,DefaultStackSize,ThreadFunction,p,0,ThreadId);
+      end;
+
+
+{$ifndef CPU64}
+{$ifndef unix}
+{$endif unix}
+{$endif CPU64}
+
+    procedure EndThread;
+      begin
+        EndThread(0);
+      end;
+
+function BeginThread(sa : Pointer;stacksize : dword; ThreadFunction : tthreadfunc;p : pointer;creationFlags : dword;  var ThreadId : TThreadID) : DWord;
+
+begin
+  Result:=CurrentTM.BeginThread(sa,stacksize,threadfunction,P,creationflags,ThreadID);
+end;
+
+procedure EndThread(ExitCode : DWord);
+
+begin
+  CurrentTM.EndThread(ExitCode);
+end;
+
+function  SuspendThread (threadHandle : TThreadID) : dword;
+
+begin
+  Result:=CurrentTM.SuspendThread(ThreadHandle);
+end;
+
+function ResumeThread  (threadHandle : TThreadID) : dword;
+
+begin
+  Result:=CurrentTM.ResumeThread(ThreadHandle);
+end;
+
+procedure ThreadSwitch;
+
+begin
+  CurrentTM.ThreadSwitch;
+end;
+
+function  KillThread (threadHandle : TThreadID) : dword;
+
+begin
+  Result:=CurrentTM.KillThread(ThreadHandle);
+end;
+
+function  WaitForThreadTerminate (threadHandle : TThreadID; TimeoutMs : longint) : dword;
+
+begin
+  Result:=CurrentTM.WaitForThreadTerminate(ThreadHandle,TimeOutMS);
+end;
+
+function  ThreadSetPriority (threadHandle : TThreadID; Prio: longint): boolean;
+begin
+  Result:=CurrentTM.ThreadSetPriority(ThreadHandle,Prio);
+end;
+
+function  ThreadGetPriority (threadHandle : TThreadID): longint;
+
+begin
+  Result:=CurrentTM.ThreadGetPriority(ThreadHandle);
+end;
+
+function  GetCurrentThreadId : TThreadID;
+
+begin
+  Result:=CurrentTM.GetCurrentThreadID();
+end;
+
+procedure InitCriticalSection(var cs : TRTLCriticalSection);
+
+begin
+  CurrentTM.InitCriticalSection(cs);
+end;
+
+procedure DoneCriticalsection(var cs : TRTLCriticalSection);
+
+begin
+  CurrentTM.DoneCriticalSection(cs);
+end;
+
+procedure EnterCriticalsection(var cs : TRTLCriticalSection);
+
+begin
+  CurrentTM.EnterCriticalSection(cs);
+end;
+
+procedure LeaveCriticalsection(var cs : TRTLCriticalSection);
+
+begin
+  CurrentTM.LeaveCriticalSection(cs);
+end;
+
+Function GetThreadManager(Var TM : TThreadManager) : Boolean;
+
+begin
+  TM:=CurrentTM;
+  Result:=True;
+end;
+
+Function SetThreadManager(Const NewTM : TThreadManager; Var OldTM : TThreadManager) : Boolean;
+
+begin
+  GetThreadManager(OldTM);
+  Result:=SetThreadManager(NewTM);
+end;
+
+Function SetThreadManager(Const NewTM : TThreadManager) : Boolean;
+
+begin
+  Result:=True;
+  If Assigned(CurrentTM.DoneManager) then
+    Result:=CurrentTM.DoneManager();
+  If Result then
+    begin
+    CurrentTM:=NewTM;
+    If Assigned(CurrentTM.InitManager) then
+      Result:=CurrentTM.InitManager();
+    end;
+end;
+
+function  BasicEventCreate(EventAttributes : Pointer; AManualReset,InitialState : Boolean;const Name : ansistring):pEventState;
+
+begin
+  result:=currenttm.BasicEventCreate(EventAttributes,AManualReset,InitialState, Name);
+end;
+
+procedure basiceventdestroy(state:peventstate);
+
+begin
+  currenttm.basiceventdestroy(state);
+end;
+
+procedure basiceventResetEvent(state:peventstate);
+
+begin
+  currenttm.basiceventResetEvent(state);
+end;
+
+procedure basiceventSetEvent(state:peventstate);
+
+begin
+  currenttm.basiceventSetEvent(state);
+end;
+
+function  basiceventWaitFor(Timeout : Cardinal;state:peventstate) : longint;
+
+begin
+ result:=currenttm.basiceventWaitFor(Timeout,state);
+end;
+
+function  RTLEventCreate :PRTLEvent;
+
+begin
+  result:=currenttm.rtleventcreate();
+end;
+
+
+procedure RTLeventdestroy(state:pRTLEvent);
+
+begin
+  currenttm.rtleventdestroy(state);
+end;
+
+procedure RTLeventSetEvent(state:pRTLEvent);
+
+begin
+  currenttm.rtleventsetEvent(state);
+end;
+
+procedure RTLeventResetEvent(state:pRTLEvent);
+
+begin
+  currenttm.rtleventResetEvent(state);
+end;
+
+procedure RTLeventStartWait(state:pRTLEvent);
+
+begin
+  currenttm.rtleventStartWait(state);
+end;
+
+procedure RTLeventWaitFor(state:pRTLEvent);
+
+begin
+  currenttm.rtleventWaitFor(state);
+end;
+
+procedure RTLeventWaitFor(state:pRTLEvent;timeout : longint);
+
+begin
+  currenttm.rtleventWaitForTimeout(state,timeout);
+end;
+
+procedure RTLeventsync(m:trtlmethod;p:tprocedure);
+
+begin
+  currenttm.rtleventsync(m,p);
+end;
+
+
+{ ---------------------------------------------------------------------
+    ThreadManager which gives run-time error. Use if no thread support.
+  ---------------------------------------------------------------------}
+
+{$ifndef DISABLE_NO_THREAD_MANAGER}
+
+{ resourcestrings are not supported by the system unit,
+  they are in the objpas unit and not available for fpc/tp modes }
+const
+  SNoThreads = 'This binary has no thread support compiled in.';
+  SRecompileWithThreads = 'Recompile the application with a thread-driver in the program uses clause before other units using thread.';
+
+Procedure NoThreadError;
+
+begin
+  If IsConsole then
+    begin
+    Writeln(StdErr,SNoThreads);
+    Writeln(StdErr,SRecompileWithThreads);
+    end;
+  RunError(232)
+end;
+
+function NoBeginThread(sa : Pointer;stacksize : dword;
+                     ThreadFunction : tthreadfunc;p : pointer;
+                     creationFlags : dword; var ThreadId : TThreadID) : DWord;
+begin
+  NoThreadError;
+end;
+
+procedure NoEndThread(ExitCode : DWord);
+begin
+  NoThreadError;
+end;
+
+function  NoThreadHandler (threadHandle : TThreadID) : dword;
+begin
+  NoThreadError;
+end;
+
+procedure NoThreadSwitch;  {give time to other threads}
+begin
+  NoThreadError;
+end;
+
+function  NoWaitForThreadTerminate (threadHandle : TThreadID; TimeoutMs : longint) : dword;  {0=no timeout}
+begin
+  NoThreadError;
+end;
+
+function  NoThreadSetPriority (threadHandle : TThreadID; Prio: longint): boolean; {-15..+15, 0=normal}
+begin
+  NoThreadError;
+end;
+
+function  NoThreadGetPriority (threadHandle : TThreadID): longint;
+begin
+  NoThreadError;
+end;
+
+function  NoGetCurrentThreadId : TThreadID;
+begin
+  if IsMultiThread then
+    NoThreadError
+  else
+    ThreadingAlreadyUsed:=true;
+  result:=ThreadID;
+end;
+
+procedure NoCriticalSection(var CS);
+
+begin
+  if IsMultiThread then
+    NoThreadError
+  else
+    ThreadingAlreadyUsed:=true;
+end;
+
+procedure NoInitThreadvar(var offset : dword;size : dword);
+
+begin
+  NoThreadError;
+end;
+
+function NoRelocateThreadvar(offset : dword) : pointer;
+
+begin
+  NoThreadError;
+end;
+
+
+procedure NoAllocateThreadVars;
+
+begin
+  NoThreadError;
+end;
+
+procedure NoReleaseThreadVars;
+
+begin
+  NoThreadError;
+end;
+
+function  noBasicEventCreate(EventAttributes : Pointer; AManualReset,InitialState : Boolean;const Name : ansistring):pEventState;
+
+begin
+  NoThreadError;
+end;
+
+procedure nobasiceventdestroy(state:peventstate);
+
+begin
+  NoThreadError;
+end;
+
+procedure nobasiceventResetEvent(state:peventstate);
+
+begin
+  NoThreadError;
+end;
+
+procedure nobasiceventSetEvent(state:peventstate);
+
+begin
+  NoThreadError;
+end;
+
+function  nobasiceventWaitFor(Timeout : Cardinal;state:peventstate) : longint;
+
+begin
+  NoThreadError;
+end;
+
+function  NORTLEventCreate :PRTLEvent;
+
+begin
+  if IsMultiThread then
+    NoThreadError
+  else
+    ThreadingAlreadyUsed:=true
+end;
+
+procedure NORTLeventdestroy(state:pRTLEvent);
+
+begin
+  if IsMultiThread then
+    NoThreadError
+  else
+    ThreadingAlreadyUsed:=true
+end;
+
+procedure NORTLeventSetEvent(state:pRTLEvent);
+
+begin
+  NoThreadError;
+end;
+
+procedure NORTLeventStartWait(state:pRTLEvent);
+  begin
+    NoThreadError;
+  end;
+
+
+procedure NORTLeventWaitFor(state:pRTLEvent);
+  begin
+    NoThreadError;
+  end;
+
+
+procedure NORTLeventWaitForTimeout(state:pRTLEvent;timeout : longint);
+  begin
+    NoThreadError;
+  end;
+
+
+procedure NORTLeventsync(m:trtlmethod;p:tprocedure);
+  begin
+    NoThreadError;
+  end;
+
+
+Var
+  NoThreadManager : TThreadManager;
+
+Procedure SetNoThreadManager;
+
+begin
+  With NoThreadManager do
+    begin
+    InitManager            :=Nil;
+    DoneManager            :=Nil;
+    BeginThread            :=@NoBeginThread;
+    EndThread              :=@NoEndThread;
+    SuspendThread          :=@NoThreadHandler;
+    ResumeThread           :=@NoThreadHandler;
+    KillThread             :=@NoThreadHandler;
+    ThreadSwitch           :=@NoThreadSwitch;
+    WaitForThreadTerminate :=@NoWaitForThreadTerminate;
+    ThreadSetPriority      :=@NoThreadSetPriority;
+    ThreadGetPriority      :=@NoThreadGetPriority;
+    GetCurrentThreadId     :=@NoGetCurrentThreadId;
+    InitCriticalSection    :=@NoCriticalSection;
+    DoneCriticalSection    :=@NoCriticalSection;
+    EnterCriticalSection   :=@NoCriticalSection;
+    LeaveCriticalSection   :=@NoCriticalSection;
+    InitThreadVar          :=@NoInitThreadVar;
+    RelocateThreadVar      :=@NoRelocateThreadVar;
+    AllocateThreadVars     :=@NoAllocateThreadVars;
+    ReleaseThreadVars      :=@NoReleaseThreadVars;
+    BasicEventCreate       :=@NoBasicEventCreate;
+    basiceventdestroy      :=@Nobasiceventdestroy;
+    basiceventResetEvent   :=@NobasiceventResetEvent;
+    basiceventSetEvent     :=@NobasiceventSetEvent;
+    basiceventWaitFor      :=@NobasiceventWaitFor;
+    rtlEventCreate         :=@NortlEventCreate;
+    rtleventdestroy        :=@Nortleventdestroy;
+    rtleventSetEvent       :=@NortleventSetEvent;
+    rtleventStartWait      :=@NortleventStartWait;
+    rtleventWaitFor        :=@NortleventWaitFor;
+    rtleventsync           :=@Nortleventsync;
+    rtleventwaitfortimeout :=@NortleventWaitForTimeout;
+    end;
+  SetThreadManager(NoThreadManager);
+end;
+{$endif DISABLE_NO_THREAD_MANAGER}
+
+{
+  $Log: thread.inc,v $
+  Revision 1.30  2005/04/20 07:41:48  hajny
+    * two more (TThreadID)
+
+  Revision 1.29  2005/04/17 17:19:41  hajny
+    * one more TThreadID fix
+
+  Revision 1.28  2005/04/14 20:42:14  florian
+    * fixed more TThreadID stuff
+
+  Revision 1.27  2005/04/13 20:15:47  florian
+    * TThread on linux fixed
+
+  Revision 1.26  2005/04/09 17:26:08  florian
+    + classes.mainthreadid is set now
+    + rtleventresetevent
+    + rtleventwairfor with timeout
+    + checksynchronize with timeout
+    * race condition in synchronize fixed
+
+  Revision 1.25  2005/04/03 19:29:28  florian
+    * proper error message if the cthreads unit is included too late
+      uses clause
+
+  Revision 1.24  2005/02/26 11:40:38  florian
+    * rtl event init/destroy throws only an error if it's used in a mult threaded program
+
+  Revision 1.23  2005/02/25 22:02:46  florian
+    * another "transfer to linux"-commit
+
+  Revision 1.22  2005/02/14 17:13:29  peter
+    * truncate log
+
+  Revision 1.21  2005/02/07 17:36:54  peter
+  can't use resourcestrings in the system unit
+
+  Revision 1.20  2005/02/06 11:20:52  peter
+    * threading in system unit
+    * removed systhrds unit
+
+  Revision 1.19  2005/01/21 21:45:57  armin
+  * applied patch to compile go32v2 from Tomas (tested by John)
+
+  Revision 1.18  2005/01/16 14:46:57  florian
+    * critical sections can be used in programs without threading driver, they have no effect then
+
+}

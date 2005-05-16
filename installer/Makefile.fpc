@@ -1,0 +1,45 @@
+#
+#   Makefile.fpc for Free Pascal installer
+#
+
+[package]
+name=installer
+version=2.0.0
+
+[target]
+programs_go32v2=install
+programs_win32=install
+programs_os2=install
+programs_linux=installer
+
+[clean]
+units=scroll
+files_linux=installer.pas
+
+[require]
+packages=fv unzip
+
+[compiler]
+unitdir=../ide
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=..
+
+
+[rules]
+#
+# FVision or old FV detection
+#
+ifneq ($(wildcard $(UNITDIR_FV)/fvconsts$(PPUEXT)),)
+override COMPILER+=-dFVISION
+endif
+
+installer.pas: install.pas
+        $(COPY) install.pas installer.pas
+
+install$(EXEEXT) : install.pas scroll.pas
+
+installer$(EXEEXT) : installer.pas scroll.pas

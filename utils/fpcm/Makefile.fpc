@@ -1,0 +1,28 @@
+#
+#   Makefile.fpc for FPCMake
+#
+
+[target]
+programs=fpcmake
+rsts=fpcmmain
+
+[clean]
+units=fpcmmain fpcmdic fpcmwr fpcmpkg
+
+[require]
+packages=fcl
+tools=data2inc
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../..
+
+[rules]
+ifneq ($(DATA2INC),)
+fpcmake.inc: fpcmake.ini
+        $(DATA2INC) -b -s fpcmake.ini fpcmake.inc fpcmakeini
+endif
+
+fpcmake$(EXEEXT): $(wildcard fpcm*.pp) fpcmake.inc

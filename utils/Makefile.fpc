@@ -1,0 +1,47 @@
+#
+#   Makefile.fpc for Free Pascal Utils
+#
+
+[package]
+name=utils
+version=2.0.0
+
+[target]
+dirs=fpcm tply h2pas fprcp dxegen fpdoc
+programs=ppdep ptop rstconv data2inc delp bin2obj postw32
+dirs_win32=fpmc
+rsts=rstconv
+
+[require]
+packages=fcl
+
+[clean]
+units=ptopu
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=..
+
+
+[rules]
+#
+# Pascal beautifier
+#
+ptop$(EXEEXT): ptop.pp ptopu$(PPUEXT)
+
+ptopu$(PPUEXT): ptopu.pp
+
+#
+# Other
+#
+
+ppdep$(EXEEXT): ppdep.pp
+
+#
+# Don't export some tools, which are found in the current dir if it's in
+# the path, so are not valid for the subdirs
+#
+
+unexport DATA2INC

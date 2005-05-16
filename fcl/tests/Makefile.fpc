@@ -1,0 +1,32 @@
+#
+#   Makefile.fpc for Free Component Library Examples/Tests
+#
+
+[target]
+programs=stringl dparser fstream mstream list threads testrtf \
+         cfgtest xmldump htdump testez tidea \
+         b64test b64test2 b64enc b64dec restest testz testz2 \
+         istream doecho testol testcont txmlreg testreg tstelcmd \
+         testapp testcgi testbs
+programs_win32=showver testproc testhres testnres testsres testrhre \
+               testrnre testrsre testur
+programs_linux=sockcli isockcli dsockcli socksvr isocksvr dsocksvr \
+               testhres testnres testsres testrhre testrnre testrsre testur
+programs_darwin=sockcli isockcli dsockcli socksvr isocksvr dsocksvr \
+               testhres testnres testsres testrhre testrnre testrsre testur
+programs_freebsd=sockcli isockcli dsockcli socksvr isocksvr dsocksvr \
+               testhres testnres testsres testrhre testrnre testrsre testur
+
+rst=restest
+
+[require]
+packages=fcl
+
+[compiler]
+options=-S2
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../..

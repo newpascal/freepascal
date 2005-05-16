@@ -1,0 +1,240 @@
+#
+#   $Id: Makefile.fpc,v 1.32 2005/05/05 12:59:59 peter Exp $
+#
+#   Makefile.fpc for FP IDE
+#
+
+[package]
+name=ide
+version=2.0.0
+
+[target]
+dirs=compiler
+programs=fp
+rst=fpstrings
+
+[install]
+datadir=$(INSTALL_BASEDIR)/ide
+fpcpackage=y
+
+[compiler]
+options=-Sg
+
+[require]
+packages=fv gdbint regexpr
+libc=y
+
+[default]
+fpcdir=..
+
+[prerules]
+#
+# Automatic detection if libgdb.a is present
+#
+
+ifndef NOGDB
+
+# Try to find GDB library
+# Look for a valid GDBLIBDIR environment variable
+ifdef GDBLIBDIR
+override LIBGDBFILE:=$(firstword $(wildcard $(addsuffix /libgdb.a,$(GDBLIBDIR))))
+endif
+
+# Use default dirs if not available
+ifeq ($(LIBGDBFILE),)
+# Default locations <target>/<cpu> (linux) or <target> (win32,go32v2) only
+override GDBLIBDIR=$(wildcard $(FPCDIR)/libgdb/$(OS_TARGET)/$(CPU_TARGET))
+ifeq ($(GDBLIBDIR),)
+override GDBLIBDIR=$(FPCDIR)/libgdb/$(OS_TARGET)
+endif
+# Detect if libgdb.a is available
+override LIBGDBFILE:=$(firstword $(wildcard $(addsuffix /libgdb.a,$(GDBLIBDIR))))
+endif
+
+# Disable GDB when no libgdb.a found
+ifeq ($(LIBGDBFILE),)
+GDB=
+else
+GDB=1
+endif
+
+ifdef GDB
+# The gdbint is already included due the gdbint package dependency
+override LIBDIR+=$(GDBLIBDIR)
+endif
+
+else
+
+# Disable
+GDB=
+
+endif  #NOGDB
+
+
+[rules]
+.PHONY: compilerunits compilerclean \
+        nogdb gdb all \
+        clean_compiler clean testgdb postgdbinfo
+
+clean: fpc_cleanall
+
+distclean: clean compilerclean
+
+#
+# GDB detection
+#
+ifndef NOGDB
+
+ifdef GDB
+testgdb:
+        @$(ECHO) LibGDB found in $(LIBGDBFILE)
+
+postgdbinfo:
+        @$(ECHO) LibGDB was found, IDE has Debugger support
+
+else
+override COMPILER+=-dNODEBUG
+testgdb:
+        @$(ECHO) LibGDB not found
+        @$(ECHO) LIBGDBFILE=$(LIBGDBFILE)
+        @$(ECHO) GDBLIBDIR=$(GDBLIBDIR)
+        @$(ECHO) $(wildcard $(addsuffix /libgdb.a,$(GDBLIBDIR)))
+
+postgdbinfo:
+        @$(ECHO) LibGDB was not found, IDE has no Debugger support
+endif
+
+else
+testgdb:
+        @$(ECHO) Building without Debugger
+postgdbinfo:
+        @$(ECHO) Debugger disabled, IDE has no Debugger support
+override COMPILER+=-dNODEBUG
+endif  # NOGDB
+
+
+#
+# Compiler
+#
+
+compilerunits : compiler/$(FPCMADE)
+compiler/$(FPCMADE):
+        $(MAKE) -C compiler all
+
+compilerclean :
+        $(MAKE) -C compiler clean
+
+#
+# Build targets
+#
+# building happends in 2 steps, first the packages, compiler
+# dirs are build. In the second step the IDE is build. This is
+# required because it needs to detect which compiler version
+# to use.
+#
+fp$(EXEEXT): $(wildcard *.pas) $(wildcard *.inc)
+
+buildfp:
+        $(MAKE) compilerunits
+        $(MAKE) testgdb
+        $(MAKE) fpc_all
+        $(MAKE) postgdbinfo
+
+gdb:
+        $(MAKE) buildfp
+
+nogdb:
+        $(MAKE) buildfp NOGDB=1
+
+#
+# Default targets
+#
+
+# By default we try to create the ide with full debugging support,
+all: gdb
+
+# This is necessary because we don't have all units separate in the
+# units targets
+clean: cleanall
+
+#
+# Installation
+#
+
+ifndef UNIXHier
+override INSTALL_DATADIR=$(INSTALL_BINDIR)
+endif
+
+install: fpc_install
+        $(MKDIR) $(INSTALL_DATADIR)
+        $(MKDIR) $(INSTALL_DOCDIR)
+        $(INSTALL) fp.ans $(wildcard *.pt) $(wildcard *.tdf) $(INSTALL_DATADIR)
+ifeq ($(OS_TARGET),win32)
+        $(INSTALL) fp32.ico $(INSTALL_DATADIR)
+endif
+        $(INSTALL) readme.ide $(INSTALL_DOCDIR)
+
+
+#
+# Misc
+#
+clean_compiler:
+        $(MAKE) -C compiler clean
+        $(MAKE) -C ../compiler ppuclean
+
+#
+# $Log: Makefile.fpc,v $
+# Revision 1.32  2005/05/05 12:59:59  peter
+#   * 2.0.0
+#
+# Revision 1.31  2005/02/15 22:28:29  peter
+#   * 1.9.8
+#
+# Revision 1.30  2005/01/10 22:49:56  armin
+# * updated makefile.fpc versions to 1.9.7, regenerated makefiles
+#
+# Revision 1.29  2004/12/30 20:57:39  hajny
+#   * version 1.9.6
+#
+# Revision 1.28  2004/12/20 18:58:46  peter
+#   * UnixHier
+#
+# Revision 1.27  2004/11/11 15:20:52  florian
+#   * applied Peter's patch from yesterday
+#
+# Revision 1.26  2004/11/05 19:10:18  peter
+#   * report where libgdb.a is found
+#
+# Revision 1.25  2004/11/05 13:25:10  peter
+# libgdb now will be search in fpcdir
+#
+# Revision 1.24  2004/11/05 12:48:45  peter
+# finding of libgdb.a updated
+#
+# Revision 1.23  2004/11/02 09:14:09  peter
+#   * fix build with gdb
+#
+# Revision 1.22  2004/10/30 12:36:43  peter
+#   * units are now created in separate directory units/cpu-os/
+#   * distclean uses cleanall rule and removes units dir
+#   * cross compile support fixed, it is now possible to cycle a ppcsparc
+#     without deleting ppc386
+#   * bintutilsperfix defaults to cpu-os-
+#
+# Revision 1.21  2004/05/30 09:15:35  florian
+#   * first part of version number update
+#
+# Revision 1.20  2004/04/12 18:16:15  florian
+#   * i386 compilation on debian biarch fixed
+#
+# Revision 1.19  2004/01/05 23:29:35  marco
+#  * fixed a few makefiles version numbers
+#
+# Revision 1.18  2003/11/01 22:45:29  marco
+#  * updated package version
+#
+# Revision 1.17  2003/10/03 17:29:13  florian
+#   + id and log added
+#
+#
+

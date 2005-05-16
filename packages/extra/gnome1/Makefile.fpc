@@ -1,0 +1,14 @@
+#
+#   Makefile.fpc for Free Pascal Gnome 1.x Packages
+#
+
+[target]
+dirs=gnome gconf zvt
+
+[install]
+fpcpackage=y
+fpcsubdir=packages
+
+[default]
+fpcdir=../../..
+

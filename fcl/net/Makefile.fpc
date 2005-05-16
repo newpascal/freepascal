@@ -1,0 +1,40 @@
+#
+#   Makefile.fpc for FCL net units
+#
+
+[package]
+main=fcl
+
+[target]
+units=servlets
+units_linux=fpsock httpbase httpclient httpsvlt xmlrpc
+units_freebsd=fpsock httpbase httpclient httpsvlt xmlrpc
+units_netbsd=fpsock httpbase httpclient httpsvlt xmlrpc
+units_openbsd=fpsock httpbase httpclient httpsvlt xmlrpc
+programs_linux=mkxmlrpc
+programs_freebsd=mkxmlrpc
+programs_darwin=mkxmlrpc
+programs_netbsd=mkxmlrpc
+programs_openbsd=mkxmlrpc
+rsts_linux=fpsock httpsvlt mkxmlrpc
+rsts_freebsd=fpsock httpsvlt mkxmlrpc
+rsts_darwin=fpsock httpsvlt mkxmlrpc
+rsts_netbsd=fpsock httpsvlt mkxmlrpc
+rsts_openbsd=fpsock httpsvlt mkxmlrpc
+exampledirs_linux=tests
+exampledirs_freebsd=tests
+exampledirs_darwin=tests
+exampledirs_netbsd=tests
+exampledirs_openbsd=tests
+
+[require]
+packages=netdb libasync
+
+[compiler]
+options=-S2h
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../..

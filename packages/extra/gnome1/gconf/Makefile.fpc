@@ -1,0 +1,34 @@
+#
+#   Makefile.fpc for Free Pascal GConf 1.0.x Bindings
+#
+
+[package]
+name=gconf
+version=2.0.0
+
+[require]
+libc=y
+packages=gtk
+
+[target]
+units=gconf gconfclient
+exampledirs=examples
+
+[compiler]
+sourcedir=gconf gconfclient
+
+[libs]
+libname=libfpgconf.so
+libversion=2.0.0
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../../../..
+
+
+[rules]
+gconf$(PPUEXT): $(wildcard gconf/gconf*.pp) 
+
+gconfclient$(PPUEXT): $(wildcard gconfclient/gconfclient*.pp)

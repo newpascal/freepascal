@@ -1,0 +1,185 @@
+#
+#   Makefile.fpc for Amiga RTL
+#
+
+[package]
+main=rtl
+
+[target]
+loaders=prt0
+units=system exec strings \
+      dos crt objects printer \
+      objpas macpas matrix \
+      heaptrc lineinfo getopts graph \
+      sysutils math typinfo ctypes
+rsts=math
+
+[require]
+nortl=y
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../..
+target=amiga
+cpu=m68k
+
+[compiler]
+includedir=$(INC) $(PROCINC)
+sourcedir=$(INC) $(PROCINC)
+
+
+[prerules]
+RTL=..
+INC=../inc
+PROCINC=../$(CPU_TARGET)
+PPUEXT=ppa
+ASMEXT=.asm
+
+UNITPREFIX=rtl
+
+# Use new feature from 1.0.5 version
+# that generates release PPU files
+# which will not be recompiled
+ifdef RELEASE
+ifeq ($(findstring 1.0.2,$(FPC_VERSION)),)
+ifeq ($(findstring 1.0.4,$(FPC_VERSION)),)
+override FPCOPT+=-Ur
+endif
+endif
+endif
+
+ifeq ($(findstring 1.0.,$(FPC_VERSION)),)
+SYSTEMUNIT=system
+else
+SYSTEMUNIT=syslinux
+endif
+
+
+# Paths
+OBJPASDIR=$(RTL)/objpas
+GRAPHDIR=$(INC)/graph
+
+[rules]
+# Get the system independent include file names.
+# This will set the following variables :
+# SYSINCNAMES
+include $(INC)/makefile.inc
+SYSINCDEPS=$(addprefix $(INC)/,$(SYSINCNAMES))
+
+# Get the processor dependent include file names.
+# This will set the following variables :
+# CPUINCNAMES
+include $(PROCINC)/makefile.cpu
+SYSCPUDEPS=$(addprefix $(PROCINC)/,$(CPUINCNAMES))
+
+# Put system unit dependencies together.
+SYSDEPS=$(SYSINCDEPS) $(SYSCPUDEPS)
+
+
+#
+# Loaders
+#
+
+prt0$(OEXT) : prt0$(LOADEREXT)
+	-$(AS) prt0$(LOADEREXT) -o prt0$(OEXT)
+
+#gprt0$(OEXT) : $(GLOADERAS)
+#	-$(AS) $(GLOADERAS) -o gprt0$(OEXT)
+
+#
+# Base Units (System, strings, os-dependent-base-unit)
+#
+
+$(SYSTEMUNIT)$(PPUEXT) : $(SYSTEMUNIT).pp $(SYSLINUXDEPS) $(SYSDEPS)
+	$(COMPILER) -ui386 -dm68k -Us -Sg $(SYSTEMUNIT).pp $(REDIR)
+
+strings$(PPUEXT) : ../template/strings.pp system$(PPUEXT)
+	$(COMPILER) ../template/strings.pp $(REDIR)
+
+exec$(PPUEXT) : exec.pp exec.inc system$(PPUEXT)
+	$(COMPILER) exec $(REDIR)
+
+#
+# Delphi Object Model
+#
+
+objpas$(PPUEXT) : $(OBJPASDIR)/objpas.pp system$(PPUEXT)
+	$(COPY) $(OBJPASDIR)/objpas.pp .
+	$(COMPILER) objpas $(REDIR)
+	$(DEL) objpas.pp
+
+sysutils$(PPUEXT) : $(OBJPASDIR)/sysutils.pp objpas$(PPUEXT) system$(PPUEXT)
+	$(COPY) $(OBJPASDIR)/sysutils.pp .
+	$(COMPILER) sysutils $(REDIR)
+#$(DEL) sysutils.pp
+
+#
+# Mac Pascal Model
+#
+
+macpas$(PPUEXT) : $(INC)/macpas.pp system$(PPUEXT)
+        $(COMPILER) $(INC)/macpas.pp $(REDIR)
+
+#
+# System Dependent Units
+#
+
+#
+# TP7 Compatible RTL Units
+#
+
+dos$(PPUEXT) : $(DOSDEPS) system$(PPUEXT)
+        $(COMPILER) dos $(REDIR)
+
+crt$(PPUEXT) : crt.pp $(INC)/textrec.inc system$(PPUEXT)
+        $(COMPILER) crt $(REDIR)
+
+printer$(PPUEXT) : printer.pp system$(PPUEXT)
+        $(COMPILER) printer $(REDIR)
+
+objects$(PPUEXT) : $(INC)/objects.pp system$(PPUEXT)
+        $(COMPILER) $(INC)/objects.pp $(REDIR)
+
+#
+# Other RTL Units
+#
+
+getopts$(PPUEXT) : $(INC)/getopts.pp strings$(PPUEXT) system$(PPUEXT)
+        $(COMPILER) $(INC)/getopts.pp $(REDIR)
+
+heaptrc$(PPUEXT) : $(INC)/heaptrc.pp system$(PPUEXT)
+        $(COMPILER) $(INC)/heaptrc.pp $(REDIR)
+
+ctypes$(PPUEXT) : $(INC)/ctypes.pp system$(PPUEXT)
+        $(COMPILER) $(INC)/ctypes.pp $(REDIR)
+
+#
+# $Log: Makefile.fpc,v $
+# Revision 1.11  2005/01/10 20:32:34  hajny
+#   + ctypes added
+#
+# Revision 1.10  2004/10/30 12:36:48  peter
+#   * units are now created in separate directory units/cpu-os/
+#   * distclean uses cleanall rule and removes units dir
+#   * cross compile support fixed, it is now possible to cycle a ppcsparc
+#     without deleting ppc386
+#   * bintutilsperfix defaults to cpu-os-
+#
+# Revision 1.9  2004/08/25 16:57:22  olle
+#   * fix so that macpas.pp really is compiled
+#
+# Revision 1.8  2004/08/16 16:22:17  olle
+#   + Added unit macpas
+#
+# Revision 1.7  2004/07/07 21:37:29  daniel
+#   * Matrix unit included in build process
+#
+# Revision 1.6  2004/05/06 22:01:17  florian
+#   * changed extensions
+#
+# Revision 1.5  2004/05/06 21:12:41  florian
+#   * changed extensions
+#
+#

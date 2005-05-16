@@ -1,0 +1,26 @@
+#
+#   Makefile.fpc for FCL net units
+#
+
+[package]
+main=fcl
+
+[require]
+packages=paszlib pasjpeg
+
+[target]
+units=fpimgcmn fpimage pngcomn fpreadpng fpwritepng fpreadxpm fpwritexpm \
+      clipping fpcanvas pixtools fppixlcanv fpimgcanv pscanvas fpwritebmp \
+      fpreadbmp bmpcomn fpreadpnm fpwritepnm fpreadjpeg fpwritejpeg \
+      targacmn fpreadtga fpwritetga ellipses
+units_win32=freetypeh freetype ftfont
+units_linux=freetypeh freetype ftfont
+units_freebsd=freetypeh freetype ftfont
+rsts=pscanvas
+examples=imgconv
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../..

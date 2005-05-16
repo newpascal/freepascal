@@ -1,0 +1,12 @@
+#
+#   Makefile.fpc for MMTK sample programs
+#
+
+[target]
+programs=mciapi1 mciapi2
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../../../../..

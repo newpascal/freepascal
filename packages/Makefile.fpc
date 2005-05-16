@@ -1,0 +1,13 @@
+#
+#   Makefile.fpc for Free Pascal Packages
+#
+
+[target]
+dirs=base extra
+
+[install]
+fpcpackage=y
+fpcsubdir=packages
+
+[default]
+fpcdir=..

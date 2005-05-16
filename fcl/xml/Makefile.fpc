@@ -1,0 +1,19 @@
+#
+#   Makefile.fpc for XML for FCL
+#
+
+[package]
+main=fcl
+
+[target]
+units=sax dom sax_html dom_html xmlcfg xmlread xmlstreaming xmlwrite xhtml htmldefs htmwrite xpath
+rsts=sax xpath
+
+[compiler]
+options=-S2h
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../..

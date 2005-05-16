@@ -1,0 +1,167 @@
+#
+#   Makefile.fpc for Free Pascal BeOS RTL
+#
+
+[package]
+main=rtl
+
+[target]
+loaders=prt0 cprt0 func dllprt
+units=system posix objpas macpas strings \
+      beos \
+      dos matrix \
+      sysutils classes typinfo math varutils \
+      cpu mmx getopts heaptrc lineinfo variants types sysconst
+rsts=math varutils typinfo sysconst
+
+[require]
+nortl=y
+
+[install]
+fpcpackage=y
+
+[default]
+fpcdir=../..
+target=beos
+cpu=i386
+
+[compiler]
+includedir=$(INC) $(PROCINC) $(UNIXINC)
+sourcedir=$(INC) $(PROCINC) $(UNIXINC)
+
+
+[prerules]
+RTL=..
+INC=$(RTL)/inc
+PROCINC=$(RTL)/$(CPU_TARGET)
+UNIXINC=$(RTL)/unix
+
+UNITPREFIX=rtl
+
+# Use new feature from 1.0.5 version
+# that generates release PPU files
+# which will not be recompiled
+ifdef RELEASE
+override FPCOPT+=-Ur
+endif
+
+# Paths
+OBJPASDIR=$(RTL)/objpas
+GRAPHDIR=$(INC)/graph
+
+[rules]
+# Get the system independent include file names.
+# This will set the following variables :
+# SYSINCNAMES
+include $(INC)/makefile.inc
+SYSINCDEPS=$(addprefix $(INC)/,$(SYSINCNAMES))
+
+# Get the processor dependent include file names.
+# This will set the following variables :
+# CPUINCNAMES
+include $(PROCINC)/makefile.cpu
+SYSCPUDEPS=$(addprefix $(PROCINC)/,$(CPUINCNAMES))
+
+# Put system unit dependencies together.
+SYSDEPS=$(SYSINCDEPS) $(SYSCPUDEPS)
+
+
+#
+# Loaders
+#
+
+prt0$(OEXT) : $(CPU_TARGET)/prt0.as
+        $(AS) -o $(UNITTARGETDIRPREFIX)prt0$(OEXT) $(CPU_TARGET)/prt0.as
+
+cprt0$(OEXT) : $(CPU_TARGET)/cprt0.as
+        $(AS) -o $(UNITTARGETDIRPREFIX)cprt0$(OEXT) $(CPU_TARGET)/cprt0.as
+
+func$(OEXT) : $(CPU_TARGET)/func.as
+        $(AS) -o $(UNITTARGETDIRPREFIX)func$(OEXT) $(CPU_TARGET)/func.as
+
+dllprt$(OEXT) : $(CPU_TARGET)/dllprt.as
+        $(AS) -o $(UNITTARGETDIRPREFIX)dllprt$(OEXT) $(CPU_TARGET)/dllprt.as
+
+#
+# system Units (system, Objpas, Strings)
+#
+
+system$(PPUEXT) : system.pp sysfiles.inc $(SYSDEPS)
+        $(COMPILER) -Us -Sg system.pp
+
+objpas$(PPUEXT): $(OBJPASDIR)/objpas.pp $(INC)/except.inc system$(PPUEXT)
+        $(COMPILER) -I$(OBJPASDIR) $(OBJPASDIR)/objpas.pp
+
+strings$(PPUEXT) : $(INC)/strings.pp $(INC)/stringsi.inc\
+                   $(PROCINC)/strings.inc $(PROCINC)/stringss.inc\
+                   system$(PPUEXT)
+
+#
+# system Dependent Units
+#
+
+beos$(PPUEXT) : beos.pp system$(PPUEXT)
+
+#
+# TP7 Compatible RTL Units
+#
+
+dos$(PPUEXT) : dos.pp $(INC)/filerec.inc $(INC)/textrec.inc strings$(PPUEXT) \
+               beos$(PPUEXT) system$(PPUEXT)
+
+objects$(PPUEXT) : $(INC)/objects.pp system$(PPUEXT)
+
+#
+# Delphi Compatible Units
+#
+
+sysutils$(PPUEXT) : sysutils.pp $(wildcard $(OBJPASDIR)/sysutils/*.inc) \
+                    objpas$(PPUEXT) beos$(PPUEXT) sysconst$(PPUEXT)
+        $(COMPILER) -Fi$(OBJPASDIR)/sysutils sysutils.pp
+
+classes$(PPUEXT) : classes.pp $(wildcard $(OBJPASDIR)/classes/*.inc) \
+                   sysutils$(PPUEXT) typinfo$(PPUEXT)
+        $(COMPILER) -Fi$(OBJPASDIR)/classes classes.pp
+
+typinfo$(PPUEXT): $(OBJPASDIR)/typinfo.pp objpas$(PPUEXT)
+        $(COMPILER) -Sg $(OBJPASDIR)/typinfo.pp
+
+math$(PPUEXT): $(OBJPASDIR)/math.pp objpas$(PPUEXT) sysutils$(PPUEXT)
+        $(COMPILER) $(OBJPASDIR)/math.pp
+
+gettext$(PPUEXT): $(OBJPASDIR)/gettext.pp objpas$(PPUEXT) sysutils$(PPUEXT)
+        $(COMPILER) $(OBJPASDIR)/gettext.pp
+
+varutils$(PPUEXT) : $(OBJPASDIR)/cvarutil.inc $(OBJPASDIR)/varutils.inc \
+                    $(OBJPASDIR)/varutilh.inc varutils.pp
+        $(COMPILER) -I$(OBJPASDIR) $(UNIXINC)/varutils.pp
+
+types$(PPUEXT) : $(OBJPASDIR/types.pp objpas$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
+        $(COMPILER) $(OBJPASDIR)/types.pp
+
+#
+# Mac Pascal Model
+#
+
+macpas$(PPUEXT) : $(INC)/macpas.pp system$(PPUEXT)
+        $(COMPILER) $(INC)/macpas.pp $(REDIR)
+
+#
+# Other system-independent RTL Units
+#
+
+cpu$(PPUEXT) : $(PROCINC)/cpu.pp system$(PPUEXT)
+
+mmx$(PPUEXT) : $(PROCINC)/mmx.pp cpu$(PPUEXT) system$(PPUEXT)
+
+getopts$(PPUEXT) : $(INC)/getopts.pp system$(PPUEXT)
+
+heaptrc$(PPUEXT) : $(INC)/heaptrc.pp system$(PPUEXT)
+        $(COMPILER) -Sg $(INC)/heaptrc.pp
+
+lineinfo$(PPUEXT) : $(INC)/lineinfo.pp system$(PPUEXT)
+
+
+#
+# Other system-dependent RTL Units
+#

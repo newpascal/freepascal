@@ -1,0 +1,9 @@
+#! /bin/sh
+
+FPCDIR=/usr/lib/fpc/%{fpcversion}
+
+# remove link
+rm -f /usr/bin/ppc386
+
+# Debhelper code
+#DEBHELPER#
