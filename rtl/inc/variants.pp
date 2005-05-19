@@ -261,6 +261,9 @@ Const
   CFirstUserType = CMinVarType + CIncVarType;
 
 var
+  NullEqualityRule: TNullCompareRule = ncrLoose;
+  NullMagnitudeRule: TNullCompareRule = ncrLoose;
+
   VarDispProc: TVarDispProc;
   ClearAnyProc: TAnyProc;  { Handler clearing a varAny }
   ChangeAnyProc: TAnyProc; { Handler to change any to variant }
@@ -782,8 +785,15 @@ function dovarcmp (const vl,vr : tvardata;const opcode : tvarop) : shortint;
 
         case tvardata(vlconv).vtype of
           varempty:
-            // both must be empty then
-            result:=0;
+            begin
+              if tvardata(vlconv).vtype=varempty then
+                if tvardata(vrconv).vtype=varempty then
+                  result:=0
+                else
+                  result:=-1
+              else
+                result:=1;
+            end;
           //!!!! varany:
 
           varerror:
@@ -809,7 +819,15 @@ function dovarcmp (const vl,vr : tvardata;const opcode : tvarop) : shortint;
                 result:=0;
             end;
 
-          //!!!! varboolean:
+          varboolean:
+            begin
+              if ord(tvardata(vlconv).vboolean)>ord(tvardata(vrconv).vboolean) then
+                result:=1
+              else if ord(tvardata(vlconv).vboolean)<ord(tvardata(vrconv).vboolean) then
+                result:=-1
+              else
+                result:=0;
+            end;
 
           varint64:
             begin
@@ -821,7 +839,45 @@ function dovarcmp (const vl,vr : tvardata;const opcode : tvarop) : shortint;
                 result:=0;
             end;
 
-          //!!!! varnull:
+          varnull:
+            begin
+              case NullEqualityRule of
+                ncrError:
+                  VarInvalidOp;
+                ncrStrict:
+                  { force false }
+                  case opcode of
+                    opcmpeq:
+                      result:=-1;
+                    opcmpne:
+                      result:=0;
+                    opcmplt:
+                      result:=1;
+                    opcmple:
+                      result:=1;
+                    opcmpgt:
+                      result:=-1;
+                    opcmpge:
+                      result:=-1;
+                    else
+                      VarInvalidOp;
+                  end;
+                ncrLoose:
+                  begin
+                    if tvardata(vlconv).vtype=varnull then
+                      if tvardata(vrconv).vtype=varnull then
+                        result:=0
+                      else
+                        result:=-1
+                    else
+                      result:=1;
+                  end;
+                else
+                  VarInvalidOp;
+              end;
+            end;
+
+
           varolestr:
             result:=WideCompareStr(ansistring(tvardata(vlconv).volestr),ansistring(tvardata(vrconv).volestr));
 
