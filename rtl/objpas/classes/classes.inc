@@ -58,7 +58,6 @@ var
 { TStrings and TStringList implementations }
 {$i stringl.inc}
 
-{$ifndef VER1_0}
 { TThread implementation }
 
 { system dependend code }
@@ -139,8 +138,6 @@ procedure CheckSynchronize(timeout : longint=0);
           end;
       end;
   end;
-
-{$endif}
 
 { TPersistent implementation }
 {$i persist.inc }

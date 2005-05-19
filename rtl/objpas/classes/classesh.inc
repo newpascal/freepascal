@@ -15,42 +15,18 @@
 {$H+}
 
 { The 1.0 compiler cannot compile the Seek(int64) overloading correct }
-{$ifndef ver1_0}
-  {$define seek64bit}
-{$endif ver1_0}
+{$define seek64bit}
 
 type
    { extra types to compile with FPC }
    HRSRC = longint;
    TComponentName = string;
-{$ifdef ver1_0}
-   // 1.0 doesn't have threads
-   TRTLCriticalSection = record
-     locked : longint;
-   end;
-   // 1.1 and above has interfaces
-   IUnknown = class(TObject);
-   TGUID = longint;
-   THandle = longint;
-{$else}
    THandle = System.THandle;
-{$endif ver1_0}
 
-{$ifdef ver1_0}
-   TPoint = record
-      x,y : integer;
-   end;
-   TRect = record
-      Case Integer of
-       0 : ( Left,Top,Right,Bottom : integer);
-       1 : ( TopLeft,BottomRight : TPoint);
-   end;
-{$else}
    TPoint=Types.TPoint;
    TRect=Types.TRect;
-{$endif}
 
-{$if defined(ver1_0) or not(defined(win32))}
+{$ifndef win32}
    TSmallPoint = record
       x,y : smallint;
    end;
@@ -286,7 +262,7 @@ type
 
    public
       { Public declarations }
-      constructor Create(TheSize : longint {$ifndef VER1_0} = 0 {$endif}); virtual;
+      constructor Create(TheSize : longint = 0); virtual;
       destructor Destroy; override;
       function  GetFSize : longint;
       procedure SetOn(Bit : longint);
@@ -1247,7 +1223,6 @@ type
 
 
 { TThread }
-{$ifndef VER1_0}
 
   EThread = class(Exception);
   EThreadDestroyCalled = class(EThread);
@@ -1314,7 +1289,6 @@ type
     property FatalException: TObject read FFatalException;
   end;
 
-{$endif}
 
 { TComponent class }
 
@@ -1466,7 +1440,7 @@ type
   public
     constructor Create(AClient: TObject); virtual;
     destructor Destroy; override;
-    function Execute(AComponent: TComponent{$ifndef VER1_0} = nil{$endif}): Boolean; virtual;
+    function Execute(AComponent: TComponent = nil): Boolean; virtual;
     function Update: Boolean; virtual;
     property Action: TBasicAction read FAction write SetAction;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
@@ -1615,7 +1589,6 @@ var
   ApplicationHandleException : procedure (Sender: TObject) of object;
   ApplicationShowException   : procedure (E: Exception) of object;
 
-{$ifndef VER1_0}
 { ---------------------------------------------------------------------
     tthread helpers
   ---------------------------------------------------------------------}
@@ -1628,7 +1601,6 @@ var
   { method proc that is called to trigger gui thread to execute a
 method }
   WakeMainThread : TNotifyEvent = nil;
-{$endif}
 
 { ---------------------------------------------------------------------
     General streaming and registration routines

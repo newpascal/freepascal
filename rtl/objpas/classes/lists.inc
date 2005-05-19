@@ -118,11 +118,7 @@ end;
 
 class procedure TFPList.Error(const Msg: string; Data: Integer);
 begin
-{$ifdef VER1_0}
-  Raise EListError.CreateFmt(Msg,[Data]) at longint(get_caller_addr(get_frame));
-{$else VER1_0}
   Raise EListError.CreateFmt(Msg,[Data]) at get_caller_addr(get_frame);
-{$endif VER1_0}
 end;
 
 procedure TFPList.Exchange(Index1, Index2: Integer);
@@ -397,11 +393,7 @@ end;
 
 class procedure TList.Error(const Msg: string; Data: Integer);
 begin
-{$ifdef VER1_0}
-  Raise EListError.CreateFmt(Msg,[Data]) at longint(get_caller_addr(get_frame));
-{$else VER1_0}
   Raise EListError.CreateFmt(Msg,[Data]) at get_caller_addr(get_frame);
-{$endif VER1_0}
 end;
 
 procedure TList.Exchange(Index1, Index2: Integer);

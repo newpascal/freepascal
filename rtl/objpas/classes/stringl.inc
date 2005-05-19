@@ -354,21 +354,13 @@ end;
 
 Procedure TStrings.Error(const Msg: string; Data: Integer);
 begin
-{$ifdef VER1_0}
-  Raise EStringListError.CreateFmt(Msg,[Data]) at longint(get_caller_addr(get_frame));
-{$else VER1_0}
   Raise EStringListError.CreateFmt(Msg,[Data]) at get_caller_addr(get_frame);
-{$endif VER1_0}
 end;
 
 
 Procedure TStrings.Error(const Msg: pstring; Data: Integer);
 begin
-{$ifdef VER1_0}
-  Raise EStringListError.CreateFmt(Msg^,[Data]) at longint(get_caller_addr(get_frame));
-{$else VER1_0}
   Raise EStringListError.CreateFmt(Msg^,[Data]) at get_caller_addr(get_frame);
-{$endif VER1_0}
 end;
 
 
