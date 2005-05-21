@@ -1,5 +1,4 @@
 {
-    $Id: parser.inc,v 1.5 2005/03/07 17:57:25 peter Exp $
     This file is part of the Free Component Library (FCL)
     Copyright (c) 1999-2000 by the Free Pascal development team
 

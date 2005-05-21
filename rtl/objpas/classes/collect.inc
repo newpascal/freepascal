@@ -1,5 +1,4 @@
 {
-    $Id: collect.inc,v 1.8 2005/03/03 22:15:32 florian Exp $
     This file is part of the Free Component Library (FCL)
     Copyright (c) 1999-2000 by the Free Pascal development team
 

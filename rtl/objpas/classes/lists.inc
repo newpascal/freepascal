@@ -1,5 +1,4 @@
 {
-    $Id: lists.inc,v 1.11 2005/05/04 06:53:06 michael Exp $
     This file is part of the Free Pascal Run Time Library (rtl)
     Copyright (c) 1999-2005 by the Free Pascal development team
 

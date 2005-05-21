@@ -1,5 +1,4 @@
 {
-    $Id: classesh.inc,v 1.55 2005/05/07 17:03:34 florian Exp $
     This file is part of the Free Pascal Run Time Library (rtl)
     Copyright (c) 1999-2000 by Michael Van Canneyt and Florian Klaempfl
 

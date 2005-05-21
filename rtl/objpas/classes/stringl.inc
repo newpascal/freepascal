@@ -1,5 +1,4 @@
 {
-    $Id: stringl.inc,v 1.11 2005/04/05 21:05:31 peter Exp $
     This file is part of the Free Component Library (FCL)
     Copyright (c) 1999-2000 by the Free Pascal development team
 
