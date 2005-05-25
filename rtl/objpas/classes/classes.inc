@@ -164,6 +164,62 @@ procedure CheckSynchronize(timeout : longint=0);
  *       Miscellaneous procedures and functions                       *
  **********************************************************************}
 
+function ExtractStrings(Separators, WhiteSpace: TSysCharSet; Content: PChar; Strings: TStrings): Integer;
+
+var
+  Start,P: PChar;
+  InQuote: Boolean;
+  QC: Char;
+  S : string;
+
+begin
+  Result:=0;
+  if Not (Assigned(Content) and Assigned(Strings) and (Content^<>#0)) then 
+    Exit;
+  P:=Content;
+  InQuote:=False;
+  QC:=#0;
+  WhiteSpace:=WhiteSpace+[#10,#13];
+  Separators:=Separators+[#0,#10,#13,'''','"'];
+  Strings.BeginUpdate;
+  Try
+    repeat
+      while P^ in WhiteSpace do 
+        Inc(P); // Not MBCS safe
+      Start:=P;
+      while True do
+        begin
+        while (InQuote and not (P^ in [QC, #0])) or
+              not (P^ in Separators) do 
+            Inc(P); // Not MBCS safe
+        if P^ in ['''', '"'] then
+          begin
+          If (QC=#0) then
+            QC:=P^
+          else if (QC=P^) then
+            QC:=#0;
+          InQuote:=QC<>#0;
+          Inc(P);
+          end 
+        else 
+          Break;
+        end;
+      if (Start<>P) and (P^<>#0) then
+        begin
+        SetString(S,Start,P-Start);
+        Strings.Add(S);
+        Inc(Result);
+        end;
+      If (P^<>#0) then
+        Inc(P);
+    until (P^=#0);
+  finally
+    Strings.EndUpdate;
+  end;
+end;
+
+  
+
 { Point and rectangle constructors }
 
 function Point(AX, AY: Integer): TPoint;
