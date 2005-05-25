@@ -470,7 +470,7 @@ constructor TThreadList.Create;
   begin
     inherited Create;
     FDuplicates:=dupIgnore;
-    InitializeCriticalSection(FLock);
+    InitCriticalSection(FLock);
     FList:=TList.Create;
   end;
 
@@ -483,7 +483,7 @@ destructor TThreadList.Destroy;
       inherited Destroy;
     finally
       UnlockList;
-      DeleteCriticalSection(FLock);
+      DoneCriticalSection(FLock);
     end;  
   end;
 
