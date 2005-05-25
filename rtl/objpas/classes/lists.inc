@@ -115,7 +115,7 @@ begin
   end;
 end;
 
-class procedure TFPList.Error(const Msg: string; Data: Integer);
+class procedure TFPList.Error(const Msg: string; Data: PtrInt);
 begin
   Raise EListError.CreateFmt(Msg,[Data]) at get_caller_addr(get_frame);
 end;
@@ -467,77 +467,77 @@ end;
 
 
 constructor TThreadList.Create;
-begin
-inherited Create;
-//InitializeCriticalSection(FLock);
-FList := TList.Create;
-end;
-
+  begin
+    inherited Create;
+    FDuplicates:=dupIgnore;
+    InitializeCriticalSection(FLock);
+    FList:=TList.Create;
+  end;
 
 
 destructor TThreadList.Destroy;
-begin
-  LockList;
-  try
-    FList.Free;
-    inherited Destroy;
-  finally
-    UnlockList;
+  begin
+    LockList;
+    try    
+      FList.Free;
+      inherited Destroy;
+    finally
+      UnlockList;
+      DeleteCriticalSection(FLock);
+    end;  
   end;
-end;
 
 
 
 procedure TThreadList.Add(Item: Pointer);
-begin
-  Locklist;
-  try
-    //make sure it's not already in the list
-    if FList.indexof(Item) = -1 then
-       FList.Add(Item);
-  finally
-  UnlockList;
+  begin
+    LockList;
+    try      
+      if (Duplicates=dupAccept) or
+        // make sure it's not already in the list
+        (FList.IndexOf(Item)=-1) then
+         FList.Add(Item)
+       else if (Duplicates=dupError) then
+         FList.Error(SDuplicateItem,PtrInt(Item));
+    finally
+      UnlockList;
+    end;
   end;
-end;
 
 
 procedure TThreadList.Clear;
-begin
-  Locklist;
-  try
-    FList.Clear;
-  finally
-    UnLockList;
+  begin
+    Locklist;
+    try
+      FList.Clear;
+    finally
+      UnLockList;
+    end;
   end;
-end;
-
 
 
 function TThreadList.LockList: TList;
-
-
-begin
-  Result := FList;
-end;
-
+  begin  
+    Result:=FList;
+    EnterCriticalSection(FLock);
+  end;
 
 
 procedure TThreadList.Remove(Item: Pointer);
-begin
-  LockList;
-  try
-    FList.Remove(Item);
-  finally
-    UnlockList;
+  begin
+    LockList;
+    try
+      FList.Remove(Item);
+    finally
+      UnlockList;
+    end;
   end;
-end;
-
 
 
 procedure TThreadList.UnlockList;
-begin
-
-end;
+  begin
+    LeaveCriticalSection(FLock);
+  end;
 
 
 {

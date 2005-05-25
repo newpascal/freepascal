@@ -56,6 +56,7 @@ const
 
 type
   TSeekOrigin = (soBeginning, soCurrent, soEnd);
+  TDuplicates = (dupIgnore, dupAccept, dupError);
 
 { TFileStream create mode }
 const
@@ -76,15 +77,12 @@ Const
   FilerSignature : Array[1..4] of char = 'TPF0';
 
 type
-
 { Text alignment types }
-
   TAlignment = (taLeftJustify, taRightJustify, taCenter);
 
-  { TLeftRight = taLeftJustify..taRightJustify; }
+{ TLeftRight = taLeftJustify..taRightJustify; }
 
 { Types used by standard events }
-
   TShiftStateEnum = (ssShift, ssAlt, ssCtrl,
     ssLeft, ssRight, ssMiddle, ssDouble,
     // Extra additions
@@ -99,7 +97,6 @@ type
   TShortCut = Low(Word)..High(Word);
 
 { Standard events }
-
 
   TNotifyEvent = procedure(Sender: TObject) of object;
   THelpEvent = function (Command: Word; Data: Longint;
@@ -223,9 +220,8 @@ type
   TThreadList = class
   private
     FList: TList;
-{$ifdef FPC_THREADING}
+    FDuplicates: TDuplicates;
     FLock: TRTLCriticalSection;
-{$endif FPC_THREADING}
   public
     constructor Create;
     destructor Destroy; override;
@@ -234,6 +230,7 @@ type
     function  LockList: TList;
     procedure Remove(Item: Pointer);
     procedure UnlockList;
+    property Duplicates: TDuplicates read FDuplicates write FDuplicates;
   end;
 
 const
@@ -522,7 +519,6 @@ type
 
 { TStringList class }
 
-  TDuplicates = (dupIgnore, dupAccept, dupError);
   TStringList = class;
 
   PStringItem = ^TStringItem;
