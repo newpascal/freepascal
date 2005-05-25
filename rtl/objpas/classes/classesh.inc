@@ -196,7 +196,7 @@ type
     function Add(Item: Pointer): Integer;
     procedure Clear; virtual;
     procedure Delete(Index: Integer);
-    class procedure Error(const Msg: string; Data: Integer); virtual;
+    class procedure Error(const Msg: string; Data: PtrInt); virtual;
     procedure Exchange(Index1, Index2: Integer);
     function Expand: TList;
     function Extract(item: Pointer): Pointer;
