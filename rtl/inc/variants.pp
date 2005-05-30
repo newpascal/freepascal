@@ -311,7 +311,7 @@ implementation
 {$ifdef HASVARIANT}
 
 uses
-  varutils;
+  math,varutils;
 
   var
     customvarianttypes : array of tcustomvarianttype;
