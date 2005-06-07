@@ -454,9 +454,7 @@ function DynamicArrayDimensions(const p : pointer) : sizeint;
         { skip kind and name }
         inc(pointer(p),ord(pdynarraytypeinfo(p)^.namelen)+2);
 
-{$ifdef FPC_ALIGNSRTTI}
         p:=aligntoptr(p);
-{$endif FPC_ALIGNSRTTI}
 
          p:=pdynarraytypeinfo(p+sizeof(sizeint))^;
       end;
@@ -474,9 +472,7 @@ function DynamicArrayIsRectangular(const p : pointer;typeinfo : pointer);
     { skip kind and name }
     inc(pointer(typeinfo),ord(pdynarraytypeinfo(typeinfo)^.namelen)+2);
 
-{$ifdef FPC_ALIGNSRTTI}
      p:=aligntoptr(typeinfo);
-{$endif FPC_ALIGNSRTTI}
 
 
      typeinfo:=pdynarraytypeinfo(typeinfo+sizeof(sizeint))^;
