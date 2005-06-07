@@ -32,7 +32,6 @@ interface
   uses
     sysutils,sysconst,rtlconsts,typinfo;
 
-{$ifdef HASVARIANT}
 type
   EVariantParamNotFoundError = class(EVariantError);
   EVariantInvalidOpError = class(EVariantError);
@@ -304,11 +303,9 @@ Procedure SetVariantProp(Instance: TObject; PropInfo : PPropInfo; const Value: V
 
 
 
-{$endif HASVARIANT}
 
 implementation
 
-{$ifdef HASVARIANT}
 
 uses
   math,varutils;
@@ -2950,11 +2947,7 @@ function FindVarData(const V: Variant): PVarData;
 Function GetVariantProp(Instance : TObject;PropInfo : PPropInfo): Variant;
 begin
 {$warning GetVariantProp not implemented}
-{$ifdef HASVARIANT}
   Result:=Null;
-{$else}
-  Result:=nil;
-{$endif}
 end;
 
 
@@ -3082,6 +3075,5 @@ Initialization
 Finalization
   UnSetSysVariantManager;
   DoneCriticalSection(customvarianttypelock);
-{$endif HASVARIANT}
 
 end.
