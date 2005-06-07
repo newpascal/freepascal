@@ -211,7 +211,6 @@ begin
     Write(Value[1], i);
 end;
 
-{$ifdef HASWIDESTRING}
 procedure TBinaryObjectWriter.WriteWideString(const Value: WideString);
 var
   i: Integer;
@@ -221,7 +220,6 @@ begin
   Write(i, 4);
   Write(Pointer(Value)^, i * 2);
 end;
-{$endif HASWIDESTRING}
 
 procedure TBinaryObjectWriter.FlushBuffer;
 begin
@@ -606,9 +604,7 @@ var
   FloatValue, DefFloatValue: Extended;
   MethodValue: TMethod;
   DefMethodCodeValue: Pointer;
-{$ifdef HASWIDESTRING}
   WStrValue, WDefStrValue: WideString;
-{$endif}
   StrValue, DefStrValue: String;
   AncestorObj: TObject;
   Component: TComponent;
@@ -703,9 +699,6 @@ begin
           Driver.EndProperty;
         end;
       end;
-{$ifndef HASWIDESTRING}
-    tkWString,
-{$endif}
     tkSString, tkLString, tkAString:
       begin
         StrValue := GetStrProp(Instance, PropInfo);
@@ -723,7 +716,6 @@ begin
           Driver.EndProperty;
         end;
       end;
-{$ifdef HASWIDESTRING}
     tkWString:
       begin
         WStrValue := GetWideStrProp(Instance, PropInfo);
@@ -739,7 +731,6 @@ begin
           Driver.EndProperty;
         end;
       end;
-{$endif}
   {!!!: tkVariant:}
     tkClass:
       begin
@@ -866,10 +857,8 @@ begin
   Driver.WriteString(Value);
 end;
 
-{$ifdef HASWIDESTRING}
 procedure TWriter.WriteWideString(const Value: WideString);
 begin
   Driver.WriteWideString(Value);
 end;
-{$endif HASWIDESTRING}
 

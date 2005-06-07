@@ -841,13 +841,11 @@ begin
   inc(pchar(P));
 end;
 
-{$ifdef HASWIDESTRING}
 function WideCharToOrd(var P: Pointer): Cardinal;
 begin
   result:= ord(pwidechar(P)^);
   inc(pwidechar(P));
 end;
-{$endif HASWIDESTRING}
 
 function Utf8ToOrd(var P:Pointer): Cardinal;
 begin
@@ -929,9 +927,7 @@ procedure ObjectBinaryToText(Input, Output: TStream);
   procedure OutWString(W: WideString);
 
   begin
-{$ifdef HASWIDESTRING}
     OutChars(Pointer(W),pwidechar(W)+Length(W),@WideCharToOrd);
-{$endif HASWIDESTRING}
   end;
 
   procedure OutUtf8Str(s: String);
@@ -975,11 +971,9 @@ procedure ObjectBinaryToText(Input, Output: TStream);
   var
     len: DWord;
   begin
-{$ifdef HASWIDESTRING}
     len := Input.ReadDWord;
     SetLength(Result, len);
     Input.Read(Pointer(@Result[1])^, len*2);
-{$endif HASWIDESTRING}
   end;
 
   procedure ReadPropList(indent: String);
@@ -1178,14 +1172,12 @@ var
       Output.Write(s[1], Length(s));
   end;
 
-{$ifdef HASWIDESTRING}
   procedure WriteWString(Const s: WideString);
   begin
     Output.WriteDWord(Length(s));
     if Length(s) > 0 then
       Output.Write(s[1], Length(s)*sizeof(widechar));
   end;
-{$endif HASWIDESTRING}
 
   procedure WriteInteger(value: LongInt);
   begin
@@ -1207,11 +1199,7 @@ var
   var
     flt: Extended;
     s: String;
-{$ifdef HASWIDESTRING}
     ws: WideString;
-{$else}
-    ws : Ansistring;
-{$endif HASWIDESTRING}
     stream: TMemoryStream;
     i: Integer;
     b: Boolean;
@@ -1231,7 +1219,6 @@ var
         end;
       toString:
         begin
-{$ifdef HASWIDESTRING}
           ws := parser.TokenWideString;
           while parser.NextToken = '+' do
           begin
@@ -1251,15 +1238,6 @@ var
             WriteWString(ws);
             end
           else
-{$else HASWIDESTRING}
-          ws := parser.TokenString;
-          while parser.NextToken = '+' do
-          begin
-            parser.NextToken;   // Get next string fragment
-            parser.CheckToken(toString);
-            ws := ws + parser.TokenString;
-          end;
-{$endif HASWIDESTRING}
 	    begin
             setlength(s,length(ws));
             for i:= 1 to length(s) do begin

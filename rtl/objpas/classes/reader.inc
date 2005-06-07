@@ -220,7 +220,6 @@ begin
 end;
 
 
-{$ifdef HASWIDESTRING}
 function TBinaryObjectReader.ReadWideString: WideString;
 var
   i: Integer;
@@ -230,7 +229,6 @@ begin
   if i > 0 then
     Read(Pointer(@Result[1])^, i*2);
 end;
-{$endif HASWIDESTRING}
 
 
 procedure TBinaryObjectReader.SkipComponent(SkipComponentInfos: Boolean);
@@ -1123,9 +1121,6 @@ begin
             SetMethodProp(Instance, PropInfo, Method);
         end;
       end;
-{$ifndef HASWIDESTRING}
-    tkWString,
-{$endif}
     tkSString, tkLString, tkAString:
     begin
       TmpStr:=ReadString;
@@ -1133,10 +1128,8 @@ begin
         FOnReadStringProperty(Self,Instance,PropInfo,TmpStr);
       SetStrProp(Instance, PropInfo, TmpStr);
     end;
-{$ifdef HASWIDESTRING}
     tkWstring:
       SetWideStrProp(Instance,PropInfo,ReadWideString);
-{$endif}
     {!!!: tkVariant}
     tkClass:
       case FDriver.NextValue of
@@ -1272,7 +1265,6 @@ begin
 end;
 
 
-{$ifdef HASWIDESTRING}
 function TReader.ReadWideString: WideString;
 var
  s: String;
@@ -1292,7 +1284,6 @@ begin
     end;
   end;
 end;
-{$endif HASWIDESTRING}
 
 function TReader.ReadValue: TValueType;
 begin

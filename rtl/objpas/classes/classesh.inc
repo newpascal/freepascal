@@ -847,9 +847,7 @@ type
     function ReadSet(EnumType: Pointer): Integer; virtual; abstract;
     function ReadStr: String; virtual; abstract;
     function ReadString(StringType: TValueType): String; virtual; abstract;
-{$ifdef HASWIDESTRING}
     function ReadWideString: WideString;virtual;abstract;
-{$endif HASWIDESTRING}
     procedure SkipComponent(SkipComponentInfos: Boolean); virtual; abstract;
     procedure SkipValue; virtual; abstract;
   end;
@@ -892,9 +890,7 @@ type
     function ReadSet(EnumType: Pointer): Integer; override;
     function ReadStr: String; override;
     function ReadString(StringType: TValueType): String; override;
-{$ifdef HASWIDESTRING}
     function ReadWideString: WideString;override;
-{$endif HASWIDESTRING}
     procedure SkipComponent(SkipComponentInfos: Boolean); override;
     procedure SkipValue; override;
   end;
@@ -993,9 +989,7 @@ type
     procedure ReadListEnd;
     function ReadRootComponent(ARoot: TComponent): TComponent;
     function ReadString: string;
-{$ifdef HASWIDESTRING}
     function ReadWideString: WideString;
-{$endif HASWIDESTRING}
     function ReadValue: TValueType;
     procedure CopyValue(Writer: TWriter);
     property Driver: TAbstractObjectReader read FDriver;
@@ -1044,9 +1038,7 @@ type
     procedure WriteMethodName(const Name: String); virtual; abstract;
     procedure WriteSet(Value: LongInt; SetType: Pointer); virtual; abstract;
     procedure WriteString(const Value: String); virtual; abstract;
-{$ifdef HASWIDESTRING}
     procedure WriteWideString(const Value: WideString);virtual;abstract;
-{$endif HASWIDESTRING}
   end;
 
   { TBinaryObjectWriter }
@@ -1088,9 +1080,7 @@ type
     procedure WriteMethodName(const Name: String); override;
     procedure WriteSet(Value: LongInt; SetType: Pointer); override;
     procedure WriteString(const Value: String); override;
-{$ifdef HASWIDESTRING}
     procedure WriteWideString(const Value: WideString); override;
-{$endif HASWIDESTRING}
   end;
 
   TTextObjectWriter = class(TAbstractObjectWriter)
@@ -1151,9 +1141,7 @@ type
     procedure WriteListEnd;
     procedure WriteRootComponent(ARoot: TComponent);
     procedure WriteString(const Value: string);
-{$ifdef HASWIDESTRING}
     procedure WriteWideString(const Value: WideString);
-{$endif HASWIDESTRING}
     property RootAncestor: TComponent read FRootAncestor write FRootAncestor;
     property OnFindAncestor: TFindAncestorEvent read FOnFindAncestor write FOnFindAncestor;
     property OnWriteMethodProperty: TWriteMethodPropertyEvent read FOnWriteMethodProperty write FOnWriteMethodProperty;
@@ -1175,11 +1163,7 @@ type
     FSourcePtr: PChar;
     FSourceEnd: PChar;
     FTokenPtr: PChar;
-{$ifdef HASWIDESTRING}
     FString: widestring;
-{$else HASWIDESTRING}
-    FString: ansistring;
-{$endif HASWIDESTRING}
     FSourceLine: Integer;
     FSaveChar: Char;
     FToken: Char;
@@ -1200,9 +1184,7 @@ type
     function TokenFloat: Extended;
     function TokenInt: Longint;
     function TokenString: string;
-{$ifdef HASWIDESTRING}
     function TokenWideString: widestring;
-{$endif HASWIDESTRING}
     function TokenSymbolIs(const S: string): Boolean;
     property SourceLine: Integer read FSourceLine;
     property Token: Char read FToken;

@@ -172,11 +172,7 @@ var
     if length(fString) < CharCount then begin
      setlength(fString,length(fString) + length(fString) div 4 + 64);
     end;
-{$ifdef HASWIDESTRING}  
     fString[CharCount]:= WideChar(achar);
-{$else}    
-    fString[CharCount]:= Char(achar);
-{$endif HASWIDESTRING}  
   end;
  
 var
@@ -314,7 +310,6 @@ begin
   end;
 end;
 
-{$ifdef HASWIDESTRING}
 Function TParser.TokenWideString: widestring;
 begin
   if FToken = toString then
@@ -322,7 +317,6 @@ begin
   else
     result:= TokenString
 end;
-{$endif HASWIDESTRING}
 
 
 Function TParser.TokenSymbolIs(const S: string): Boolean;
