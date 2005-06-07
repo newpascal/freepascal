@@ -156,9 +156,7 @@ procedure CheckSynchronize(timeout : longint=0);
 
 
 { Interface related stuff }
-{$ifdef HASINTF}
 {$I intf.inc}
-{$endif HASINTF}
 
 {**********************************************************************
  *       Miscellaneous procedures and functions                       *
@@ -1511,13 +1509,11 @@ end;
 
 procedure CommonInit;
 begin
-{$ifndef ver1_0}
   InitCriticalSection(SynchronizeCritSect);
   ExecuteEvent:=RtlEventCreate;
   SynchronizeTimeoutEvent:=RtlEventCreate;
   DoSynchronizeMethod:=false;
   MainThreadID:=GetCurrentThreadID;
-{$endif ver1_0}
   InitHandlerList:=Nil;
   FindGlobalComponentList:=nil;
   IntConstList := TThreadList.Create;
@@ -1555,11 +1551,9 @@ begin
   InitHandlerList:=Nil;
   FindGlobalComponentList.Free;
   FindGlobalComponentList:=nil;
-{$ifndef ver1_0}
   DoneCriticalSection(SynchronizeCritSect);
   RtlEventDestroy(ExecuteEvent);
   RtlEventDestroy(SynchronizeTimeoutEvent);
-{$endif}
 end;
 
 { TFiler implementation }

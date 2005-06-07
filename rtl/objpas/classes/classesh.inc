@@ -307,7 +307,6 @@ type
 
 { TInterfaced Persistent }
 
-{$ifdef HASINTF}
   TInterfacedPersistent = class(TPersistent, IInterface)
   private
     FOwnerInterface: IInterface;
@@ -319,7 +318,6 @@ type
     function QueryInterface(const IID: TGUID; out Obj): HResult; virtual; stdcall;
     procedure AfterConstruction; override;
   end;
-{$endif HASINTF}
 
 { TRecall class }
 
@@ -422,15 +420,11 @@ type
 
 { IStringsAdapter interface }
 
-{$ifdef HASINTF}
   { Maintains link between TStrings and IStrings implementations }
   IStringsAdapter = interface ['{739C2F34-52EC-11D0-9EA6-0020AF3D82DA}']
     procedure ReferenceStrings(S: TStrings);
     procedure ReleaseStrings;
   end;
-{$else HASINTF}
-  IStringsAdapter = class(TObject);
-{$endif HASINTF}
 
 { TStrings class }
 
@@ -647,12 +641,10 @@ type
   end;
 
 
-{$ifdef HASINTF}
   IStreamPersist = interface ['{B8CD12A3-267A-11D4-83DA-00C04F60B2DD}']
     procedure LoadFromStream(Stream: TStream);
     procedure SaveToStream(Stream: TStream);
   end;
-{$endif HASINTF}
 
 { THandleStream class }
 
@@ -1311,13 +1303,11 @@ type
   end;
   }
 
-{$ifdef HASINTF}
   IDesignerNotify = interface
     ['{B971E807-E3A6-11D1-AAB1-00C04FB16FBC}']
     procedure Modified;
     procedure Notification(AnObject: TPersistent; Operation: TOperation);
   end;
-{$endif HASINTF}
 
   TBasicAction = class;
 
@@ -1372,12 +1362,10 @@ type
       const CurName, NewName: string); virtual;
     procedure ValidateContainer(AComponent: TComponent); dynamic;
     procedure ValidateInsert(AComponent: TComponent); dynamic;
-{$ifdef HASINTF}
     { IUnknown }
     function QueryInterface(const IID: TGUID; out Obj): Hresult; virtual; stdcall;
     function _AddRef: Integer; stdcall;
     function _Release: Integer; stdcall;
-{$endif HASINTF}
     { IDispatch }
     //!!!! function GetTypeInfoCount(out Count: Integer): Integer; stdcall;
     //!!!! function GetTypeInfo(Index, LocaleID: Integer; out TypeInfo): Integer; stdcall;
@@ -1479,7 +1467,6 @@ type
 
   TActiveXRegType = (axrComponentOnly, axrIncludeDescendants);
 
-{$ifdef HASINTF}
   IInterfaceList = interface ['{285DEA8A-B865-11D1-AAA7-00C04FB17A72}']
     function Get(i : Integer) : IUnknown;
     function GetCapacity : Integer;
@@ -1535,7 +1522,6 @@ type
     property Count : Integer read GetCount write SetCount;
     property Items[Index : Integer] : IUnknown read Get write Put;default;
   end;
-{$endif HASINTF}
 
 { ---------------------------------------------------------------------
     TDatamodule support
@@ -1642,10 +1628,8 @@ procedure RegisterNoIcon(ComponentClasses: array of TComponentClass);
 procedure RegisterNonActiveX(ComponentClasses: array of TComponentClass;
   AxRegType: TActiveXRegType);
 
-{$ifdef HASINTF}
 var
   GlobalNameSpace: IReadWriteSync;
-{$endif HASINTF}
 
 { Object filing routines }
 
