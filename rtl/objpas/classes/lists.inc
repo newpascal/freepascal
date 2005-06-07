@@ -540,21 +540,3 @@ procedure TThreadList.UnlockList;
   end;
 
 
-{
-  $Log: lists.inc,v $
-  Revision 1.11  2005/05/04 06:53:06  michael
-  * Removed TFPList.grow
-
-  Revision 1.10  2005/04/12 10:03:31  marco
-   * notifyer triggered after delete patch
-
-  Revision 1.9  2005/03/16 22:56:05  michael
-  + Fix for TList.Destroy and improved Clear
-
-  Revision 1.8  2005/03/16 20:48:03  michael
-  + Faster TList from Dean Zobec
-
-  Revision 1.7  2005/02/14 17:13:31  peter
-    * truncate log
-
-}

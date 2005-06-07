@@ -329,15 +329,3 @@ Function TParser.TokenSymbolIs(const S: string): Boolean;
 begin
   Result := (Token = toSymbol) and (CompareText(S, TokenString) = 0);
 end;
-{
-  $Log: parser.inc,v $
-  Revision 1.5  2005/03/07 17:57:25  peter
-    * renamed rtlconst to rtlconsts
-
-  Revision 1.4  2005/03/07 16:35:19  peter
-    * Object text format of widestrings patch from Martin Schreiber
-
-  Revision 1.3  2005/02/14 17:13:31  peter
-    * truncate log
-
-}

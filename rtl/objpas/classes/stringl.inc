@@ -1192,31 +1192,3 @@ end;
 
 
 
-{
-  $Log: stringl.inc,v $
-  Revision 1.11  2005/04/05 21:05:31  peter
-    * call initspecialchars if one of the specialchars is configured
-      for the first time
-
-  Revision 1.10  2005/03/10 22:54:01  michael
-  + Patch from Marc Weustinc to init special chars
-
-  Revision 1.9  2005/03/07 17:25:46  peter
-    * use separate boolean to initialize specialchars
-
-  Revision 1.8  2005/02/14 17:13:31  peter
-    * truncate log
-
-  Revision 1.7  2005/02/05 22:03:49  michael
-  + Implemented DelimitedText, FDelimiter etc.
-
-  Revision 1.6  2005/02/03 20:11:06  florian
-    + added case sensitivity to tstringlist
-
-  Revision 1.5  2005/02/03 18:42:42  florian
-    * some delphi compatibility fixes
-
-  Revision 1.4  2005/02/01 21:49:05  florian
-    + tstrings.error for resourcestrings added which are a pstring
-
-}

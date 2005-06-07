@@ -1379,31 +1379,3 @@ begin
 end;
 
 
-{
-  $Log: reader.inc,v $
-  Revision 1.19  2005/04/15 07:21:09  michael
-  +  Streaming of subcomponents added by Marc Weustink
-
-  Revision 1.18  2005/04/09 20:37:08  michael
-  + Patch from Uberto Barbini to allow creating streams with different drivers
-
-  Revision 1.17  2005/03/25 22:53:39  jonas
-    * fixed several warnings and notes about unused variables (mainly) or
-      uninitialised use of variables/function results (a few)
-
-  Revision 1.16  2005/03/07 16:35:19  peter
-    * Object text format of widestrings patch from Martin Schreiber
-
-  Revision 1.15  2005/02/25 23:02:05  florian
-    + implemented D7 compliant FindGlobalComponents
-
-  Revision 1.14  2005/02/14 17:13:31  peter
-    * truncate log
-
-  Revision 1.13  2005/01/22 20:53:02  michael
-   + Patch from Colin Western to fix reading inherited forms
-
-  Revision 1.12  2005/01/21 15:53:17  peter
-    * fixed vaWString in skipvalue, patch by Martin Schreiber
-
-}

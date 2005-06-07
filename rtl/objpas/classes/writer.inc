@@ -873,19 +873,3 @@ begin
 end;
 {$endif HASWIDESTRING}
 
-{
-  $Log: writer.inc,v $
-  Revision 1.11  2005/04/15 07:21:09  michael
-  +  Streaming of subcomponents added by Marc Weustink
-
-  Revision 1.10  2005/04/09 20:37:08  michael
-  + Patch from Uberto Barbini to allow creating streams with different drivers
-
-  Revision 1.9  2005/03/25 22:53:39  jonas
-    * fixed several warnings and notes about unused variables (mainly) or
-      uninitialised use of variables/function results (a few)
-
-  Revision 1.8  2005/02/14 17:13:31  peter
-    * truncate log
-
-}

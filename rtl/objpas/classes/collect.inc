@@ -356,24 +356,3 @@ end;
 
 
 
-{
-  $Log: collect.inc,v $
-  Revision 1.8  2005/03/03 22:15:32  florian
-    + tcollection.insert implementation
-
-  Revision 1.7  2005/02/14 17:13:31  peter
-    * truncate log
-
-  Revision 1.6  2005/02/03 19:10:16  florian
-    + tcollection.owner
-
-  Revision 1.5  2005/02/02 20:22:15  florian
-    + TCollection nofication mechanisms added
-
-  Revision 1.4  2005/02/01 21:32:55  florian
-    + tcollection.updatecount support added
-
-  Revision 1.3  2005/02/01 08:41:08  michael
-  + Added TCollection.Delete
-
-}
