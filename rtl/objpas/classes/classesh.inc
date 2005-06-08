@@ -156,7 +156,7 @@ type
     function Add(Item: Pointer): Integer; {$ifdef HASINLINE} inline;{$endif}
     procedure Clear;
     procedure Delete(Index: Integer); {$ifdef HASINLINE} inline;{$endif}
-    class procedure Error(const Msg: string; Data: Integer);
+    class procedure Error(const Msg: string; Data: PtrInt);
     procedure Exchange(Index1, Index2: Integer);
     function Expand: TFPList; {$ifdef HASINLINE} inline;{$endif}
     function Extract(item: Pointer): Pointer;

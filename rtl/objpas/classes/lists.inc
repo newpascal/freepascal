@@ -390,7 +390,7 @@ begin
   if assigned(p) then Notify(p, lnDeleted);
 end;
 
-class procedure TList.Error(const Msg: string; Data: Integer);
+class procedure TList.Error(const Msg: string; Data: PtrInt);
 begin
   Raise EListError.CreateFmt(Msg,[Data]) at get_caller_addr(get_frame);
 end;
