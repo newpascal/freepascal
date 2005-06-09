@@ -835,9 +835,7 @@ type
     procedure ReadBinary(const DestData: TMemoryStream); virtual; abstract;
     function ReadFloat: Extended; virtual; abstract;
     function ReadSingle: Single; virtual; abstract;
-{$ifdef HASCURRENCY}
     function ReadCurrency: Currency; virtual; abstract;
-{$endif HASCURRENCY}
     function ReadDate: TDateTime; virtual; abstract;
     function ReadIdent(ValueType: TValueType): String; virtual; abstract;
     function ReadInt8: ShortInt; virtual; abstract;
@@ -878,9 +876,7 @@ type
     procedure ReadBinary(const DestData: TMemoryStream); override;
     function ReadFloat: Extended; override;
     function ReadSingle: Single; override;
-{$ifdef HASCURRENCY}
     function ReadCurrency: Currency; override;
-{$endif HASCURRENCY}
     function ReadDate: TDateTime; override;
     function ReadIdent(ValueType: TValueType): String; override;
     function ReadInt8: ShortInt; override;
@@ -978,9 +974,7 @@ type
       Proc: TReadComponentsProc);
     function ReadFloat: Extended;
     function ReadSingle: Single;
-{$ifdef HASCURRENCY}
     function ReadCurrency: Currency;
-{$endif HASCURRENCY}
     function ReadDate: TDateTime;
     function ReadIdent: string;
     function ReadInteger: Longint;
@@ -1029,9 +1023,7 @@ type
     // procedure WriteChar(Value: Char);
     procedure WriteFloat(const Value: Extended); virtual; abstract;
     procedure WriteSingle(const Value: Single); virtual; abstract;
-{$ifdef HASCURRENCY}
     procedure WriteCurrency(const Value: Currency); virtual; abstract;
-{$endif HASCURRENCY}
     procedure WriteDate(const Value: TDateTime); virtual; abstract;
     procedure WriteIdent(const Ident: string); virtual; abstract;
     procedure WriteInteger(Value: Int64); virtual; abstract;
@@ -1071,9 +1063,7 @@ type
     procedure WriteBoolean(Value: Boolean); override;
     procedure WriteFloat(const Value: Extended); override;
     procedure WriteSingle(const Value: Single); override;
-{$ifdef HASCURRENCY}
     procedure WriteCurrency(const Value: Currency); override;
-{$endif HASCURRENCY}
     procedure WriteDate(const Value: TDateTime); override;
     procedure WriteIdent(const Ident: string); override;
     procedure WriteInteger(Value: Int64); override;
@@ -1130,9 +1120,7 @@ type
     procedure WriteDescendent(ARoot: TComponent; AAncestor: TComponent);
     procedure WriteFloat(const Value: Extended);
     procedure WriteSingle(const Value: Single);
-{$ifdef HASCURRENCY}
     procedure WriteCurrency(const Value: Currency);
-{$endif HASCURRENCY}
     procedure WriteDate(const Value: TDateTime);
     procedure WriteIdent(const Ident: string);
     procedure WriteInteger(Value: Longint); overload;

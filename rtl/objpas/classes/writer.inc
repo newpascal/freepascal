@@ -112,13 +112,11 @@ begin
   Write(Value, SizeOf(Value));
 end;
 
-{$ifdef HASCURRENCY}
 procedure TBinaryObjectWriter.WriteCurrency(const Value: Currency);
 begin
   WriteValue(vaCurrency);
   Write(Value, SizeOf(Value));
 end;
-{$endif HASCURRENCY}
 
 
 procedure TBinaryObjectWriter.WriteDate(const Value: TDateTime);
@@ -529,12 +527,10 @@ begin
   Driver.WriteSingle(Value);
 end;
 
-{$ifdef HASCURRENCY}
 procedure TWriter.WriteCurrency(const Value: Currency);
 begin
   Driver.WriteCurrency(Value);
 end;
-{$endif HASCURRENCY}
 
 procedure TWriter.WriteDate(const Value: TDateTime);
 begin

@@ -114,12 +114,10 @@ begin
   Read(Result, SizeOf(Single))
 end;
 
-{$ifdef HASCURRENCY}
 function TBinaryObjectReader.ReadCurrency: Currency;
 begin
   Read(Result, SizeOf(Currency))
 end;
-{$endif  HASCURRENCY}
 
 function TBinaryObjectReader.ReadDate: TDateTime;
 begin
@@ -882,7 +880,6 @@ begin
     Result := ReadInteger;
 end;
 
-{$ifdef HASCURRENCY}
 function TReader.ReadCurrency: Currency;
 begin
   if FDriver.NextValue = vaCurrency then
@@ -892,7 +889,6 @@ begin
   end else
     Result := ReadInteger;
 end;
-{$endif HASCURRENCY}
 
 
 function TReader.ReadDate: TDateTime;
