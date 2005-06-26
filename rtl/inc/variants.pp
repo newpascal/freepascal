@@ -439,7 +439,16 @@ end;
 
 function sysvartotdatetime (const v : variant) : tdatetime;
 begin
-  NotSupported('VariantManager.sysvartotdatetime')
+  case TVarData(v).vtype of
+    varString:      
+      if not(TryStrToDateTime(ansistring(tvardata(v).vstring),result)) and
+        not(TryStrToDate(ansistring(tvardata(v).vstring),result)) then
+        varcasterror(TVarData(v).vtype,vardate);
+    varVariant:
+      result:=sysvartotdatetime(PVariant(TVarData(V).VPointer)^);
+    else
+      result:=VariantToDate(TVarData(v));
+  end;
 end;
 
 
