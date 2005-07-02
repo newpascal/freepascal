@@ -440,7 +440,7 @@ end;
 function sysvartotdatetime (const v : variant) : tdatetime;
 begin
   case TVarData(v).vtype of
-    varString:      
+    varString:
       if not(TryStrToDateTime(ansistring(tvardata(v).vstring),result)) and
         not(TryStrToDate(ansistring(tvardata(v).vstring),result)) then
         varcasterror(TVarData(v).vtype,vardate);
@@ -1561,6 +1561,11 @@ function sysvarcastreal(const v : tvardata) : double;
           result:=v.vdouble;
         varCurrency:
           result:=v.vcurrency;
+        VarString  :
+          begin
+            if not(TryStrToFloat(ansistring(v.vString),Result)) then
+              HandleConversionException(v.vtype,vardouble);
+          end;
         else
           VariantToDouble(v);
       end;
