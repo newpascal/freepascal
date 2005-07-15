@@ -20,10 +20,8 @@
 {$h+}
 
 { Using inlining for small system functions/wrappers }
-{$ifdef HASINLINE}
-  {$inline on}
-  {$define VARIANTINLINE}
-{$endif}
+{$inline on}
+{$define VARIANTINLINE}
 
 unit variants;
 
@@ -452,11 +450,21 @@ begin
 end;
 
 
+function aligntoptr(p : pointer) : pointer;inline;
+  begin
+{$ifdef FPC_REQUIRES_PROPER_ALIGNMENT}
+    if (ptrint(p) mod sizeof(ptrint))<>0 then
+      inc(ptrint(p),sizeof(ptrint)-ptrint(p) mod sizeof(ptrint));
+{$endif FPC_REQUIRES_PROPER_ALIGNMENT}
+    result:=p;
+  end;
+
+
 {$ifdef dummy}
 function DynamicArrayDimensions(const p : pointer) : sizeint;
   begin
     result:=0;
-    while assigned(pdynarraytypeinfo(p)) and (pdynarraytypeinfo(p)^.kind=tkDynArray) do
+    while assigned(pdynarraytypeinfo(p)) and (pdynarraytypeinfo(p)^.kind=byte(tkDynArray)) do
       begin
         inc(result);
 
@@ -468,29 +476,39 @@ function DynamicArrayDimensions(const p : pointer) : sizeint;
          p:=pdynarraytypeinfo(p+sizeof(sizeint))^;
       end;
   end;
+{$endif dummy}
 
 
-function DynamicArrayIsRectangular(const p : pointer;typeinfo : pointer);
+function DynamicArrayIsRectangular(p : pointer;typeinfo : pointer) : boolean;
   var
-    arraysize : sizeint;
+    arraysize,i : sizeint;
   begin
-    result:=true;
+    result:=false;
 
     { get typeinfo of second level }
-
     { skip kind and name }
     inc(pointer(typeinfo),ord(pdynarraytypeinfo(typeinfo)^.namelen)+2);
+    p:=aligntoptr(typeinfo);
+    typeinfo:=ppointer(typeinfo+sizeof(sizeint))^;
 
-     p:=aligntoptr(typeinfo);
-
-
-     typeinfo:=pdynarraytypeinfo(typeinfo+sizeof(sizeint))^;
-
-     if assigned(pdynarraytypeinfo(typeinfo)) and (pdynarraytypeinfo(typeinfo).kind=tkDynArray) do
-       begin
-         arraysize:=
-         for i:=1 to psizeint(p-sizeof(sizeint))^ do
-{$endif dummy}
+    { check recursively? }
+    if assigned(pdynarraytypeinfo(typeinfo)) and (pdynarraytypeinfo(typeinfo)^.kind=byte(tkDynArray)) then
+      begin
+        { set to dimension of first element }
+        arraysize:=psizeint(ppointer(p)^-sizeof(sizeint))^;
+        { walk through all elements }
+        for i:=1 to psizeint(p-sizeof(sizeint))^ do
+          begin
+            { ... and check dimension }
+            if psizeint(ppointer(p)^-sizeof(sizeint))^<>arraysize then
+              exit;
+            if not(DynamicArrayIsRectangular(ppointer(p)^,typeinfo)) then
+              exit;
+            inc(p,sizeof(pointer));
+          end;
+      end;
+      result:=true;
+    end;
 
 
 procedure sysvartodynarray (var dynarr : pointer;const v : variant; typeinfo : pointer);
