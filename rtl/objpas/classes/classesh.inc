@@ -146,23 +146,23 @@ type
     FCount: Integer;
     FCapacity: Integer;
   protected
-    function Get(Index: Integer): Pointer; {$ifdef HASINLINE} inline;{$endif}
-    procedure Put(Index: Integer; Item: Pointer); {$ifdef HASINLINE} inline;{$endif}
+    function Get(Index: Integer): Pointer; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
+    procedure Put(Index: Integer; Item: Pointer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
     procedure SetCapacity(NewCapacity: Integer);
     procedure SetCount(NewCount: Integer);
     Procedure RaiseIndexError(Index : Integer);
   public
     destructor Destroy; override;
-    function Add(Item: Pointer): Integer; {$ifdef HASINLINE} inline;{$endif}
+    function Add(Item: Pointer): Integer; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
     procedure Clear;
-    procedure Delete(Index: Integer); {$ifdef HASINLINE} inline;{$endif}
+    procedure Delete(Index: Integer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
     class procedure Error(const Msg: string; Data: PtrInt);
     procedure Exchange(Index1, Index2: Integer);
-    function Expand: TFPList; {$ifdef HASINLINE} inline;{$endif}
+    function Expand: TFPList; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
     function Extract(item: Pointer): Pointer;
     function First: Pointer;
     function IndexOf(Item: Pointer): Integer;
-    procedure Insert(Index: Integer; Item: Pointer); {$ifdef HASINLINE} inline;{$endif}
+    procedure Insert(Index: Integer; Item: Pointer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
     function Last: Pointer;
     procedure Move(CurIndex, NewIndex: Integer);
     procedure Assign(Obj:TFPList);

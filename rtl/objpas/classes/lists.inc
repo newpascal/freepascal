@@ -24,14 +24,14 @@ begin
   Error(SListIndexError, Index);
 end;
 
-function TFPList.Get(Index: Integer): Pointer; {$ifdef HASINLINE} inline; {$endif}
+function TFPList.Get(Index: Integer): Pointer; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
 begin
   If (Index < 0) or (Index >= FCount) then
     RaiseIndexError(Index);
   Result:=FList^[Index];
 end;
 
-procedure TFPList.Put(Index: Integer; Item: Pointer); {$ifdef HASINLINE} inline; {$endif}
+procedure TFPList.Put(Index: Integer; Item: Pointer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
 begin
   if (Index < 0) or (Index >= FCount) then
     RaiseIndexError(Index);
@@ -82,9 +82,9 @@ begin
   inherited Destroy;
 end;
 
-function TFPList.Add(Item: Pointer): Integer; {$ifdef HASINLINE} inline; {$endif}
+function TFPList.Add(Item: Pointer): Integer; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
 begin
-  if FCount = FCapacity then 
+  if FCount = FCapacity then
     Self.Expand;
   FList^[FCount] := Item;
   Result := FCount;
@@ -101,7 +101,7 @@ begin
   end;
 end;
 
-procedure TFPList.Delete(Index: Integer); {$ifdef HASINLINE} inline; {$endif}
+procedure TFPList.Delete(Index: Integer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
 begin
   If (Index<0) or (Index>=FCount) then
     Error (SListIndexError, Index);
@@ -133,7 +133,7 @@ begin
   FList^[Index2] := Temp;
 end;
 
-function TFPList.Expand: TFPList;  {$ifdef HASINLINE} inline; {$endif}
+function TFPList.Expand: TFPList; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
 var
   IncSize : Longint;
 begin
@@ -161,7 +161,7 @@ begin
   If Result = FCount  then Result := -1;
 end;
 
-procedure TFPList.Insert(Index: Integer; Item: Pointer);  {$ifdef HASINLINE} inline; {$endif}
+procedure TFPList.Insert(Index: Integer; Item: Pointer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
 begin
   if (Index < 0) or (Index > FCount )then
     Error(SlistIndexError, Index);
@@ -365,14 +365,14 @@ begin
   inherited Destroy;
 end;
 
-function TList.Add(Item: Pointer): Integer; 
+function TList.Add(Item: Pointer): Integer;
 begin
   Result := FList.Add(Item);
   if Item <> nil then
     Notify(Item, lnAdded);
 end;
 
-procedure TList.Clear; 
+procedure TList.Clear;
 
 begin
   If Assigned(Flist) then
@@ -380,7 +380,7 @@ begin
       Delete(Count-1);
 end;
 
-procedure TList.Delete(Index: Integer); 
+procedure TList.Delete(Index: Integer);
 
 var P : pointer;
 
@@ -416,7 +416,7 @@ begin
   Result := FList.IndexOf(Item);
 end;
 
-procedure TList.Insert(Index: Integer; Item: Pointer); 
+procedure TList.Insert(Index: Integer; Item: Pointer);
 begin
   FList.Insert(Index, Item);
   if Item <> nil then
@@ -478,13 +478,13 @@ constructor TThreadList.Create;
 destructor TThreadList.Destroy;
   begin
     LockList;
-    try    
+    try
       FList.Free;
       inherited Destroy;
     finally
       UnlockList;
       DoneCriticalSection(FLock);
-    end;  
+    end;
   end;
 
 
@@ -492,7 +492,7 @@ destructor TThreadList.Destroy;
 procedure TThreadList.Add(Item: Pointer);
   begin
     LockList;
-    try      
+    try
       if (Duplicates=dupAccept) or
         // make sure it's not already in the list
         (FList.IndexOf(Item)=-1) then
@@ -517,7 +517,7 @@ procedure TThreadList.Clear;
 
 
 function TThreadList.LockList: TList;
-  begin  
+  begin
     Result:=FList;
     EnterCriticalSection(FLock);
   end;
