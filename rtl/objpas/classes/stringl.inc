@@ -465,9 +465,9 @@ begin
     end;
   SetLength (S,P-IP);
   System.Move (Value[IP],Pointer(S)^,P-IP);
-  If (P<=L) and Value[P]=#13 then 
+  If (P<=L) and (Value[P]=#13) then 
     Inc(P);
-  If (P<=L) and Value[P]=#10 then
+  If (P<=L) and (Value[P]=#10) then
     Inc(P); // Point to character after #10(#13)
   Result:=True;
 end;
