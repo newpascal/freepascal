@@ -444,11 +444,50 @@ begin
   // Empty.
 end;
 
+Function GetNextLine (Const Value : String; Var S : String; Var P : Integer) : Boolean;
+
+Var 
+  PS : PChar;
+  IP,L : Integer;
+  
+begin
+  L:=Length(Value);
+  S:='';
+  Result:=False;
+  If ((L-P)<=0) then 
+    exit;
+  PS:=PChar(Value)+P-1;
+  IP:=P;
+  While ((L-P)>=0) and (not (PS^ in [#10,#13])) do 
+    begin
+    P:=P+1;
+    Inc(PS);
+    end;
+  SetLength (S,P-IP);
+  System.Move (Value[IP],Pointer(S)^,P-IP);
+  If (P<=L) and Value[P]=#13 then 
+    Inc(P);
+  If (P<=L) and Value[P]=#10 then
+    Inc(P); // Point to character after #10(#13)
+  Result:=True;
+end;
 
 Procedure TStrings.SetTextStr(const Value: string);
 
+Var
+  S : String;
+  P,L : Integer;
+
 begin
-  SetText(PChar(Value));
+  Try
+    beginUpdate;
+    Clear;
+    P:=1;
+    While GetNextLine (Value,S,P) do
+      Add(S);
+  finally
+    EndUpdate;
+  end;
 end;
 
 
@@ -730,23 +769,6 @@ begin
 end;
 
 
-Function GetNextLine (Var P : Pchar; Var S : String) : Boolean;
-
-Var PS : PChar;
-
-begin
-  S:='';
-  Result:=False;
-  If P^=#0 then exit;
-  PS:=P;
-  While not (P^ in [#0,#10,#13]) do P:=P+1;
-  SetLength (S,P-PS);
-  System.Move (PS^,Pointer(S)^,P-PS);
-  If P^=#13 then P:=P+1;
-  If P^=#10 then
-    P:=P+1; // Point to character after #10(#13)
-  Result:=True;
-end;
 
 
 Procedure TStrings.SetText(TheText: PChar);
@@ -754,14 +776,11 @@ Procedure TStrings.SetText(TheText: PChar);
 Var S : String;
 
 begin
-  Try
-    beginUpdate;
-    Clear;
-    While GetNextLine (TheText,S) do
-    Add(S);
-  finally
-    EndUpdate;
-  end;
+  If TheText<>Nil then
+    S:=StrPas(TheText)
+  else
+    S:='';
+  SetTextStr(S);  
 end;
 
 
