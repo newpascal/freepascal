@@ -704,7 +704,7 @@ Const
   MaxGrow = 1 shl 29;
 
 Var
-  Buffer     : Pointer;
+  Buffer     : AnsiString;
   BytesRead,
   BufLen,
   I,BufDelta     : Longint;
@@ -712,21 +712,21 @@ begin
   // reread into a buffer
   try
     beginupdate;
-    Buffer:=Nil;
+    Buffer:='';
     BufLen:=0;
     I:=1;
     Repeat
       BufDelta:=BufSize*I;
-      ReAllocMem(Buffer,BufLen+BufDelta);
-      BytesRead:=Stream.Read((Buffer+BufLen)^,BufDelta);
+      SetLength(Buffer,BufLen+BufDelta);
+      BytesRead:=Stream.Read(Buffer[BufLen+1],BufDelta);
       inc(BufLen,BufDelta);
       If I<MaxGrow then
         I:=I shl 1;
     Until BytesRead<>BufDelta;
     // Null-terminate !!
-    Pchar(Buffer)[BufLen-BufDelta+BytesRead]:=#0;
-    Text:=PChar(Buffer);
-    FreeMem(Buffer);
+    Pchar(Buffer)[BufLen-BufDelta+BytesRead+1]:=#0;
+    SetTextStr(Buffer);
+    SetLength(Buffer,0);
   finally
     EndUpdate;
   end;
