@@ -723,8 +723,7 @@ begin
       If I<MaxGrow then
         I:=I shl 1;
     Until BytesRead<>BufDelta;
-    // Null-terminate !!
-    Pchar(Buffer)[BufLen-BufDelta+BytesRead+1]:=#0;
+    SetLength(Buffer, BufLen-BufDelta+BytesRead);
     SetTextStr(Buffer);
     SetLength(Buffer,0);
   finally
