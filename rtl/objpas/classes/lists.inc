@@ -519,7 +519,7 @@ procedure TThreadList.Clear;
 function TThreadList.LockList: TList;
   begin
     Result:=FList;
-    EnterCriticalSection(FLock);
+    System.EnterCriticalSection(FLock);
   end;
 
 
@@ -536,7 +536,7 @@ procedure TThreadList.Remove(Item: Pointer);
 
 procedure TThreadList.UnlockList;
   begin
-    LeaveCriticalSection(FLock);
+    System.LeaveCriticalSection(FLock);
   end;
 
 

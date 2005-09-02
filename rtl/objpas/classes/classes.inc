@@ -86,7 +86,7 @@ procedure TThread.Synchronize(Method: TThreadMethod);
       Method()
     else
       begin
-        EnterCriticalSection(SynchronizeCritSect);
+        System.EnterCriticalSection(SynchronizeCritSect);
         RtlEventStartWait(ExecuteEvent);
         SynchronizeException:=nil;
         SynchronizeMethod:=Method;
@@ -102,7 +102,7 @@ procedure TThread.Synchronize(Method: TThreadMethod);
         { wait infinitely }
         RtlEventWaitFor(ExecuteEvent);
         LocalSyncException:=SynchronizeException;
-        LeaveCriticalSection(SynchronizeCritSect);
+        System.LeaveCriticalSection(SynchronizeCritSect);
         if assigned(LocalSyncException) then
           raise LocalSyncException;
       end;
