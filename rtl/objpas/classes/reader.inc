@@ -579,7 +579,7 @@ begin
           GlobalFixupList.Add(CurFixup);
           FFixups[i] := nil;
         end else
-          SetOrdProp(CurFixup.FInstance, CurFixup.FPropInfo, LongInt(Target));
+          SetOrdProp(CurFixup.FInstance, CurFixup.FPropInfo, PtrInt(Target));
       end;
     finally
       FreeFixups;
@@ -1297,7 +1297,7 @@ procedure TReader.CopyValue(Writer: TWriter);
       FDriver.Read(Buffer, 1024);
       Writer.Driver.Write(Buffer, 1024);
       Dec(Count, 1024);
-â    end;
+ï¿½   end;
     if Count > 0 then
     begin
       FDriver.Read(Buffer, Count);
