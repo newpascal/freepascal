@@ -1994,7 +1994,8 @@ end;
 
 procedure VarClear(var V: OleVariant);{$ifdef VARIANTINLINE}inline;{$endif VARIANTINLINE}
 begin
-  sysvarclear(v);
+  { strange casting using TVarData to avoid call of helper olevariant->variant }
+  sysvarclear(Variant(TVarData(v)));
 end;
 
 
