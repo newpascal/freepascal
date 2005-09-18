@@ -1649,6 +1649,7 @@ procedure NotifyGlobalLoading;
 procedure EndGlobalLoading;
 
 function CollectionsEqual(C1, C2: TCollection): Boolean;
+function CollectionsEqual(C1, C2: TCollection; Owner1, Owner2: TComponent): Boolean;
 
 { Object conversion routines }
 
