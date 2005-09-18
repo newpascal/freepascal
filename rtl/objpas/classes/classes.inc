@@ -172,7 +172,7 @@ var
 
 begin
   Result:=0;
-  if Not (Assigned(Content) and Assigned(Strings) and (Content^<>#0)) then 
+  if Not (Assigned(Content) and Assigned(Strings) and (Content^<>#0)) then
     Exit;
   P:=Content;
   InQuote:=False;
@@ -182,13 +182,13 @@ begin
   Strings.BeginUpdate;
   Try
     repeat
-      while P^ in WhiteSpace do 
+      while P^ in WhiteSpace do
         Inc(P); // Not MBCS safe
       Start:=P;
       while True do
         begin
         while (InQuote and not (P^ in [QC, #0])) or
-              not (P^ in Separators) do 
+              not (P^ in Separators) do
             Inc(P); // Not MBCS safe
         if P^ in ['''', '"'] then
           begin
@@ -198,8 +198,8 @@ begin
             QC:=#0;
           InQuote:=QC<>#0;
           Inc(P);
-          end 
-        else 
+          end
+        else
           Break;
         end;
       if (Start<>P) and (P^<>#0) then
@@ -216,7 +216,7 @@ begin
   end;
 end;
 
-  
+
 
 { Point and rectangle constructors }
 
@@ -828,6 +828,44 @@ begin
   CollectionsEqual:=false;
 end;
 
+function CollectionsEqual(C1, C2: TCollection; Owner1, Owner2: TComponent): Boolean;
+
+  procedure stream_collection(s : tstream;c : tcollection;o : tcomponent);
+    var
+      w : twriter;
+    begin
+      w:=twriter.create(s,4096);
+      try
+        w.root:=o;
+        w.flookuproot:=o;
+        w.writecollection(c);
+      finally
+        w.free;
+      end;
+    end;
+
+  var
+    s1,s2 : tmemorystream;
+  begin
+    result:=false;
+    if (c1.classtype<>c2.classtype) or
+      (c1.count<>c2.count) then
+      exit;
+
+    s1:=tmemorystream.create;
+    try
+      s2:=tmemorystream.create;
+      try
+        stream_collection(s1,c1,owner1);
+        stream_collection(s2,c2,owner2);
+        result:=(s1.size=s2.size) and (CompareChar(s1.memory,s2.memory,s1.size)=0);
+      finally
+        s2.free;
+      end;
+    finally
+      s1.free;
+    end;
+  end;
 
 
 { Object conversion routines }
