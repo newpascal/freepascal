@@ -741,8 +741,8 @@ type
 
   TResourceStream = class(TCustomMemoryStream)
   private
-    HResInfo: HRSRC;
-    HGlobal: THandle;
+    Res: HRSRC;
+    Handle: THandle;
     procedure Initialize(Instance: THandle; Name, ResType: PChar);
   public
     constructor Create(Instance: THandle; const ResName: string; ResType: PChar);
