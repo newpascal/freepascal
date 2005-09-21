@@ -87,6 +87,9 @@ function VarFromDateTime(const DateTime: TDateTime): Variant;
 function VarInRange(const AValue, AMin, AMax: Variant): Boolean;
 function VarEnsureRange(const AValue, AMin, AMax: Variant): Variant;
 
+function VarSameValue(const A, B: Variant): Boolean;
+function VarCompareValue(const A, B: Variant): TVariantRelationship;
+
 function VarIsEmptyParam(const V: Variant): Boolean;
 
 procedure VarClear(var V: Variant);{$ifdef VARIANTINLINE}inline;{$endif VARIANTINLINE}
@@ -300,11 +303,7 @@ Function  GetVariantProp(Instance: TObject; const PropName: string): Variant;
 Procedure SetVariantProp(Instance: TObject; const PropName: string; const Value: Variant);
 Procedure SetVariantProp(Instance: TObject; PropInfo : PPropInfo; const Value: Variant);
 
-
-
-
 implementation
-
 
 uses
   math,varutils;
@@ -2131,6 +2130,43 @@ begin
 end;
 
 
+function VarSameValue(const A, B: Variant): Boolean;
+  var
+    v1,v2 : tvardata;
+  begin
+    v1:=FindVarData(a)^;
+    v2:=FindVarData(b)^;
+    if v1.vtype in [VarEmpty,VarNull] then
+      result:=v1.vtype=v2.vtype
+    else if v2.vtype in [VarEmpty,VarNull] then
+      result:=false
+    else
+      result:=A=B;
+  end;
+
+
+function VarCompareValue(const A, B: Variant): TVariantRelationship;
+  var
+    v1,v2 : tvardata;
+    variantmanager : tvariantmanager;
+  begin
+    result:=vrNotEqual;
+    v1:=FindVarData(a)^;
+    v2:=FindVarData(b)^;
+    if (v1.vtype in [VarEmpty,VarNull]) and (v1.vtype=v2.vtype) then
+      result:=vrEqual
+    else if not(v2.vtype in [VarEmpty,VarNull]) then
+      begin
+        if a=b then
+          result:=vrEqual
+        else if a>b then
+          result:=vrGreaterThan
+        else
+          result:=vrLessThan;
+      end;
+  end;
+
+
 function VarIsEmptyParam(const V: Variant): Boolean;
 begin
   Result:=(TVarData(V).vtype = varerror) and
@@ -2972,7 +3008,9 @@ function VarTypeAsText(const AType: TVarType): string;
 
 function FindVarData(const V: Variant): PVarData;
   begin
-    NotSupported('FindVarData');
+    result:=@V;
+    while result^.vtype=varVariant or VarByRef do
+      result:=PVarData(result^.VPointer);
   end;
 
 { ---------------------------------------------------------------------
