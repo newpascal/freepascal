@@ -739,6 +739,19 @@ type
 
 { TResourceStream }
 
+{$ifdef UNICODE}
+  TResourceStream = class(TCustomMemoryStream)
+  private
+    Res: HRSRC;
+    Handle: THandle;
+    procedure Initialize(Instance: THandle; Name, ResType: PWideChar);
+  public
+    constructor Create(Instance: THandle; const ResName: WideString; ResType: PWideChar);
+    constructor CreateFromID(Instance: THandle; ResID: Integer; ResType: PWideChar);
+    destructor Destroy; override;
+    function Write(const Buffer; Count: Longint): Longint; override;
+  end;
+{$else}
   TResourceStream = class(TCustomMemoryStream)
   private
     Res: HRSRC;
@@ -750,6 +763,7 @@ type
     destructor Destroy; override;
     function Write(const Buffer; Count: Longint): Longint; override;
   end;
+{$endif UNICODE}
 
 { TStreamAdapter }
 { Implements OLE IStream on VCL TStream }
