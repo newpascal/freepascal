@@ -1536,13 +1536,15 @@ begin
   GlobalFixupList := TThreadList.Create;
   ClassList := TThreadList.Create;
   ClassAliasList := TStringList.Create;
+  { on unix this maps to a simple rw synchornizer }
+  GlobalNameSpace := TMultiReadExclusiveWriteSynchronizer.Create;
 end;
 
 procedure CommonCleanup;
 var
   i: Integer;
 begin
-  // !!!: GlobalNameSpace.BeginWrite;
+  GlobalNameSpace.BeginWrite;
   with IntConstList.LockList do
     try
       for i := 0 to Count - 1 do
@@ -1558,8 +1560,7 @@ begin
   GlobalFixupList := nil;
   GlobalLists.Free;
   ComponentPages.Free;
-  {!!!: GlobalNameSpace.Free;
-  GlobalNameSpace := nil;}
+  FreeAndNil(GlobalNameSpace);
   if (InitHandlerList<>Nil) then
     for i := 0 to InitHandlerList.Count - 1 do
       TInitHandler(InitHandlerList.Items[I]).Free;
