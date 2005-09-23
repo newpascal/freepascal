@@ -1651,25 +1651,40 @@ procedure sysvarfromdynarray(var dest : variant;const source : pointer; typeinfo
 
 procedure sysolevarfrompstr(var dest : olevariant; const source : shortstring);
   begin
-    NotSupported('VariantManager.sysolevarfrompstr');
+    sysvarfromwstr(variant(tvardata(dest)),source);
   end;
 
 
 procedure sysolevarfromlstr(var dest : olevariant; const source : ansistring);
   begin
-    NotSupported('VariantManager.sysolevarfromlstr');
+    sysvarfromwstr(variant(tvardata(dest)),source);
   end;
 
 
 procedure sysolevarfromvar(var dest : olevariant; const source : variant);
   begin
-    NotSupported('VariantManager.sysolevarfromvar');
+    if tvardata(source).vtype=varVariant or varByRef then
+      sysolevarfromvar(dest,source)
+    else
+      begin
+        case tvardata(source).vtype of
+          varWord,varShortInt,varByte:
+            sysvarcast(variant(tvardata(dest)),source,varInteger);
+          varString:
+            sysolevarfromlstr(dest,source);
+        else
+          VarCastError;
+        end;
+      end;
   end;
 
 
 procedure sysolevarfromint(var dest : olevariant; const source : longint;const range : shortint);
   begin
-    NotSupported('VariantManager.sysolevarfromint');
+    if TVarData(Dest).VType>=varOleStr then
+      sysvarclear(variant(tvardata(Dest)));
+    tvardata(dest).vtype:=varInteger;
+    tvardata(dest).vinteger:=source;
   end;
 
 
