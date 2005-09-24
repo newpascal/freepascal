@@ -1560,7 +1560,10 @@ begin
   GlobalFixupList := nil;
   GlobalLists.Free;
   ComponentPages.Free;
-  FreeAndNil(GlobalNameSpace);
+  
+  { GlobalNameSpace is an interface so this is enough }
+  GlobalNameSpace:=nil;
+  
   if (InitHandlerList<>Nil) then
     for i := 0 to InitHandlerList.Count - 1 do
       TInitHandler(InitHandlerList.Items[I]).Free;
