@@ -470,10 +470,14 @@ begin
   H.AHandler:=Handler;
   With InitHandlerList do
     begin
-    I:=0;
-    While (I<Count) and not H.AClass.InheritsFrom(TInitHandler(Items[i]).AClass) do
-      Inc(I);
-    InitHandlerList.Insert(I,H);
+      I:=0;
+      While (I<Count) and not H.AClass.InheritsFrom(TInitHandler(Items[I]).AClass) do
+        Inc(I);
+      { override? }
+      if TInitHandler(Items[I]).AClass=H.AClass then
+        TInitHandler(Items[I]).AHandler:=Handler
+      else
+        InitHandlerList.Insert(I,H);
     end;
 end;
 
