@@ -425,17 +425,17 @@ Var
 
 procedure RegisterFindGlobalComponentProc(AFindGlobalComponent: TFindGlobalComponent);
   begin
-  	if not(assigned(FindGlobalComponentList)) then
-  	  FindGlobalComponentList:=TList.Create;
-  	if FindGlobalComponentList.IndexOf(Pointer(AFindGlobalComponent))<0 then
-  	  FindGlobalComponentList.Add(Pointer(AFindGlobalComponent));
+    if not(assigned(FindGlobalComponentList)) then
+      FindGlobalComponentList:=TList.Create;
+    if FindGlobalComponentList.IndexOf(Pointer(AFindGlobalComponent))<0 then
+      FindGlobalComponentList.Add(Pointer(AFindGlobalComponent));
   end;
 
 
 procedure UnregisterFindGlobalComponentProc(AFindGlobalComponent: TFindGlobalComponent);
   begin
-  	if assigned(FindGlobalComponentList) then
-  	  FindGlobalComponentList.Remove(Pointer(AFindGlobalComponent));
+    if assigned(FindGlobalComponentList) then
+      FindGlobalComponentList.Remove(Pointer(AFindGlobalComponent));
   end;
 
 
@@ -443,8 +443,8 @@ function FindGlobalComponent(const Name: string): TComponent;
   var
   	i : sizeint;
   begin
-  	FindGlobalComponent:=nil;
-  	if assigned(FindGlobalComponentList) then
+    FindGlobalComponent:=nil;
+    if assigned(FindGlobalComponentList) then
       begin
       	for i:=FindGlobalComponentList.Count-1 downto 0 do
       	  begin
@@ -472,7 +472,7 @@ begin
       While (I<Count) and not H.AClass.InheritsFrom(TInitHandler(Items[I]).AClass) do
         Inc(I);
       { override? }
-      if TInitHandler(Items[I]).AClass=H.AClass then
+      if (I<Count) and (TInitHandler(Items[I]).AClass=H.AClass) then
         TInitHandler(Items[I]).AHandler:=Handler
       else
         InitHandlerList.Insert(I,H);
