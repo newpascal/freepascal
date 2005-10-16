@@ -144,20 +144,27 @@ begin
 end;
 
 procedure TBinaryObjectWriter.WriteInteger(Value: Int64);
+var
+  s: ShortInt;
+  i: SmallInt;
+  l: Longint;
 begin
   { Use the smallest possible integer type for the given value: }
   if (Value >= -128) and (Value <= 127) then
   begin
     WriteValue(vaInt8);
-    Write(Value, 1);
+    s := Value;
+    Write(s, 1);
   end else if (Value >= -32768) and (Value <= 32767) then
   begin
     WriteValue(vaInt16);
-    Write(Value, 2);
+    i := Value;
+    Write(i, 2);
   end else if (Value >= -$80000000) and (Value <= $7fffffff) then
   begin
     WriteValue(vaInt32);
-    Write(Value, 4);
+    l := Value;
+    Write(l, 4);
   end else
   begin
     WriteValue(vaInt64);
@@ -194,12 +201,14 @@ end;
 procedure TBinaryObjectWriter.WriteString(const Value: String);
 var
   i: Integer;
+  b: byte;
 begin
   i := Length(Value);
   if i <= 255 then
   begin
     WriteValue(vaString);
-    Write(i, 1);
+    b := i;
+    Write(b, 1);
   end else
   begin
     WriteValue(vaLString);
@@ -246,18 +255,23 @@ begin
 end;
 
 procedure TBinaryObjectWriter.WriteValue(Value: TValueType);
+var
+  b: byte;
 begin
-  Write(Value, 1);
+  b := byte(Value);
+  Write(b, 1);
 end;
 
 procedure TBinaryObjectWriter.WriteStr(const Value: String);
 var
-  i: Integer;
+  i: integer;
+  b: byte;
 begin
   i := Length(Value);
   if i > 255 then
     i := 255;
-  Write(i, 1);
+  b := i;
+  Write(b, 1);
   if i > 0 then
     Write(Value[1], i);
 end;

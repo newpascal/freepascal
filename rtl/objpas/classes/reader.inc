@@ -36,9 +36,11 @@ begin
 end;
 
 function TBinaryObjectReader.ReadValue: TValueType;
+var
+  b: byte;
 begin
-  Result := vaNull; { Necessary in FPC as TValueType is larger than 1 byte! }
-  Read(Result, 1);
+  Read(b, 1);
+  Result := TValueType(b);
 end;
 
 function TBinaryObjectReader.NextValue: TValueType;
@@ -201,13 +203,14 @@ end;
 
 function TBinaryObjectReader.ReadString(StringType: TValueType): String;
 var
+  b: Byte;
   i: Integer;
 begin
   case StringType of
     vaString:
       begin
-        i := 0;
-        Read(i, 1);
+        Read(b, 1);
+        i := b;
       end;
     vaLString:
       Read(i, 4);
@@ -1297,7 +1300,7 @@ procedure TReader.CopyValue(Writer: TWriter);
       FDriver.Read(Buffer, 1024);
       Writer.Driver.Write(Buffer, 1024);
       Dec(Count, 1024);
-�   end;
+    end;
     if Count > 0 then
     begin
       FDriver.Read(Buffer, Count);
