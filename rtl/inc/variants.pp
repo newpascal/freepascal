@@ -1,9 +1,9 @@
 {
-    This file is part of the Free Pascal run time library.
-    Copyright (c) 2001 by the Free Pascal development team
+    This include file contains the variants
+    support for FPC
 
-    This include file contains the declarations for variants
-    support in FPC
+    This file is part of the Free Pascal run time library.
+    Copyright (c) 2001-2005 by the Free Pascal development team
 
     See the file COPYING.FPC, included in this distribution,
     for details about the copyright.
@@ -337,6 +337,126 @@ begin
   Raise EVariantError.CreateFmt('Method %s not yet supported.',[Meth]);
 end;
 
+type
+  tvariantarrayiter = object
+    bounds : pvararrayboundarray;
+    coords : pvararraycoorarray;
+    dims : SizeInt;
+    constructor init(d: SizeInt;b : pvararrayboundarray);
+    function next : boolean;
+    destructor done;
+  end;
+
+
+constructor tvariantarrayiter.init(d: SizeInt;b : pvararrayboundarray);
+  var
+    i : sizeint;
+  begin
+    bounds:=b;
+    dims:=d;
+    getmem(coords,sizeof(Sizeint)*dims);
+    { initialize coordinate counter }
+    for i:=0 to dims-1 do
+      coords^[i]:=bounds^[i].lowbound;
+  end;
+
+
+function tvariantarrayiter.next : boolean;
+  var
+    finished : boolean;
+
+  procedure incdim(d : SizeInt);
+    begin
+      if finished then
+        exit;
+      inc(coords^[d]);
+      if coords^[d]>=bounds^[d].lowbound+bounds^[d].elementcount then
+        begin
+          coords^[d]:=bounds^[d].lowbound;
+          if d>0 then
+            incdim(d-1)
+          else
+            finished:=true;
+        end;
+    end;
+
+  begin
+    finished:=false;
+    incdim(dims-1);
+    result:=not(finished);
+  end;
+
+
+destructor tvariantarrayiter.done;
+  begin
+    freemem(coords);
+  end;
+
+
+type
+  tdynarraybounds = array of SizeInt;
+  tdynarraycoords = tdynarraybounds;
+  tdynarrayelesize = tdynarraybounds;
+  tdynarrayiter = object
+    bounds : tdynarraybounds;
+    coords : tdynarraycoords;
+    elesize : tdynarrayelesize;
+    dims : SizeInt;
+    data : pointer;
+    constructor init(p : pdynarraytypeinfo;d: SizeInt;b : tdynarraybounds);
+    function next : boolean;
+    destructor done;
+  end;
+
+
+constructor tdynarrayiter.init(p : pdynarraytypeinfo;d: SizeInt;b : tdynarraybounds);
+  var
+    i : sizeint;
+  begin
+    bounds:=b;
+    dims:=d;
+    SetLength(coords,d);
+    SetLength(elesize,d);
+    { initialize coordinate counter and elesize }
+    for i:=0 to dims-1 do
+      begin
+        coords[i]:=0;
+      end;
+  end;
+
+
+function tdynarrayiter.next : boolean;
+  var
+    finished : boolean;
+
+  procedure incdim(d : SizeInt);
+    begin
+      if finished then
+        exit;
+      inc(coords[d]);
+      if coords[d]>=bounds[d] then
+        begin
+          coords[d]:=0;
+          if d>0 then
+            incdim(d-1)
+          else
+            finished:=true;
+        end;
+    end;
+
+  begin
+    finished:=false;
+    incdim(dims-1);
+    { !!!!!
+    inc(data,);
+    }
+    result:=not(finished);
+  end;
+
+
+destructor tdynarrayiter.done;
+  begin
+  end;
 
 { ---------------------------------------------------------------------
     VariantManager support
@@ -519,7 +639,6 @@ begin
 end;
 
 procedure sysvarfrombool (var dest : variant;const source : Boolean);
-
 begin
   if TVarData(Dest).VType>=varOleStr then
     sysvarclear(Dest);
@@ -1319,62 +1438,6 @@ procedure sysvarnot (var v : variant);
              VarInvalidOp;
          end;
     end;
-  end;
-
-
-type
-  tvariantarrayiter = object
-    bounds : pvararrayboundarray;
-    coords : pvararraycoorarray;
-    dims : SizeInt;
-    constructor init(d: SizeInt;b : pvararrayboundarray);
-    function next : boolean;
-    destructor done;
-  end;
-
-
-constructor tvariantarrayiter.init(d: SizeInt;b : pvararrayboundarray);
-  var
-    i : sizeint;
-  begin
-    bounds:=b;
-    dims:=d;
-    getmem(coords,sizeof(Sizeint)*dims);
-    { initialize coordinate counter }
-    for i:=0 to dims-1 do
-      coords^[i]:=bounds^[i].lowbound;
-  end;
-
-
-function tvariantarrayiter.next : boolean;
-  var
-    finished : boolean;
-
-  procedure incdim(d : SizeInt);
-    begin
-      if finished then
-        exit;
-      inc(coords^[d]);
-      if coords^[d]>=bounds^[d].lowbound+bounds^[d].elementcount then
-        begin
-          coords^[d]:=bounds^[d].lowbound;
-          if d>0 then
-            incdim(d-1)
-          else
-            finished:=true;
-        end;
-    end;
-
-  begin
-    finished:=false;
-    incdim(dims-1);
-    result:=not(finished);
-  end;
-
-
-destructor tvariantarrayiter.done;
-  begin
-    freemem(coords);
   end;
 
 
@@ -2409,11 +2472,101 @@ function VarTypeIsValidElementType(const AVarType: TVarType): Boolean;
     Variant <-> Dynamic arrays support
   ---------------------------------------------------------------------}
 
+function DynArrayGetVariantInfo(p : pointer;var dims : longint) : longint;
+  begin
+    result:=varNull;
+    { skip kind and name }
+    inc(pointer(p),ord(pdynarraytypeinfo(p)^.namelen)+2);
+
+    p:=aligntoptr(p);
+
+    { skip elesize }
+    inc(p,sizeof(sizeint));
+
+    { search recursive? }
+    if pdynarraytypeinfo(p)^.kind=21{tkDynArr} then
+      result:=DynArrayGetVariantInfo(ppointer(p)^,dims)
+    else
+      begin
+        { skip dynarraytypeinfo }
+        inc(p,sizeof(pdynarraytypeinfo));
+        result:=plongint(p)^;
+      end;
+    inc(dims);
+  end;
+
 
 procedure DynArrayToVariant(var V: Variant; const DynArray: Pointer; TypeInfo: Pointer);
-begin
-  NotSupported('DynArrayToVariant');
-end;
+  var
+    i,
+    vararrtype,
+    dynarrvartype : longint;
+    dims : longint;
+    vararraybounds : TBoundArray;
+    iter : tvariantarrayiter;
+    p : Pointer;
+  type
+    TDynArray = array of pointer;
+  begin
+    sysvarclearproc(tvardata(v));
+
+    dims:=0;
+    dynarrvartype:=DynArrayGetVariantInfo(TypeInfo,dims);
+
+    vararrtype:=dynarrvartype;
+
+    if (dims>1) and not(DynamicArrayIsRectangular(DynArray,TypeInfo)) then
+      exit;
+
+    { retrieve bounds array }
+    Setlength(vararraybounds,dims*2);
+    p:=DynArray;
+    for i:=0 to dims-1 do
+      begin
+        vararraybounds[i*2]:=0;
+        vararraybounds[i*2+1]:=high(TDynArray(p));
+        { we checked if the array is rectangular }
+        p:=TDynArray(p)[0];
+      end;
+    { .. create variant array }
+    VarArrayCreate(vararraybounds,vararrtype);
+
+    VarArrayLock(V);
+    try
+      //!!!! iter.init(dims,);
+      repeat
+        case vararrtype of
+          varsmallint:
+            ;
+          {
+          varinteger = 3;
+          varsingle = 4;
+          vardouble = 5;
+          varcurrency = 6;
+          vardate = 7;
+          varolestr = 8;
+          vardispatch = 9;
+          varerror = 10;
+          varboolean = 11;
+          varvariant = 12;
+          varunknown = 13;
+          vardecimal = 14;
+          varshortint = 16;
+          varbyte = 17;
+          varword = 18;
+          varlongword = 19;
+          varint64 = 20;
+          varqword = 21
+          }
+          else
+            VarClear(V);
+        end;
+       until not(iter.next);
+    finally
+      iter.done;
+      VarArrayUnlock(V);
+    end;
+  end;
 
 
 procedure DynArrayFromVariant(var DynArray: Pointer; const V: Variant; TypeInfo: Pointer);
