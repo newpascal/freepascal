@@ -1529,7 +1529,8 @@ procedure sysvarcopyproc(var d : tvardata;const s : tvardata);
 
               newarray:=SafeArrayCreate(varVariant,p^.DimCount,boundsarray^);
               if not(assigned(newarray)) then
-                VarArrayCreateError;
+                
+	      VarArrayCreateError;
 
               try
                 iter.init(p^.DimCount,boundsarray);
@@ -2502,7 +2503,7 @@ procedure DynArrayToVariant(var V: Variant; const DynArray: Pointer; TypeInfo: P
     vararrtype,
     dynarrvartype : longint;
     dims : longint;
-    vararraybounds : TBoundArray;
+    vararraybounds : array of SizeInt;
     iter : tvariantarrayiter;
     p : Pointer;
   type
