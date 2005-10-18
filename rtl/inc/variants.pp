@@ -394,7 +394,7 @@ destructor tvariantarrayiter.done;
 
 
 type
-  tdynarraybounds = array of SizeInt;
+  tdynarraybounds = array of longint;
   tdynarraycoords = tdynarraybounds;
   tdynarrayelesize = tdynarraybounds;
   tdynarrayiter = object
@@ -1529,7 +1529,7 @@ procedure sysvarcopyproc(var d : tvardata;const s : tvardata);
 
               newarray:=SafeArrayCreate(varVariant,p^.DimCount,boundsarray^);
               if not(assigned(newarray)) then
-                
+
 	      VarArrayCreateError;
 
               try
