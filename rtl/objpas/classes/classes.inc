@@ -466,17 +466,25 @@ begin
   H:=TInitHandler.Create;
   H.Aclass:=ComponentClass;
   H.AHandler:=Handler;
-  With InitHandlerList do
-    begin
-      I:=0;
-      While (I<Count) and not H.AClass.InheritsFrom(TInitHandler(Items[I]).AClass) do
-        Inc(I);
-      { override? }
-      if (I<Count) and (TInitHandler(Items[I]).AClass=H.AClass) then
-        TInitHandler(Items[I]).AHandler:=Handler
-      else
-        InitHandlerList.Insert(I,H);
-    end;
+  try
+    With InitHandlerList do
+      begin
+        I:=0;
+        While (I<Count) and not H.AClass.InheritsFrom(TInitHandler(Items[I]).AClass) do
+          Inc(I);
+        { override? }
+        if (I<Count) and (TInitHandler(Items[I]).AClass=H.AClass) then
+          begin
+            TInitHandler(Items[I]).AHandler:=Handler;
+            H.Free;
+          end
+        else
+          InitHandlerList.Insert(I,H);
+      end;
+   except
+     H.Free;
+     raise;
+  end;
 end;
 
 
