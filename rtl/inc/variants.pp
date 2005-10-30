@@ -288,7 +288,7 @@ procedure VarUnexpectedError;
 procedure VarRangeCheckError(const AType: TVarType);
 procedure VarRangeCheckError(const ASourceType, ADestType: TVarType);
 procedure VarArrayCreateError;
-procedure VarResultCheck(AResult: HRESULT);
+procedure VarResultCheck(AResult: HRESULT);{$ifdef VARIANTINLINE}inline;{$endif VARIANTINLINE}
 procedure VarResultCheck(AResult: HRESULT; ASourceType, ADestType: TVarType);
 procedure HandleConversionException(const ASourceType, ADestType: TVarType);
 function VarTypeAsText(const AType: TVarType): string;
@@ -406,7 +406,7 @@ destructor tvariantarrayiter.done;
 
 
 type
-  tdynarraybounds = array of longint;
+  tdynarraybounds = array of SizeInt;
   tdynarraycoords = tdynarraybounds;
   tdynarrayelesize = tdynarraybounds;
   tdynarraypositions = array of pointer;
@@ -431,7 +431,7 @@ constructor tdynarrayiter.init(d : pointer;p : pdynarraytypeinfo;_dims: SizeInt;
     dims:=_dims;
     SetLength(coords,dims);
     SetLength(elesize,dims);
-    SetLength(positions,dims);    
+    SetLength(positions,dims);
     positions[0]:=d;
     { initialize coordinate counter and elesize }
     for i:=0 to dims-1 do
@@ -2422,16 +2422,16 @@ function VarArrayDimCount(const A: Variant) : SizeInt;
   var
     hv : tvardata;
   begin
-      hv:=tvardata(a);
+    hv:=tvardata(a);
 
-      { get final variant }
-      while hv.vtype=varByRef or varVariant do
-        hv:=tvardata(hv.vpointer^);
+    { get final variant }
+    while hv.vtype=varByRef or varVariant do
+      hv:=tvardata(hv.vpointer^);
 
-      if (hv.vtype and varArray)<>0 then
-        result:=hv.varray^.DimCount
-      else
-        result:=0;
+    if (hv.vtype and varArray)<>0 then
+      result:=hv.varray^.DimCount
+    else
+      result:=0;
   end;
 
 
@@ -2535,7 +2535,7 @@ function DynArrayGetVariantInfo(p : pointer;var dims : longint) : longint;
       begin
         { skip dynarraytypeinfo }
         inc(p,sizeof(pdynarraytypeinfo));
-        result:=plongint(p)^;        
+        result:=plongint(p)^;
       end;
     inc(dims);
   end;
@@ -2614,7 +2614,7 @@ procedure DynArrayToVariant(var V: Variant; const DynArray: Pointer; TypeInfo: P
             varvariant:
               temp:=PVariant(dynarriter.data)^;
             varunknown:
-              temp:=PUnknown(dynarriter.data)^;           
+              temp:=PUnknown(dynarriter.data)^;
             varshortint:
               temp:=PShortInt(dynarriter.data)^;
             varbyte:
@@ -2626,7 +2626,7 @@ procedure DynArrayToVariant(var V: Variant; const DynArray: Pointer; TypeInfo: P
             varint64:
               temp:=PInt64(dynarriter.data)^;
             varqword:
-              temp:=PQWord(dynarriter.data)^;            
+              temp:=PQWord(dynarriter.data)^;
             else
               VarClear(temp);
           end;
@@ -2645,9 +2645,96 @@ procedure DynArrayToVariant(var V: Variant; const DynArray: Pointer; TypeInfo: P
 
 
 procedure DynArrayFromVariant(var DynArray: Pointer; const V: Variant; TypeInfo: Pointer);
-begin
-  NotSupported('DynArrayFromVariant');
-end;
+  var
+    DynArrayDims,
+    VarArrayDims : SizeInt;
+    iter : tvariantarrayiter;
+    dynarriter : tdynarrayiter;
+    temp : variant;
+    dynarrvartype : longint;
+    variantmanager : tvariantmanager;
+    vararraybounds : pvararrayboundarray;
+    dynarraybounds : tdynarraybounds;
+    i : SizeInt;
+    p : Pointer;
+  type
+    TDynArray = array of pointer;
+  begin
+    VarArrayDims:=VarArrayDimCount(V);
+
+    dynarrvartype:=DynArrayGetVariantInfo(TypeInfo,DynArrayDims);
+
+    if (VarArrayDims=0) or (VarArrayDims<>DynArrayDims) then
+      VarResultCheck(VAR_INVALIDARG);
+
+    { retrieve bounds array }
+    Setlength(dynarraybounds,VarArrayDims);
+    getmem(vararraybounds,VarArrayDims*sizeof(TVarArrayBound));
+    try
+      p:=DynArray;
+      for i:=0 to VarArrayDims-1 do
+        begin
+          vararraybounds^[i].lowbound:=0;
+          vararraybounds^[i].elementcount:=length(TDynArray(p));
+          dynarraybounds[i]:=length(TDynArray(p));
+        end;
+      DynArraySetLength(DynArray,TypeInfo,VarArrayDims,PSizeInt(dynarraybounds));
+      GetVariantManager(variantmanager);
+      VarArrayLock(V);
+      try
+        iter.init(VarArrayDims,pvararrayboundarray(vararraybounds));
+        dynarriter.init(DynArray,TypeInfo,VarArrayDims,dynarraybounds);
+        repeat
+          temp:=variantmanager.VarArrayGet(V,VarArrayDims,PSizeInt(iter.coords));
+          case dynarrvartype of
+            varsmallint:
+              PSmallInt(dynarriter.data)^:=temp;
+            varinteger:
+              PInteger(dynarriter.data)^:=temp;
+            varsingle:
+              PSingle(dynarriter.data)^:=temp;
+            vardouble:
+              PDouble(dynarriter.data)^:=temp;
+            varcurrency:
+              PCurrency(dynarriter.data)^:=temp;
+            vardate:
+              PDouble(dynarriter.data)^:=temp;
+            varolestr:
+              PWideString(dynarriter.data)^:=temp;
+            vardispatch:
+              PDispatch(dynarriter.data)^:=temp;
+            varerror:
+              PError(dynarriter.data)^:=temp;
+            varboolean:
+              PBoolean(dynarriter.data)^:=temp;
+            varvariant:
+              PVariant(dynarriter.data)^:=temp;
+            varunknown:
+              PUnknown(dynarriter.data)^:=temp;
+            varshortint:
+              PShortInt(dynarriter.data)^:=temp;
+            varbyte:
+              PByte(dynarriter.data)^:=temp;
+            varword:
+              PWord(dynarriter.data)^:=temp;
+            varlongword:
+              PLongWord(dynarriter.data)^:=temp;
+            varint64:
+              PInt64(dynarriter.data)^:=temp;
+            varqword:
+              PQWord(dynarriter.data)^:=temp;
+          end;
+          dynarriter.next;
+        until not(iter.next);
+      finally
+        iter.done;
+        dynarriter.done;
+        VarArrayUnlock(V);
+      end;
+    finally
+      freemem(vararraybounds);
+    end;
+  end;
 
 
 function FindCustomVariantType(const AVarType: TVarType; out CustomVariantType: TCustomVariantType): Boolean; overload;
@@ -3184,7 +3271,7 @@ procedure RaiseVarException(res : HRESULT);
   end;
 
 
-procedure VarResultCheck(AResult: HRESULT);
+procedure VarResultCheck(AResult: HRESULT);{$ifdef VARIANTINLINE}inline;{$endif VARIANTINLINE}
   begin
     if AResult<>VAR_OK then
       RaiseVarException(AResult);
