@@ -431,8 +431,7 @@ constructor tdynarrayiter.init(d : pointer;p : pdynarraytypeinfo;_dims: SizeInt;
     dims:=_dims;
     SetLength(coords,dims);
     SetLength(elesize,dims);
-    SetLength(positions,dims);
-    data:=d;
+    SetLength(positions,dims);    
     positions[0]:=d;
     { initialize coordinate counter and elesize }
     for i:=0 to dims-1 do
@@ -448,10 +447,11 @@ constructor tdynarrayiter.init(d : pointer;p : pdynarraytypeinfo;_dims: SizeInt;
         elesize[i]:=psizeint(p)^;
 
         { skip elesize }
-        inc(p,sizeof(sizeint));
+        inc(pointer(p),sizeof(sizeint));
 
-        p:=pdynarraytypeinfo(pointer(p)^);
+        p:=pdynarraytypeinfo(ppointer(p)^);
       end;
+    data:=positions[dims-1];
   end;
 
 
@@ -464,7 +464,7 @@ function tdynarrayiter.next : boolean;
       if finished then
         exit;
       inc(coords[d]);
-      inc(positions[d],elesize[d]);
+      inc(pointer(positions[d]),elesize[d]);
 
       if coords[d]>=bounds[d] then
         begin
@@ -635,7 +635,7 @@ function DynamicArrayIsRectangular(p : pointer;typeinfo : pointer) : boolean;
     { get typeinfo of second level }
     { skip kind and name }
     inc(pointer(typeinfo),ord(pdynarraytypeinfo(typeinfo)^.namelen)+2);
-    p:=aligntoptr(typeinfo);
+    typeinfo:=aligntoptr(typeinfo);
     typeinfo:=ppointer(typeinfo+sizeof(sizeint))^;
 
     { check recursively? }
@@ -2529,13 +2529,13 @@ function DynArrayGetVariantInfo(p : pointer;var dims : longint) : longint;
     inc(p,sizeof(sizeint));
 
     { search recursive? }
-    if pdynarraytypeinfo(p)^.kind=21{tkDynArr} then
+    if pdynarraytypeinfo(ppointer(p)^)^.kind=21{tkDynArr} then
       result:=DynArrayGetVariantInfo(ppointer(p)^,dims)
     else
       begin
         { skip dynarraytypeinfo }
         inc(p,sizeof(pdynarraytypeinfo));
-        result:=plongint(p)^;
+        result:=plongint(p)^;        
       end;
     inc(dims);
   end;
@@ -2554,7 +2554,7 @@ procedure DynArrayToVariant(var V: Variant; const DynArray: Pointer; TypeInfo: P
     temp : variant;
     variantmanager : tvariantmanager;
     dynarraybounds : tdynarraybounds;
-type
+  type
     TDynArray = array of pointer;
   begin
     sysvarclearproc(tvardata(v));
@@ -2578,7 +2578,7 @@ type
         begin
           vararraybounds^[i].lowbound:=0;
           vararraybounds^[i].elementcount:=length(TDynArray(p));
-          dynarraybounds[i]:=high(TDynArray(p));
+          dynarraybounds[i]:=length(TDynArray(p));
           { we checked that the array is rectangular }
           p:=TDynArray(p)[0];
         end;
@@ -2595,25 +2595,38 @@ type
               temp:=PSmallInt(dynarriter.data)^;
             varinteger:
               temp:=PInteger(dynarriter.data)^;
-           {
-            varsingle = 4;
-            vardouble = 5;
-            varcurrency = 6;
-            vardate = 7;
-            varolestr = 8;
-            vardispatch = 9;
-            varerror = 10;
-            varboolean = 11;
-            varvariant = 12;
-            varunknown = 13;
-            vardecimal = 14;
-            varshortint = 16;
-            varbyte = 17;
-            varword = 18;
-            varlongword = 19;
-            varint64 = 20;
-            varqword = 21
-            }
+            varsingle:
+              temp:=PSingle(dynarriter.data)^;
+            vardouble:
+              temp:=PDouble(dynarriter.data)^;
+            varcurrency:
+              temp:=PCurrency(dynarriter.data)^;
+            vardate:
+              temp:=PDouble(dynarriter.data)^;
+            varolestr:
+              temp:=PWideString(dynarriter.data)^;
+            vardispatch:
+              temp:=PDispatch(dynarriter.data)^;
+            varerror:
+              temp:=PError(dynarriter.data)^;
+            varboolean:
+              temp:=PBoolean(dynarriter.data)^;
+            varvariant:
+              temp:=PVariant(dynarriter.data)^;
+            varunknown:
+              temp:=PUnknown(dynarriter.data)^;           
+            varshortint:
+              temp:=PShortInt(dynarriter.data)^;
+            varbyte:
+              temp:=PByte(dynarriter.data)^;
+            varword:
+              temp:=PWord(dynarriter.data)^;
+            varlongword:
+              temp:=PLongWord(dynarriter.data)^;
+            varint64:
+              temp:=PInt64(dynarriter.data)^;
+            varqword:
+              temp:=PQWord(dynarriter.data)^;            
             else
               VarClear(temp);
           end;
