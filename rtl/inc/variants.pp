@@ -2517,7 +2517,7 @@ function VarTypeIsValidElementType(const AVarType: TVarType): Boolean;
     Variant <-> Dynamic arrays support
   ---------------------------------------------------------------------}
 
-function DynArrayGetVariantInfo(p : pointer;var dims : longint) : longint;
+function DynArrayGetVariantInfo(p : pointer;var dims : sizeint) : sizeint;
   begin
     result:=varNull;
     { skip kind and name }
