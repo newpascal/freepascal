@@ -2544,9 +2544,9 @@ function DynArrayGetVariantInfo(p : pointer;var dims : sizeint) : sizeint;
 procedure DynArrayToVariant(var V: Variant; const DynArray: Pointer; TypeInfo: Pointer);
   var
     i,
+    dims           : sizeint;
     vararrtype,
-    dynarrvartype : longint;
-    dims : longint;
+    dynarrvartype  : longint;
     vararraybounds : pvararrayboundarray;
     iter : tvariantarrayiter;
     dynarriter : tdynarrayiter;
