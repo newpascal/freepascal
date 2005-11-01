@@ -635,7 +635,7 @@ begin
                 if Assigned(Root) then
                 begin
                   Reference := FindNestedComponent(Root, FName);
-                  SetOrdProp(FInstance, FPropInfo, Longint(Reference));
+                  SetOrdProp(FInstance, FPropInfo, PtrInt(Reference));
                 end;
                 // Move component to list of done components, if necessary
                 if (DoneList.IndexOf(FInstance) < 0) and
