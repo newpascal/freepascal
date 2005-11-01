@@ -2772,10 +2772,10 @@ end;
 
 
 function Null: Variant;       // Null standard constant
-begin
-  SysVarClear(Result);
-  TVarData(Result).VType := varnull;
-end;
+  begin
+    SysVarClear(Result);
+    TVarData(Result).VType := varnull;
+  end;
 
 
 { ---------------------------------------------------------------------
@@ -2783,32 +2783,27 @@ end;
   ---------------------------------------------------------------------}
 
 function TCustomVariantType.QueryInterface(const IID: TGUID; out Obj): HResult;  stdcall;
-
-begin
-  NotSupported('TCustomVariantType.QueryInterface');
-end;
+  begin
+    NotSupported('TCustomVariantType.QueryInterface');
+  end;
 
 
 function TCustomVariantType._AddRef: Integer; stdcall;
-
-begin
-  NotSupported('TCustomVariantType._AddRef');
-end;
+  begin
+    NotSupported('TCustomVariantType._AddRef');
+  end;
 
 
 function TCustomVariantType._Release: Integer; stdcall;
-
-begin
-  NotSupported('TCustomVariantType._Release');
-end;
-
+  begin
+    NotSupported('TCustomVariantType._Release');
+  end;
 
 
 procedure TCustomVariantType.SimplisticClear(var V: TVarData);
-
-begin
-  NotSupported('TCustomVariantType.SimplisticClear');
-end;
+  begin
+    NotSupported('TCustomVariantType.SimplisticClear');
+  end;
 
 
 procedure TCustomVariantType.SimplisticCopy(var Dest: TVarData; const Source: TVarData;  const Indirect: Boolean = False);
