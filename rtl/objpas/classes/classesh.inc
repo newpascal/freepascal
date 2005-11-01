@@ -1245,7 +1245,8 @@ type
     FPid: LongInt;
 {$endif}
   public
-    constructor Create(CreateSuspended: Boolean);
+    constructor Create(CreateSuspended: Boolean;
+                       const StackSize: DWord = DefaultStackSize);
     destructor Destroy; override;
     procedure Resume;
     procedure Suspend;
