@@ -1234,11 +1234,35 @@ function dovarop(const vl,vr : tvardata;const opcode : tvarop) : tvardata;
                   VarInvalidOp;
               end;
             end;
-{
+
           varboolean:
             begin
+              result.vtype:=varboolean;
+              case opcode of
+                opadd,opsubtract,opmultiply,opintdivide,oppower,
+                opmodulus,opshiftleft,opshiftright:
+                  begin
+                    variantmanager.varcast(vlconv,vlconv,varinteger);
+                    variantmanager.varcast(vrconv,vrconv,varinteger);
+                    variantmanager.varop(vlconv,vrconv,opcode);
+                  end;
+                opand:
+                  result.vboolean:=tvardata(vlconv).vboolean and tvardata(vrconv).vboolean;
+                opor:
+                  result.vboolean:=tvardata(vlconv).vboolean or tvardata(vrconv).vboolean;
+                opxor:
+                  result.vboolean:=tvardata(vlconv).vboolean xor tvardata(vrconv).vboolean;
+                opdivide:
+                  begin
+                    variantmanager.varcast(vlconv,vlconv,vardouble);
+                    variantmanager.varcast(vrconv,vrconv,vardouble);
+                    variantmanager.varop(vlconv,vrconv,opcode);
+                  end;
+                else
+                  VarInvalidOp;
+              end;
             end;
-}
+
           varint64:
             begin
               tryreal:=false;
