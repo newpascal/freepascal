@@ -2686,6 +2686,7 @@ procedure DynArrayFromVariant(var DynArray: Pointer; const V: Variant; TypeInfo:
   begin
     VarArrayDims:=VarArrayDimCount(V);
 
+    DynArrayDims:=0;
     dynarrvartype:=DynArrayGetVariantInfo(TypeInfo,DynArrayDims);
 
     if (VarArrayDims=0) or (VarArrayDims<>DynArrayDims) then
@@ -2697,10 +2698,10 @@ procedure DynArrayFromVariant(var DynArray: Pointer; const V: Variant; TypeInfo:
     try
       p:=DynArray;
       for i:=0 to VarArrayDims-1 do
-        begin
-          vararraybounds^[i].lowbound:=0;
-          vararraybounds^[i].elementcount:=length(TDynArray(p));
-          dynarraybounds[i]:=length(TDynArray(p));
+        begin          
+          vararraybounds^[i].lowbound:=VarArrayLowBound(V,i+1);
+          vararraybounds^[i].elementcount:=VarArrayHighBound(V,i+1)-vararraybounds^[i].lowbound+1;
+          dynarraybounds[i]:=vararraybounds^[i].elementcount;
         end;
       DynArraySetLength(DynArray,TypeInfo,VarArrayDims,PSizeInt(dynarraybounds));
       GetVariantManager(variantmanager);
