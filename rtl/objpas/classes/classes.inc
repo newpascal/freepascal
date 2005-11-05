@@ -59,9 +59,6 @@ var
 
 { TThread implementation }
 
-{ system dependend code }
-{$i tthread.inc}
-
 { system independend threading code }
 var
   { event that happens when gui thread is done executing the method}
@@ -76,6 +73,9 @@ var
   DoSynchronizeMethod: boolean;
   { caught exception in gui thread, to be raised in calling thread }
   SynchronizeException: Exception;
+  
+{ system dependend code }
+{$i tthread.inc}
 
 procedure TThread.Synchronize(Method: TThreadMethod);
   var
