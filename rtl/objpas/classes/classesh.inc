@@ -13,9 +13,6 @@
 
 {$H+}
 
-{ The 1.0 compiler cannot compile the Seek(int64) overloading correct }
-{$define seek64bit}
-
 type
    { extra types to compile with FPC }
    HRSRC = longint;
@@ -577,28 +574,17 @@ type
 
   TStream = class(TObject)
   protected
-{$ifdef seek64bit}
     function  GetPosition: Int64; virtual;
     procedure SetPosition(const Pos: Int64); virtual;
     function  GetSize: Int64; virtual;
     procedure SetSize64(const NewSize: Int64); virtual;
     procedure SetSize(NewSize: Longint); virtual;overload;
     procedure SetSize(const NewSize: Int64); virtual;overload;
-{$else seek64bit}
-    function  GetPosition: Longint;
-    procedure SetPosition(Pos: Longint);
-    function  GetSize: Longint;
-    procedure SetSize(NewSize: Longint); virtual;
-{$endif seek64bit}
   public
     function Read(var Buffer; Count: Longint): Longint; virtual; abstract;
     function Write(const Buffer; Count: Longint): Longint; virtual; abstract;
-{$ifdef seek64bit}
     function Seek(Offset: Longint; Origin: Word): Longint; virtual; overload;
     function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; virtual; overload;
-{$else seek64bit}
-    function Seek(Offset: Longint; Origin: Word): Longint; virtual; abstract;
-{$endif seek64bit}
     procedure ReadBuffer(var Buffer; Count: Longint);
     procedure WriteBuffer(const Buffer; Count: Longint);
     function CopyFrom(Source: TStream; Count: Int64): Int64;
@@ -619,13 +605,8 @@ type
     procedure WriteWord(w : Word);
     procedure WriteDWord(d : Cardinal);
     Procedure WriteAnsiString (S : String);
-{$ifdef seek64bit}
     property Position: Int64 read GetPosition write SetPosition;
     property Size: Int64 read GetSize write SetSize64;
-{$else seek64bit}
-    property Position: Longint read GetPosition write SetPosition;
-    property Size: Longint read GetSize write SetSize;
-{$endif seek64bit}
   end;
 
   { TOwnerStream }
@@ -652,21 +633,13 @@ type
   private
     FHandle: Integer;
   protected
-{$ifdef seek64bit}
     procedure SetSize(NewSize: Longint); override;
     procedure SetSize(const NewSize: Int64); override;
-{$else seek64bit}
-    procedure SetSize(NewSize: Longint); override;
-{$endif seek64bit}
   public
     constructor Create(AHandle: Integer);
     function Read(var Buffer; Count: Longint): Longint; override;
     function Write(const Buffer; Count: Longint): Longint; override;
-{$ifdef seek64bit}
     function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
-{$else seek64bit}
-    function Seek(Offset: Longint; Origin: Word): Longint; override;
-{$endif seek64bit}
     property Handle: Integer read FHandle;
   end;
 
@@ -691,9 +664,7 @@ type
   protected
     procedure SetPointer(Ptr: Pointer; ASize: Longint);
   public
-{$ifdef seek64bit}
     Function GetSize : Int64; Override;
-{$endif seek64bit}
     function Read(var Buffer; Count: Longint): Longint; override;
     function Seek(Offset: Longint; Origin: Word): Longint; override;
     procedure SaveToStream(Stream: TStream);
