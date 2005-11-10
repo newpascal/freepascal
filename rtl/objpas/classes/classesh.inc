@@ -1217,7 +1217,7 @@ type
 {$endif}
   public
     constructor Create(CreateSuspended: Boolean;
-                       const StackSize: DWord = DefaultStackSize);
+                       const StackSize: SizeUInt = DefaultStackSize);
     destructor Destroy; override;
     procedure Resume;
     procedure Suspend;
