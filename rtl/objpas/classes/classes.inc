@@ -981,6 +981,10 @@ procedure ObjectBinaryToText(Input, Output: TStream);
     w: Cardinal;
     InString, NewInString: Boolean;
   begin
+   if p = nil then begin
+    res:= '''''';
+   end
+   else begin
     res := '';
     InString := False;
     while P < LastP do begin
@@ -1005,7 +1009,8 @@ procedure ObjectBinaryToText(Input, Output: TStream);
       res := res + NewStr;
     end;
     if InString then res := res + '''';
-    OutStr(res);
+   end;
+   OutStr(res);
   end;
 
   procedure OutString(s: String);
