@@ -112,8 +112,11 @@ procedure TThread.Synchronize(Method: TThreadMethod);
 procedure CheckSynchronize(timeout : longint=0);
   { assumes being called from GUI thread }
   begin
-    { sanity check }
-    if GetCurrentThreadID<>MainThreadID then
+    { first sanity check }
+    if Not IsMultiThread then
+      Exit 
+    { second sanity check }  
+    else if GetCurrentThreadID<>MainThreadID then
       raise EThread.CreateFmt(SCheckSynchronizeError,[GetCurrentThreadID])
     else
       begin
