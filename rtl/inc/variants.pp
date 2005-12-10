@@ -264,6 +264,7 @@ Const
 var
   NullEqualityRule: TNullCompareRule = ncrLoose;
   NullMagnitudeRule: TNullCompareRule = ncrLoose;
+  NullStrictConvert: Boolean = true;
 
   VarDispProc: TVarDispProc;
   ClearAnyProc: TAnyProc;  { Handler clearing a varAny }
@@ -1717,12 +1718,24 @@ procedure sysvarcast (var dest : variant;const source : variant;vartype : longin
     { already the type we want? }
     if tvardata(source).vtype=vartype then
       dest:=source
+    else if tvardata(source).vtype=(varByRef or varVariant) then
+      sysvarcast(dest,pvariant(tvardata(source).vpointer)^,vartype)
     else
       begin
         getVariantManager(variantmanager);
         case vartype of
-          varany:
+          varAny:
             VarCastError(tvardata(source).vtype,vartype);
+          varEmpty:
+            if (tvardata(source).vtype=varNull) and NullStrictConvert then
+              VarCastError(varNull,varEmpty)
+            else
+              SysVarClear(dest);
+          varNull:     
+            begin
+              SysVarClear(dest);
+              tvardata(dest).vtype:=varNull;
+            end;
           varinteger:
             variantmanager.varfromint(dest,sysvarcastinteger(tvardata(source)),-4);
           varsingle,
