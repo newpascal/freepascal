@@ -571,8 +571,8 @@ end;
 Procedure TStrings.BeginUpdate;
 
 begin
+   if FUpdateCount = 0 then SetUpdateState(true);
    inc(FUpdateCount);
-   if FUpdateCount = 1 then SetUpdateState(true);
 end;
 
 
