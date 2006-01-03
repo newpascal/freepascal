@@ -1636,6 +1636,67 @@ procedure sysvarcopy (var dest : variant;const source : variant);
     sysvarcopyproc(tvardata(dest),tvardata(source));
   end;
 
+function sysvarcastint64(const v : tvardata) : int64;
+  begin
+    try
+      case v.vtype of
+        varByte:
+          result:=v.vbyte;
+        varShortint:
+          result:=v.vshortint;
+        varSmallint:
+          result:=v.vsmallint;
+        varWord:
+          result:=v.vword;
+        varInteger:
+          result:=v.vinteger;
+        varLongword:
+          result:=v.vlongword;
+        varInt64:
+          result:=v.vint64;
+{$R+}
+        varQWord:
+          result:=v.vqword;
+{$R-}
+        else
+          VarInvalidOp;
+      end;
+    except
+      HandleConversionException(v.vtype,varint64);
+      result:=0;
+    end;
+  end;
+
+function sysvarcastword64(const v : tvardata) : qword;
+  begin
+    try
+      case v.vtype of
+{$R+}
+        varShortint:
+          result:=v.vshortint;
+        varSmallint:
+          result:=v.vsmallint;
+        varInteger:
+          result:=v.vinteger;
+        varInt64:
+          result:=v.vint64;
+{$R-}
+        varByte:
+          result:=v.vbyte;
+        varWord:
+          result:=v.vword;
+        varLongword:
+          result:=v.vlongword;
+        varQWord:
+          result:=v.vqword;
+        else
+          VarInvalidOp;
+      end;
+    except
+      HandleConversionException(v.vtype,varword64);
+      result:=0;
+    end;
+  end;
 
 function sysvarcastinteger(const v : tvardata) : longint;
   begin
@@ -1736,6 +1797,10 @@ procedure sysvarcast (var dest : variant;const source : variant;vartype : longin
               SysVarClear(dest);
               tvardata(dest).vtype:=varNull;
             end;
+          varint64:
+            variantmanager.varfromint64(dest,sysvarcastint64(tvardata(source)));
+          varword64:
+            variantmanager.varfromword64(dest,sysvarcastword64(tvardata(source)));
           varinteger:
             variantmanager.varfromint(dest,sysvarcastinteger(tvardata(source)),-4);
           varsingle,
