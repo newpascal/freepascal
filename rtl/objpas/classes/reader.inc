@@ -1145,7 +1145,7 @@ begin
         else
           FFixups.Add(TPropFixup.Create(Instance, Root, PropInfo, '', ReadIdent));
       end;
-    tkInt64: SetInt64Prop(Instance, PropInfo, ReadInt64);
+    tkInt64, tkQWord: SetInt64Prop(Instance, PropInfo, ReadInt64);
     else
       raise EReadError.CreateFmt(SUnknownPropertyType, [Ord(PropType^.Kind)]);
   end;

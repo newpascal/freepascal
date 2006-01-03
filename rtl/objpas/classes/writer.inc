@@ -826,7 +826,7 @@ begin
             end;
           end;
       end;
-    tkInt64:
+    tkInt64, tkQWord:
       begin
         Int64Value := GetInt64Prop(Instance, PropInfo);
         if HasAncestor then
