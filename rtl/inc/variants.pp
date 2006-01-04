@@ -730,19 +730,42 @@ begin
 end;
 
 procedure sysvarfromword64 (var dest : variant;const source : qword);
-
-begin
-  if TVarData(Dest).VType>=varOleStr then
-    sysvarclear(Dest);
-  With TVarData(dest) do
-    begin
-    vtype:=varQWord;
-    vQword:=Source;
-    end;
-end;
+  begin
+    if TVarData(Dest).VType>=varOleStr then
+      sysvarclear(Dest);
+    With TVarData(dest) do
+      begin
+      vtype:=varQWord;
+      vQword:=Source;
+      end;
+  end;
 
 
 procedure sysvarfromreal (var dest : variant;const source : extended);
+  begin
+    if TVarData(Dest).VType>=varOleStr then
+      sysvarclear(Dest);
+    With TVarData(dest) do
+      begin
+        vtype:=varDouble;
+        vDouble:=Source;
+      end;
+  end;
+  
+  
+procedure sysvarfromsingle (var dest : variant;const source : single);
+  begin
+    if TVarData(Dest).VType>=varOleStr then
+      sysvarclear(Dest);
+    With TVarData(dest) do
+      begin
+        vtype:=varSingle;
+        vDouble:=Source;
+      end;
+  end;
+  
+
+procedure sysvarfromdouble (var dest : variant;const source : double);
   begin
     if TVarData(Dest).VType>=varOleStr then
       sysvarclear(Dest);
@@ -1803,9 +1826,12 @@ procedure sysvarcast (var dest : variant;const source : variant;vartype : longin
             variantmanager.varfromword64(dest,sysvarcastword64(tvardata(source)));
           varinteger:
             variantmanager.varfromint(dest,sysvarcastinteger(tvardata(source)),-4);
-          varsingle,
+          varsingle:
+            { calling through the variantmanager isn't possible here because
+              it doesn't provide different casts for singles und doubles (FK) }
+            sysvarfromsingle(dest,sysvarcastreal(tvardata(source)));
           vardouble:
-            variantmanager.varfromreal(dest,sysvarcastreal(tvardata(source)));
+            sysvarfromdouble(dest,sysvarcastreal(tvardata(source)));
           else
             begin
               if findcustomvarianttype(tvardata(source).vtype,customvarianttype) then
