@@ -751,8 +751,8 @@ procedure sysvarfromreal (var dest : variant;const source : extended);
         vDouble:=Source;
       end;
   end;
-  
-  
+
+
 procedure sysvarfromsingle (var dest : variant;const source : single);
   begin
     if TVarData(Dest).VType>=varOleStr then
@@ -763,7 +763,7 @@ procedure sysvarfromsingle (var dest : variant;const source : single);
         vDouble:=Source;
       end;
   end;
-  
+
 
 procedure sysvarfromdouble (var dest : variant;const source : double);
   begin
@@ -941,6 +941,20 @@ function dovarcmpempty(const vl,vr : tvardata) : shortint;
   end;
 
 
+function dovarcmpnull(const vl,vr : tvardata) : shortint;
+  begin
+    if vl.vtype=varnull then
+      begin
+        if vr.vtype=varnull then
+          result:=0
+        else
+          result:=-1;
+      end
+    else if vr.vtype=varnull then
+      result:=1;
+  end;
+
+
 function dovarcmp (const vl,vr : tvardata;const opcode : tvarop) : shortint;
   var
     resulttype : longint;
@@ -961,6 +975,11 @@ function dovarcmp (const vl,vr : tvardata;const opcode : tvarop) : shortint;
       result:=dovarcmpempty(vl,vr)
     else if vl.vtype=varempty then
       result:=dovarcmpempty(vl,vr)
+    { one is null? }
+    else if vr.vtype=varnull then
+      result:=dovarcmpnull(vl,vr)
+    else if vl.vtype=varnull then
+      result:=dovarcmpnull(vl,vr)
     else
       begin
         GetVariantManager(variantmanager);
@@ -1158,13 +1177,12 @@ function dovarop(const vl,vr : tvardata;const opcode : tvarop) : tvardata;
       result:=dovarop(tvardata(vl.vpointer^),vr,opcode)
     else if vr.vtype=(varbyref or varvariant) then
       result:=dovarop(vl,tvardata(vr.vpointer^),opcode)
-    {!!!!
     { one is empty? }
-    else if vr.vtype=varempty then
-      result:=dovarcmpempty(vl,vr)
-    else if vl.vtype=varempty then
-      result:=dovarcmpempty(vl,vr)
-    }
+    else if (vr.vtype = varempty) or (vl.vtype = varempty) then
+     result.vtype:=varempty
+    { one is null? }
+    else if (vr.vtype = varnull) or (vl.vtype = varnull) then
+      result.vtype:=varnull
     else
       begin
         GetVariantManager(variantmanager);
@@ -1815,7 +1833,7 @@ procedure sysvarcast (var dest : variant;const source : variant;vartype : longin
               VarCastError(varNull,varEmpty)
             else
               SysVarClear(dest);
-          varNull:     
+          varNull:
             begin
               SysVarClear(dest);
               tvardata(dest).vtype:=varNull;
@@ -2389,7 +2407,8 @@ function VarCompareValue(const A, B: Variant): TVariantRelationship;
     v2:=FindVarData(b)^;
     if (v1.vtype in [VarEmpty,VarNull]) and (v1.vtype=v2.vtype) then
       result:=vrEqual
-    else if not(v2.vtype in [VarEmpty,VarNull]) then
+    else if not(v2.vtype in [VarEmpty,VarNull]) and
+            not(v1.vtype in [VarEmpty,VarNull]) then
       begin
         if a=b then
           result:=vrEqual
@@ -2802,7 +2821,7 @@ procedure DynArrayFromVariant(var DynArray: Pointer; const V: Variant; TypeInfo:
     try
       p:=DynArray;
       for i:=0 to VarArrayDims-1 do
-        begin          
+        begin
           vararraybounds^[i].lowbound:=VarArrayLowBound(V,i+1);
           vararraybounds^[i].elementcount:=VarArrayHighBound(V,i+1)-vararraybounds^[i].lowbound+1;
           dynarraybounds[i]:=vararraybounds^[i].elementcount;
