@@ -551,19 +551,27 @@ end;
 
 Procedure TStrings.Assign(Source: TPersistent);
 
+Var
+  S : TStrings;
+
 begin
-  Try
+  If Source is TStrings then
+    begin
+    S:=TStrings(Source);
     BeginUpdate;
-    If Source is TStrings then
-      begin
+    Try
       clear;
-      AddStrings(TStrings(Source));
-      exit;
-      end;
+      FSpecialCharsInited:=S.FSpecialCharsInited;
+      FQuoteChar:=S.FQuoteChar;
+      FDelimiter:=S.FDelimiter;
+      FNameValueSeparator:=S.FNameValueSeparator;
+      AddStrings(S);
+    finally
+      EndUpdate;
+    end;
+    end
+  else
     Inherited Assign(Source);
-  finally
-    EndUpdate;
-  end;
 end;
 
 
