@@ -11,13 +11,13 @@
 
  **********************************************************************}
 
-Const
-  // Ratio of Pointer and Word Size.
-  WordRatio = SizeOf(Pointer) Div SizeOf(Word);
-
 {****************************************************************************}
 {*                           TFPList                                        *}
 {****************************************************************************}
+
+Const
+  // Ratio of Pointer and Word Size.
+  WordRatio = SizeOf(Pointer) Div SizeOf(Word);
 
 procedure TFPList.RaiseIndexError(Index : Integer);
 begin
@@ -293,6 +293,35 @@ begin
   for I := 0 to Obj.Count - 1 do
     Add(Obj[i]);
 end;
+
+
+procedure TFPList.ForEachCall(proc2call:TListCallback;arg:pointer);
+var
+  i : integer;
+  p : pointer;
+begin
+  For I:=0 To Count-1 Do
+    begin
+      p:=FList^[i];
+      if assigned(p) then
+        proc2call(p,arg);
+    end;
+end;
+
+
+procedure TFPList.ForEachCall(proc2call:TListStaticCallback;arg:pointer);
+var
+  i : integer;
+  p : pointer;
+begin
+  For I:=0 To Count-1 Do
+    begin
+      p:=FList^[i];
+      if assigned(p) then
+        proc2call(p,arg);
+    end;
+end;
+
 
 
 {****************************************************************************}

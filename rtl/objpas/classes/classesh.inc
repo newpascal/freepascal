@@ -13,6 +13,9 @@
 
 {$H+}
 
+{$ifdef CLASSESINLINE}{$inline on}{$endif}
+
+
 type
    { extra types to compile with FPC }
    HRSRC = longint;
@@ -133,9 +136,8 @@ type
   PPointerList = ^TPointerList;
   TPointerList = array[0..MaxListSize - 1] of Pointer;
   TListSortCompare = function (Item1, Item2: Pointer): Integer;
-  TListNotification = (lnAdded, lnExtracted, lnDeleted);
-
-{$inline on}
+  TListCallback = procedure(data,arg:pointer) of object;
+  TListStaticCallback = procedure(data,arg:pointer);
 
   TFPList = class(TObject)
   private
@@ -166,6 +168,8 @@ type
     function Remove(Item: Pointer): Integer;
     procedure Pack;
     procedure Sort(Compare: TListSortCompare);
+    procedure ForEachCall(proc2call:TListCallback;arg:pointer);
+    procedure ForEachCall(proc2call:TListStaticCallback;arg:pointer);
     property Capacity: Integer read FCapacity write SetCapacity;
     property Count: Integer read FCount write SetCount;
     property Items[Index: Integer]: Pointer read Get write Put; default;
@@ -173,6 +177,8 @@ type
   end;
 
 { TList class}
+
+  TListNotification = (lnAdded, lnExtracted, lnDeleted);
 
   TList = class(TObject)
   private
@@ -440,9 +446,9 @@ type
     procedure SetCommaText(const Value: string);
     procedure SetStringsAdapter(const Value: IStringsAdapter);
     procedure SetValue(const Name, Value: string);
-		procedure SetDelimiter(c:Char);
-		procedure SetQuoteChar(c:Char);
-		procedure SetNameValueSeparator(c:Char);
+                procedure SetDelimiter(c:Char);
+                procedure SetQuoteChar(c:Char);
+                procedure SetNameValueSeparator(c:Char);
     procedure WriteData(Writer: TWriter);
   protected
     procedure DefineProperties(Filer: TFiler); override;
