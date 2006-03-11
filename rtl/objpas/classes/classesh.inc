@@ -571,7 +571,7 @@ type
     procedure CustomSort(CompareFn: TStringListSortCompare);
     property Duplicates: TDuplicates read FDuplicates write FDuplicates;
     property Sorted: Boolean read FSorted write SetSorted;
-    property CaseSensitive: Boolean read FCaseSensitive write SetSorted;
+    property CaseSensitive: Boolean read FCaseSensitive write SetCaseSensitive;
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnChanging: TNotifyEvent read FOnChanging write FOnChanging;
   end;
