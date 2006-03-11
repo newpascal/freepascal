@@ -454,8 +454,14 @@ begin
   L:=Length(Value);
   S:='';
   Result:=False;
-  If ((L-P)<=0) then 
+  If ((L-P)<0) then 
     exit;
+  if ((L-P)=0) and (not (value[P] in [#10,#13])) Then
+    Begin
+      s:=value;
+      inc(P);
+      Exit(True);
+    End;
   PS:=PChar(Value)+P-1;
   IP:=P;
   While ((L-P)>=0) and (not (PS^ in [#10,#13])) do 
