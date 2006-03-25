@@ -458,7 +458,7 @@ begin
     exit;
   if ((L-P)=0) and (not (value[P] in [#10,#13])) Then
     Begin
-      s:=value;
+      s:=value[P];
       inc(P);
       Exit(True);
     End;
