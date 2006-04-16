@@ -115,9 +115,9 @@ function VarArrayOf(const Values: array of Variant): Variant;
 
 function VarArrayAsPSafeArray(const A: Variant): PVarArray;
 
-function VarArrayDimCount(const A: Variant) : SizeInt;
-function VarArrayLowBound(const A: Variant; Dim : SizeInt) : SizeInt;
-function VarArrayHighBound(const A: Variant; Dim : SizeInt) : SizeInt;
+function VarArrayDimCount(const A: Variant) : longint;
+function VarArrayLowBound(const A: Variant; Dim : longint) : longint;
+function VarArrayHighBound(const A: Variant; Dim : longint) : longint;
 
 function VarArrayLock(const A: Variant): Pointer;
 procedure VarArrayUnlock(const A: Variant);
@@ -1578,7 +1578,7 @@ procedure sysvarcopyproc(var d : tvardata;const s : tvardata);
     customvarianttype : tcustomvarianttype;
     p,newarray : pvararray;
     boundsarray : pvararrayboundarray;
-    ubound : sizeint;
+    ubound : longint;
     iter : tvariantarrayiter;
     varfrom,varto : pvardata;
     i : SizeInt;
@@ -2565,7 +2565,7 @@ function VarArrayAsPSafeArray(const A: Variant): PVarArray;
   end;
 
 
-function VarArrayDimCount(const A: Variant) : SizeInt;
+function VarArrayDimCount(const A: Variant) : longint;
   var
     hv : tvardata;
   begin
@@ -2582,13 +2582,13 @@ function VarArrayDimCount(const A: Variant) : SizeInt;
   end;
 
 
-function VarArrayLowBound(const A: Variant; Dim: SizeInt) : SizeInt;
+function VarArrayLowBound(const A: Variant; Dim: longint) : longint;
   begin
     VarResultCheck(SafeArrayGetLBound(VarArrayAsPSafeArray(A),Dim,Result));
   end;
 
 
-function VarArrayHighBound(const A: Variant; Dim: SizeInt) : SizeInt;
+function VarArrayHighBound(const A: Variant; Dim: longint) : longint;
   begin
     VarResultCheck(SafeArrayGetUBound(VarArrayAsPSafeArray(A),Dim,Result));
   end;
