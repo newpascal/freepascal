@@ -175,14 +175,15 @@ var
 
 begin
   Result:=0;
-  if Not (Assigned(Content) and Assigned(Strings) and (Content^<>#0)) then
+  if Not (Assigned(Content) and (Content^<>#0)) then
     Exit;
   P:=Content;
   InQuote:=False;
   QC:=#0;
   WhiteSpace:=WhiteSpace+[#10,#13];
   Separators:=Separators+[#0,#10,#13,'''','"'];
-  Strings.BeginUpdate;
+  if Assigned(Strings) then
+    Strings.BeginUpdate;
   Try
     repeat
       while P^ in WhiteSpace do
@@ -205,17 +206,21 @@ begin
         else
           Break;
         end;
-      if (Start<>P) and (P^<>#0) then
+      if (Start<>P) then
         begin
-        SetString(S,Start,P-Start);
-        Strings.Add(S);
+        if Assigned(Strings) then
+          begin
+            SetString(S,Start,P-Start);
+            Strings.Add(S);
+          end;
         Inc(Result);
         end;
       If (P^<>#0) then
         Inc(P);
     until (P^=#0);
   finally
-    Strings.EndUpdate;
+    if Assigned(Strings) then
+      Strings.EndUpdate;
   end;
 end;
 
