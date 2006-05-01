@@ -80,7 +80,10 @@ type
 { Text alignment types }
   TAlignment = (taLeftJustify, taRightJustify, taCenter);
 
-{ TLeftRight = taLeftJustify..taRightJustify; }
+  TLeftRight = taLeftJustify..taRightJustify;
+
+  TBiDiMode = (bdLeftToRight,bdRightToLeft,bdRightToLeftNoAlign,bdRightToLeftReadingOnly);
+
 
 { Types used by standard events }
   TShiftStateEnum = (ssShift, ssAlt, ssCtrl,
