@@ -276,14 +276,41 @@ begin
 end;
 
 
-
+function PointsEqual(const P1, P2: TPoint): Boolean; inline;
+  begin
+    { lazy, but should work }
+    result:=QWord(P1)=QWord(P2);
+  end;
+  
+  
+function PointsEqual(const P1, P2: TSmallPoint): Boolean; inline;
+  begin
+    { lazy, but should work }
+    result:=DWord(P1)=DWord(P2);
+  end;
+  
+function InvalidPoint(X, Y: Integer): Boolean;
+  begin
+    result:=(X=-1) and (Y=-1);
+  end;
+  
+  
+function InvalidPoint(const At: TPoint): Boolean;
+  begin
+    result:=(At.x=-1) and (At.y=-1);
+  end;
+  
+  
+function InvalidPoint(const At: TSmallPoint): Boolean;
+  begin
+    result:=(At.x=-1) and (At.y=-1);
+  end;
 
 
 { Object filing routines }
 
 var
   IntConstList: TThreadList;
-
 
 type
   TIntConst = class
