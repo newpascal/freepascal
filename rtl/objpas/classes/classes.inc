@@ -73,7 +73,7 @@ var
   DoSynchronizeMethod: boolean;
   { caught exception in gui thread, to be raised in calling thread }
   SynchronizeException: Exception;
-  
+
 { system dependend code }
 {$i tthread.inc}
 
@@ -114,8 +114,8 @@ procedure CheckSynchronize(timeout : longint=0);
   begin
     { first sanity check }
     if Not IsMultiThread then
-      Exit 
-    { second sanity check }  
+      Exit
+    { second sanity check }
     else if GetCurrentThreadID<>MainThreadID then
       raise EThread.CreateFmt(SCheckSynchronizeError,[GetCurrentThreadID])
     else
@@ -276,31 +276,31 @@ begin
 end;
 
 
-function PointsEqual(const P1, P2: TPoint): Boolean; inline;
+function PointsEqual(const P1, P2: TPoint): Boolean; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
   begin
     { lazy, but should work }
     result:=QWord(P1)=QWord(P2);
   end;
-  
-  
-function PointsEqual(const P1, P2: TSmallPoint): Boolean; inline;
+
+
+function PointsEqual(const P1, P2: TSmallPoint): Boolean; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
   begin
     { lazy, but should work }
     result:=DWord(P1)=DWord(P2);
   end;
-  
+
 function InvalidPoint(X, Y: Integer): Boolean;
   begin
     result:=(X=-1) and (Y=-1);
   end;
-  
-  
+
+
 function InvalidPoint(const At: TPoint): Boolean;
   begin
     result:=(At.x=-1) and (At.y=-1);
   end;
-  
-  
+
+
 function InvalidPoint(const At: TSmallPoint): Boolean;
   begin
     result:=(At.x=-1) and (At.y=-1);

@@ -1569,11 +1569,11 @@ function SmallPoint(AX, AY: SmallInt): TSmallPoint;
 function Rect(ALeft, ATop, ARight, ABottom: Integer): TRect;
 function Bounds(ALeft, ATop, AWidth, AHeight: Integer): TRect;
 
-function PointsEqual(const P1, P2: TPoint): Boolean; inline;
-function PointsEqual(const P1, P2: TSmallPoint): Boolean; inline;
-function InvalidPoint(X, Y: Integer): Boolean; 
-function InvalidPoint(const At: TPoint): Boolean; 
-function InvalidPoint(const At: TSmallPoint): Boolean; 
+function PointsEqual(const P1, P2: TPoint): Boolean; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
+function PointsEqual(const P1, P2: TSmallPoint): Boolean; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
+function InvalidPoint(X, Y: Integer): Boolean;
+function InvalidPoint(const At: TPoint): Boolean;
+function InvalidPoint(const At: TSmallPoint): Boolean;
 
 { Class registration routines }
 
