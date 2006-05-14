@@ -74,6 +74,27 @@ var
   { caught exception in gui thread, to be raised in calling thread }
   SynchronizeException: Exception;
 
+
+function ThreadProc(ThreadObjPtr: Pointer): PtrInt;
+  var
+    FreeThread: Boolean;
+    Thread: TThread absolute ThreadObjPtr;
+  begin
+    try
+      Thread.Execute;
+    except
+      Thread.FFatalException := TObject(AcquireExceptionObject);
+    end;
+    FreeThread := Thread.FFreeOnTerminate;
+    Result := Thread.FReturnValue;
+    Thread.FFinished := True;
+    Thread.DoTerminate;
+    if FreeThread then
+      Thread.Free;
+    EndThread(Result);
+  end;
+
+
 { system dependend code }
 {$i tthread.inc}
 
