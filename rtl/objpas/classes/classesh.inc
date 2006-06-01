@@ -1203,7 +1203,8 @@ type
     FThreadID: TThreadID; // someone might need it for pthread_* calls
     procedure DoTerminate; virtual;
     procedure Execute; virtual; abstract;
-    procedure Synchronize(Method: TThreadMethod);
+    procedure Synchronize(AMethod: TThreadMethod);
+    class procedure Synchronize(AThread: TThread; AMethod: TThreadMethod);
     property ReturnValue: Integer read FReturnValue write FReturnValue;
     property Terminated: Boolean read FTerminated;
 {$ifdef Unix}

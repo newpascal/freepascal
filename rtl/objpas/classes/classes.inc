@@ -94,23 +94,22 @@ function ThreadProc(ThreadObjPtr: Pointer): PtrInt;
     EndThread(Result);
   end;
 
-
 { system dependend code }
 {$i tthread.inc}
 
-procedure TThread.Synchronize(Method: TThreadMethod);
+class procedure TThread.Synchronize(AThread: TThread; AMethod: TThreadMethod);
   var
     LocalSyncException: Exception;
   begin
     { do we really need a synchronized call? }
     if GetCurrentThreadID=MainThreadID then
-      Method()
+      AMethod()
     else
       begin
         System.EnterCriticalSection(SynchronizeCritSect);
         RtlEventStartWait(ExecuteEvent);
         SynchronizeException:=nil;
-        SynchronizeMethod:=Method;
+        SynchronizeMethod:=AMethod;
 
         { be careful, after this assignment Method could be already executed }
         DoSynchronizeMethod:=true;
@@ -118,7 +117,7 @@ procedure TThread.Synchronize(Method: TThreadMethod);
         RtlEventSetEvent(SynchronizeTimeoutEvent);
 
         if assigned(WakeMainThread) then
-          WakeMainThread(self);
+          WakeMainThread(AThread);
 
         { wait infinitely }
         RtlEventWaitFor(ExecuteEvent);
@@ -127,6 +126,12 @@ procedure TThread.Synchronize(Method: TThreadMethod);
         if assigned(LocalSyncException) then
           raise LocalSyncException;
       end;
+  end;
+
+
+procedure TThread.Synchronize(AMethod: TThreadMethod);
+  begin
+    TThread.Synchronize(self,AMethod);
   end;
 
 
