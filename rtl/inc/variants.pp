@@ -3543,10 +3543,10 @@ begin
      tkInteger, tkChar, tkWChar, tkClass, tkBool:
         Result := GetOrdProp(Instance, PropInfo);
      tkEnumeration:
-     if PreferStrings then
-       Result := GetEnumProp(Instance, PropInfo)
-     else
-       Result := GetOrdProp(Instance, PropInfo);
+       if PreferStrings then
+         Result := GetEnumProp(Instance, PropInfo)
+       else
+         Result := GetOrdProp(Instance, PropInfo);
      tkSet:
        if PreferStrings then
          Result := GetSetProp(Instance, PropInfo, False)
@@ -3575,7 +3575,9 @@ Procedure SetPropValue(Instance: TObject; const PropName: string;  const Value: 
 var
  PropInfo: PPropInfo;
  TypeData: PTypeData;
-
+ O : Integer;
+ S : String;
+ 
 begin
    // find the property
    PropInfo := GetPropInfo(Instance, PropName);
@@ -3586,8 +3588,37 @@ begin
      TypeData := GetTypeData(PropInfo^.PropType);
      // call right SetxxxProp
      case PropInfo^.PropType^.Kind of
-       tkInteger, tkChar, tkWChar, tkBool, tkEnumeration, tkSet:
-         SetOrdProp(Instance, PropInfo, Value);
+       tkInteger, tkChar, tkWChar, tkBool:
+         begin
+         O:=Value;
+         SetOrdProp(Instance, PropInfo, O);
+         end;
+       tkEnumeration : 
+         begin
+         if (VarType(Value)=varolestr) or  (VarType(Value)=varstring) then
+           begin
+           S:=Value;
+           SetEnumProp(Instance,PropInfo,S);
+           end
+         else
+           begin
+           O:=Value;
+           SetOrdProp(Instance, PropInfo, O);
+           end;  
+         end;  
+       tkSet : 
+         begin
+         if (VarType(Value)=varolestr) or  (VarType(Value)=varstring) then
+           begin
+           S:=Value;
+           SetSetProp(Instance,PropInfo,S);
+           end
+         else
+           begin
+           O:=Value;
+           SetOrdProp(Instance, PropInfo, O);
+           end;  
+         end;  
        tkFloat:
          SetFloatProp(Instance, PropInfo, Value);
        tkString, tkLString, tkAString:
