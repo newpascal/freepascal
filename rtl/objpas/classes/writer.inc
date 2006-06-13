@@ -644,8 +644,7 @@ begin
           DefValue := GetOrdProp(Ancestor, PropInfo)
         else
           DefValue := PPropInfo(PropInfo)^.Default;
-
-        if Value <> DefValue then
+        if (Value <> DefValue) or (DefValue=longint($80000000)) then
         begin
           Driver.BeginProperty(FPropPath + PPropInfo(PropInfo)^.Name);
           case PropType^.Kind of
