@@ -1204,7 +1204,6 @@ type
     procedure DoTerminate; virtual;
     procedure Execute; virtual; abstract;
     procedure Synchronize(AMethod: TThreadMethod);
-    class procedure Synchronize(AThread: TThread; AMethod: TThreadMethod);
     property ReturnValue: Integer read FReturnValue write FReturnValue;
     property Terminated: Boolean read FTerminated;
 {$ifdef Unix}
@@ -1233,6 +1232,7 @@ type
     procedure Suspend;
     procedure Terminate;
     function WaitFor: Integer;
+    class procedure Synchronize(AThread: TThread; AMethod: TThreadMethod);
     property FreeOnTerminate: Boolean read FFreeOnTerminate write FFreeOnTerminate;
     property Handle: TThreadID read FHandle;
     property Priority: TThreadPriority read GetPriority write SetPriority;
