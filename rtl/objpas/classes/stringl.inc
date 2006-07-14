@@ -482,7 +482,7 @@ Procedure TStrings.SetTextStr(const Value: string);
 
 Var
   S : String;
-  P,L : Integer;
+  P : Integer;
 
 begin
   Try

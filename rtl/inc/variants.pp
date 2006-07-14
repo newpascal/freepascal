@@ -1983,8 +1983,6 @@ function sysvararrayget(const a : variant;indexcount : SizeInt;indices : psizein
     p : pvararray;
     arraysrc : pvariant;
     arrayelementtype : tvartype;
-    data : pointer;
-    variantmanager : tvariantmanager;
   begin
     src:=tvardata(a);
     { get final variant }
@@ -2028,7 +2026,6 @@ procedure sysvararrayput(var a : variant;const value : variant;indexcount : Size
     valuevtype,
     arrayelementtype : tvartype;
     tempvar : variant;
-    data : pointer;
     variantmanager : tvariantmanager;
   begin
     dest:=tvardata(a);
@@ -2803,7 +2800,6 @@ procedure DynArrayFromVariant(var DynArray: Pointer; const V: Variant; TypeInfo:
     vararraybounds : pvararrayboundarray;
     dynarraybounds : tdynarraybounds;
     i : SizeInt;
-    p : Pointer;
   type
     TDynArray = array of pointer;
   begin
@@ -2819,7 +2815,6 @@ procedure DynArrayFromVariant(var DynArray: Pointer; const V: Variant; TypeInfo:
     Setlength(dynarraybounds,VarArrayDims);
     getmem(vararraybounds,VarArrayDims*sizeof(TVarArrayBound));
     try
-      p:=DynArray;
       for i:=0 to VarArrayDims-1 do
         begin
           vararraybounds^[i].lowbound:=VarArrayLowBound(V,i+1);
@@ -3574,7 +3569,7 @@ Procedure SetPropValue(Instance: TObject; const PropName: string;  const Value: 
 
 var
  PropInfo: PPropInfo;
- TypeData: PTypeData;
+// TypeData: PTypeData;
  O : Integer;
  S : String;
  
@@ -3585,7 +3580,7 @@ begin
      raise EPropertyError.CreateFmt('SetPropValue: Unknown property: "%s"', [PropName])
    else
      begin
-     TypeData := GetTypeData(PropInfo^.PropType);
+//     TypeData := GetTypeData(PropInfo^.PropType);
      // call right SetxxxProp
      case PropInfo^.PropType^.Kind of
        tkInteger, tkChar, tkWChar, tkBool:
