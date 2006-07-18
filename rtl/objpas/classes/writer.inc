@@ -753,8 +753,8 @@ begin
               (TComponent(ObjValue).Owner = Root) and
               (UpperCase(TComponent(AncestorObj).Name) = UpperCase(TComponent(ObjValue).Name)) then
               AncestorObj := ObjValue
-            else
-              AncestorObj := nil;
+//            else
+//              AncestorObj := nil;
         end else
           AncestorObj := nil;
 
