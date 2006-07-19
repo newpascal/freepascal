@@ -1468,7 +1468,7 @@ type
     procedure SetCount(NewCount : Integer);
   public
     constructor Create;
-    destructor Destroy;
+    destructor Destroy; override;
 
     procedure Clear;
     procedure Delete(index : Integer);

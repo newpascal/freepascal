@@ -1221,8 +1221,10 @@ function dovarop(const vl,vr : tvardata;const opcode : tvarop) : tvardata;
                     result.vinteger:=tvardata(vlconv).vinteger*tvardata(vrconv).vinteger;
                   opintdivide:
                     result.vinteger:=tvardata(vlconv).vinteger div tvardata(vrconv).vinteger;
+{$warnings off}
                   oppower:
                     result.vinteger:=tvardata(vlconv).vinteger**tvardata(vrconv).vinteger;
+{$warnings on}
                   opmodulus:
                     result.vinteger:=tvardata(vlconv).vinteger mod tvardata(vrconv).vinteger;
                   opshiftleft:
@@ -1756,10 +1758,12 @@ function sysvarcastinteger(const v : tvardata) : longint;
 {$R+}
         varLongword:
           result:=v.vlongword;
+{$warnings off}
         varQWord:
           result:=v.vqword;
         varInt64:
           result:=v.vint64;
+{$warnings on}
 {$R-}
         else
           VarInvalidOp;
@@ -2397,7 +2401,6 @@ function VarSameValue(const A, B: Variant): Boolean;
 function VarCompareValue(const A, B: Variant): TVariantRelationship;
   var
     v1,v2 : tvardata;
-    variantmanager : tvariantmanager;
   begin
     result:=vrNotEqual;
     v1:=FindVarData(a)^;
@@ -2452,6 +2455,7 @@ function VarAsError(AResult: HRESULT): Variant;
   end;
 
 
+{$warnings off}
 function VarSupports(const V: Variant; const IID: TGUID; out Intf): Boolean;
 begin
   NotSupported('VarSupports');
@@ -2470,6 +2474,7 @@ procedure VarCopyNoInd(var Dest: Variant; const Source: Variant);
 begin
   NotSupported('VarCopyNoInd');
 end;
+{$warnings on}
 
 {****************************************************************************
               Variant array support procedures and functions
@@ -2901,11 +2906,13 @@ function FindCustomVariantType(const AVarType: TVarType; out CustomVariantType: 
   end;
 
 
+{$warnings off}
 function FindCustomVariantType(const TypeName: string;  out CustomVariantType: TCustomVariantType): Boolean; overload;
 
 begin
   NotSupported('FindCustomVariantType');
 end;
+{$warnings on}
 
 function Unassigned: Variant; // Unassigned standard constant
 begin
@@ -2925,6 +2932,7 @@ function Null: Variant;       // Null standard constant
     TCustomVariantType Class.
   ---------------------------------------------------------------------}
 
+{$warnings off}
 function TCustomVariantType.QueryInterface(const IID: TGUID; out Obj): HResult;  stdcall;
   begin
     NotSupported('TCustomVariantType.QueryInterface');
@@ -3212,11 +3220,13 @@ procedure TCustomVariantType.Compare(const Left, Right: TVarData; var Relationsh
 begin
   NotSupported('TCustomVariantType.Compare');
 end;
+{$warnings on}
 
 { ---------------------------------------------------------------------
     TInvokeableVariantType implementation
   ---------------------------------------------------------------------}
 
+{$warnings off}
 procedure TInvokeableVariantType.DispInvoke(var Dest: TVarData; const Source: TVarData; CallDesc: PCallDesc; Params: Pointer);
 
 begin
@@ -3245,6 +3255,7 @@ function TInvokeableVariantType.SetProperty(const V: TVarData; const Name: strin
   begin
     NotSupported('TInvokeableVariantType.SetProperty');
   end;
+{$warnings on}
 
 
 function TPublishableVariantType.GetProperty(var Dest: TVarData; const V: TVarData; const Name: string): Boolean;
