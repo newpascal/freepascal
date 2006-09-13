@@ -401,9 +401,9 @@ type
     function Owner: TPersistent;
     function Add: TCollectionItem;
     procedure Assign(Source: TPersistent); override;
-    procedure BeginUpdate;
+    procedure BeginUpdate; virtual;
     procedure Clear;
-    procedure EndUpdate;
+    procedure EndUpdate; virtual;
     procedure Delete(Index: Integer);
     function Insert(Index: Integer): TCollectionItem;
     function FindItemID(ID: Integer): TCollectionItem;
