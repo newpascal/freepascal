@@ -25,7 +25,7 @@ type
    TPoint=Types.TPoint;
    TRect=Types.TRect;
 
-{$ifndef win32}
+{$ifndef windows}
    TSmallPoint = record
       x,y : smallint;
    end;
