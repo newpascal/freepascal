@@ -3487,7 +3487,7 @@ function VarTypeAsText(const AType: TVarType): string;
 
 function FindVarData(const V: Variant): PVarData;
   begin
-    result:=@V;
+    result:=pvardata(@V);
     while result^.vtype=varVariant or VarByRef do
       result:=PVarData(result^.VPointer);
   end;
