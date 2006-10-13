@@ -1279,7 +1279,7 @@ type
 
   { TComponent }
 
-  TComponent = class(TPersistent)
+  TComponent = class(TPersistent,IUnknown)
   private
     FOwner: TComponent;
     FName: TComponentName;
