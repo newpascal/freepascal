@@ -1359,6 +1359,62 @@ function dovarop(const vl,vr : tvardata;const opcode : tvarop) : tvardata;
                   variantmanager.varop(vlconv,vrconv,opcode);
                 end;
             end;
+
+          varcurrency:
+            begin
+              tryreal:=false;
+              result.vtype:=varcurrency;
+{$r+,q+}
+              try
+
+                case opcode of
+                  opadd:
+                    result.vcurrency:=tvardata(vlconv).vcurrency+tvardata(vrconv).vcurrency;
+                  opsubtract:
+                    result.vcurrency:=tvardata(vlconv).vcurrency-tvardata(vrconv).vcurrency;
+                  opmultiply:
+                    result.vcurrency:=tvardata(vlconv).vcurrency*tvardata(vrconv).vcurrency;
+{                  opintdivide:
+                    result.vcurrency:=tvardata(vlconv).vcurrency / tvardata(vrconv).vcurrency;
+
+                  oppower:
+                    result.vcurrency:=tvardata(vlconv).vcurrency**tvardata(vrconv).vcurrency;
+                  opmodulus:
+                    result.vcurrency:=tvardata(vlconv).vcurrency mod tvardata(vrconv).vcurrency;
+                  opshiftleft:
+                    result.vcurrency:=tvardata(vlconv).vcurrency shl tvardata(vrconv).vcurrency;
+                  opshiftright:
+                    result.vcurrency:=tvardata(vlconv).vcurrency shr tvardata(vrconv).vcurrency;
+
+                  opand:
+                    result.vcurrency:=tvardata(vlconv).vcurrency and tvardata(vrconv).vcurrency;
+                  opor:
+                    result.vcurrency:=tvardata(vlconv).vcurrency or tvardata(vrconv).vcurrency;
+                  opxor:
+                    result.vcurrency:=tvardata(vlconv).vcurrency xor tvardata(vrconv).vcurrency;
+}
+                  opdivide:
+                    begin
+                      result.vtype:=vardouble;
+                      result.vdouble:=tvardata(vlconv).vcurrency/tvardata(vrconv).vcurrency;
+                    end;
+                  else
+                    VarInvalidOp;
+                end;
+              except
+                on erangeerror do
+                  tryreal:=true;
+                on eoverflow do
+                  tryreal:=true;
+              end;
+{$r-,q-}
+              if tryreal then
+                begin
+                  variantmanager.varcast(vlconv,vlconv,vardouble);
+                  variantmanager.varcast(vrconv,vrconv,vardouble);
+                  variantmanager.varop(vlconv,vrconv,opcode);
+                end;
+            end;
 {
           //!!!! varnull:
           varolestr:
