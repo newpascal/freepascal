@@ -204,47 +204,26 @@ begin
 end;
 
 procedure TFPList.Pack;
-Var
-  {Last,I,J,}
-  Runner : Longint;
+var
+  NewCount,
+  i : integer;
+  pdest,
+  psrc : PPointer;
 begin
-  // Not the fastest; but surely correct
-  for Runner := Fcount - 1 downto 0 do
-    if Items[Runner] = Nil then
-      Self.Delete(Runner);
-{ The following may be faster in case of large and defragmented lists
-  If count=0 then exit;
-  Runner:=0;I:=0;
-  TheLast:=Count;
-  while runner<count do
+  NewCount:=0;
+  psrc:=@FList^[0];
+  pdest:=psrc;
+  For I:=0 To FCount-1 Do
     begin
-    // Find first Nil
-    While (FList^[Runner]<>Nil) and (Runner<Count) do Runner:=Runner+1;
-    if Runner<Count do
-      begin
-      // Start searching for non-nil from last known nil+1
-      if i<Runner then I:=Runner+1;
-      While (Flist[I]^=Nil) and (I<Count) do I:=I+1;
-      // Start looking for last non-nil of block.
-      J:=I+1;
-      While (Flist^[J]<>Nil) and (J<Count) do J:=J+1;
-      // Move block and zero out
-      Move (Flist^[I],Flist^[Runner],J*SizeOf(Pointer));
-      FillWord (Flist^[I],(J-I)*WordRatio,0);
-      // Update Runner and Last to point behind last block
-      TheLast:=Runner+(J-I);
-      If J=Count then
-         begin
-         // Shortcut, when J=Count we checked all pointers
-         Runner:=Count
-      else
-         begin
-         Runner:=TheLast;
-         I:=j;
-      end;
+      if assigned(psrc^) then
+        begin
+          pdest^:=psrc^;
+          inc(pdest);
+          inc(NewCount);
+        end;
+      inc(psrc);
     end;
-  Count:=TheLast;
-}
+  FCount:=NewCount;
 end;
 
 // Needed by Sort method.
