@@ -1468,8 +1468,12 @@ function dovarop(const vl,vr : tvardata;const opcode : tvarop) : tvardata;
 
 
 procedure sysvarop (var left : variant;const right : variant;opcode : tvarop);
+  var
+    l : variant;
   begin
-    left:=variant(dovarop(tvardata(left),tvardata(right),opcode));
+    TVarData(l):=TVarData(left);
+    TVarData(left):=dovarop(TVarData(l),TVarData(right),opcode);
+    sysvarclearproc(TVarData(l));
   end;
 
 
