@@ -1473,6 +1473,7 @@ procedure sysvarop (var left : variant;const right : variant;opcode : tvarop);
   begin
     TVarData(l):=TVarData(left);
     TVarData(left):=dovarop(TVarData(l),TVarData(right),opcode);
+    { since dovarop returns a tvardata, we have to clean up ourself }
     sysvarclearproc(TVarData(l));
   end;
 
