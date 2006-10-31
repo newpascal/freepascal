@@ -162,7 +162,7 @@ type
     function LeftPromotion(const V: TVarData; const Operation: TVarOp; out RequiredVarType: TVarType): Boolean; virtual;
     function RightPromotion(const V: TVarData; const Operation: TVarOp; out RequiredVarType: TVarType): Boolean; virtual;
     function OlePromotion(const V: TVarData; out RequiredVarType: TVarType): Boolean; virtual;
-    procedure DispInvoke(var Dest: TVarData; const Source: TVarData; CallDesc: PCallDesc; Params: Pointer); virtual;
+    procedure DispInvoke(Dest: PVarData; const Source: TVarData; CallDesc: PCallDesc; Params: Pointer); virtual;
     procedure VarDataInit(var Dest: TVarData);
     procedure VarDataClear(var Dest: TVarData);
     procedure VarDataCopy(var Dest: TVarData; const Source: TVarData);
@@ -214,7 +214,7 @@ type
 
   TInvokeableVariantType = class(TCustomVariantType, IVarInvokeable)
   protected
-    procedure DispInvoke(var Dest: TVarData; const Source: TVarData;
+    procedure DispInvoke(Dest: PVarData; const Source: TVarData;
       CallDesc: PCallDesc; Params: Pointer); override;
   public
     { IVarInvokeable }
@@ -1997,8 +1997,48 @@ procedure sysvarcastole(var dest : variant;const source : variant;vartype : long
 
 
 procedure sysdispinvoke(dest : pvardata;const source : tvardata;calldesc : pcalldesc;params : pointer);cdecl;
+  var
+  	temp  : tvardata;
+  	tempp : ^tvardata;
+    customvarianttype : tcustomvarianttype;
   begin
-    NotSupported('VariantManager.sysdispinvoke');
+    if source.vtype=(varByRef or varVariant) then
+      sysdispinvoke(dest,pvardata(source.vpointer)^,calldesc,params)
+    else
+      begin
+      	try
+         	{ get a defined result }
+      	  if not(assigned(dest)) then
+      	    tempp:=nil
+      	  else
+      	    begin
+      	    	fillchar(temp,sizeof(temp),0);
+      	    	tempp:=@temp;
+      	    end;
+      	  case source.vtype of
+      	    varDispatch,
+      	    varAny,
+      	    varUnknown,
+      	    varDispatch or varByRef,
+      	    varAny or varByRef,
+      	    varUnknown or varByRef:
+      	      VarDispProc(pvariant(tempp),variant(source),calldesc,@params);
+      	    else
+      	      begin
+                if FindCustomVariantType(source.vtype,customvarianttype) then
+                  customvarianttype.DispInvoke(tempp,source,calldesc,@params)
+	  	else
+		  VarInvalidOp;
+      	      end;
+          end;
+        finally
+          if assigned(tempp) then
+            begin
+              sysvarcopyproc(dest^,tempp^);
+              sysvarclearproc(temp);
+            end;
+        end;
+      end;
   end;
 
 
@@ -3065,7 +3105,7 @@ begin
 end;
 
 
-procedure TCustomVariantType.DispInvoke(var Dest: TVarData; const Source: TVarData; CallDesc: PCallDesc; Params: Pointer);
+procedure TCustomVariantType.DispInvoke(Dest: PVarData; const Source: TVarData; CallDesc: PCallDesc; Params: Pointer);
 
 begin
   NotSupported('TCustomVariantType.DispInvoke');
@@ -3288,7 +3328,7 @@ end;
   ---------------------------------------------------------------------}
 
 {$warnings off}
-procedure TInvokeableVariantType.DispInvoke(var Dest: TVarData; const Source: TVarData; CallDesc: PCallDesc; Params: Pointer);
+procedure TInvokeableVariantType.DispInvoke(Dest: PVarData; const Source: TVarData; CallDesc: PCallDesc; Params: Pointer);
 
 begin
   NotSupported('TInvokeableVariantType.DispInvoke');
@@ -3644,7 +3684,7 @@ var
 // TypeData: PTypeData;
  O : Integer;
  S : String;
- 
+
 begin
    // find the property
    PropInfo := GetPropInfo(Instance, PropName);
@@ -3660,7 +3700,7 @@ begin
          O:=Value;
          SetOrdProp(Instance, PropInfo, O);
          end;
-       tkEnumeration : 
+       tkEnumeration :
          begin
          if (VarType(Value)=varolestr) or  (VarType(Value)=varstring) then
            begin
@@ -3671,9 +3711,9 @@ begin
            begin
            O:=Value;
            SetOrdProp(Instance, PropInfo, O);
-           end;  
-         end;  
-       tkSet : 
+           end;
+         end;
+       tkSet :
          begin
          if (VarType(Value)=varolestr) or  (VarType(Value)=varstring) then
            begin
@@ -3684,8 +3724,8 @@ begin
            begin
            O:=Value;
            SetOrdProp(Instance, PropInfo, O);
-           end;  
-         end;  
+           end;
+         end;
        tkFloat:
          SetFloatProp(Instance, PropInfo, Value);
        tkString, tkLString, tkAString:
