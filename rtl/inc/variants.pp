@@ -577,8 +577,12 @@ procedure sysvartowstr (var s : widestring;const v : variant);
 procedure sysvartointf (var intf : iinterface;const v : variant);
   begin
     case TVarData(v).vtype of
-      varunknown:
-        intf:=iinterface(TVarData(v).VUnknown);
+      varEmpty:
+        intf:=nil;
+      varUnknown:
+        intf:=IInterface(TVarData(v).VUnknown);
+      varUnknown or varByRef:
+        intf:=IInterface(TVarData(v).VPointer^);
       else
         begin
           varcasterror(TVarData(v).vtype,varunknown);
@@ -588,9 +592,20 @@ procedure sysvartointf (var intf : iinterface;const v : variant);
 
 
 procedure sysvartodisp (var disp : idispatch;const v : variant);
-begin
-  NotSupported('VariantManager.sysvartodisp')
-end;
+  begin
+    case TVarData(v).vtype of
+      varEmpty:
+        disp:=nil;
+      varDispatch:
+        disp:=IDispatch(TVarData(v).VDispatch);
+      varDispatch or varByRef:
+        disp:=IDispatch(TVarData(v).VPointer^);
+      else
+        begin
+          varcasterror(TVarData(v).vtype,varDispatch);
+        end;
+    end;
+  end;
 
 
 function sysvartotdatetime (const v : variant) : tdatetime;
@@ -1938,8 +1953,12 @@ procedure sysvarfromintf(var dest : variant;const source : iinterface);
   end;
 
 
-procedure sysvarfromdisp(var dest : variant;const source : idispatch);
+procedure sysvarfromdisp(var dest : variant;const source : iDispatch);
   begin
+    sysvarclearproc(TVarData(dest));
+    TVarData(dest).VUnknown:=nil;
+    iDispatch(TVarData(dest).VDispatch) := source;
+    TVarData(dest).VType := varDispatch;
   end;
 
 
