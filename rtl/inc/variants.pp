@@ -2041,13 +2041,13 @@ procedure sysdispinvoke(dest : pvardata;const source : tvardata;calldesc : pcall
       	    varDispatch or varByRef,
       	    varAny or varByRef,
       	    varUnknown or varByRef:
-      	      VarDispProc(pvariant(tempp),variant(source),calldesc,@params);
+      	      VarDispProc(pvariant(tempp),variant(source),calldesc,params);
       	    else
       	      begin
                 if FindCustomVariantType(source.vtype,customvarianttype) then
-                  customvarianttype.DispInvoke(tempp,source,calldesc,@params)
-	  	else
-		  VarInvalidOp;
+                  customvarianttype.DispInvoke(tempp,source,calldesc,params)
+	  	          else
+		              VarInvalidOp;
       	      end;
           end;
         finally
