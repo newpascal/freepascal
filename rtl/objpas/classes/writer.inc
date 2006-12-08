@@ -340,6 +340,13 @@ begin
   end;
 end;
 
+procedure TWriter.Write(const Buffer; Count: Longint);
+begin
+  //This should give an exception if write is not implemented (i.e. TTextObjectWriter)
+  //but should work with TBinaryObjectWriter.
+  Driver.Write(Buffer, Count);
+end;
+
 procedure TWriter.SetRoot(ARoot: TComponent);
 begin
   inherited SetRoot(ARoot);

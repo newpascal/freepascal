@@ -825,6 +825,8 @@ type
       var CompClassName, CompName: String); virtual; abstract;
     function BeginProperty: String; virtual; abstract;
 
+    //Please don't use read, better use ReadBinary whenever possible
+    procedure Read(var Buf; Count: LongInt); virtual; abstract;
     { All ReadXXX methods are called _after_ the value type has been read! }
     procedure ReadBinary(const DestData: TMemoryStream); virtual; abstract;
     function ReadFloat: Extended; virtual; abstract;
@@ -853,7 +855,6 @@ type
     FBufSize: Integer;
     FBufPos: Integer;
     FBufEnd: Integer;
-    procedure Read(var Buf; Count: LongInt);
     procedure SkipProperty;
     procedure SkipSetBody;
   public
@@ -867,6 +868,8 @@ type
       var CompClassName, CompName: String); override;
     function BeginProperty: String; override;
 
+    //Please don't use read, better use ReadBinary whenever possible
+    procedure Read(var Buf; Count: LongInt); override;
     procedure ReadBinary(const DestData: TMemoryStream); override;
     function ReadFloat: Extended; override;
     function ReadSingle: Single; override;
@@ -960,6 +963,10 @@ type
     procedure EndReferences;
     procedure FixupReferences;
     function NextValue: TValueType;
+    //Please don't use read, better use ReadBinary whenever possible
+    //uuups, ReadBinary is protected ..
+    procedure Read(var Buf; Count: LongInt); virtual;
+
     function ReadBoolean: Boolean;
     function ReadChar: Char;
     procedure ReadCollection(Collection: TCollection);
@@ -1011,6 +1018,8 @@ type
     procedure EndList; virtual; abstract;
     procedure BeginProperty(const PropName: String); virtual; abstract;
     procedure EndProperty; virtual; abstract;
+    //Please don't use write, better use WriteBinary whenever possible
+    procedure Write(const Buffer; Count: Longint); virtual;abstract;
 
     procedure WriteBinary(const Buffer; Count: Longint); virtual; abstract;
     procedure WriteBoolean(Value: Boolean); virtual; abstract;
@@ -1038,7 +1047,6 @@ type
     FBufEnd: Integer;
     FSignatureWritten: Boolean;
     procedure FlushBuffer;
-    procedure Write(const Buffer; Count: Longint);
     procedure WriteValue(Value: TValueType);
     procedure WriteStr(const Value: String);
   public
@@ -1053,6 +1061,8 @@ type
     procedure BeginProperty(const PropName: String); override;
     procedure EndProperty; override;
 
+    //Please don't use write, better use WriteBinary whenever possible
+    procedure Write(const Buffer; Count: Longint); override;
     procedure WriteBinary(const Buffer; Count: LongInt); override;
     procedure WriteBoolean(Value: Boolean); override;
     procedure WriteFloat(const Value: Extended); override;
@@ -1107,6 +1117,9 @@ type
     procedure DefineBinaryProperty(const Name: string;
       ReadData, AWriteData: TStreamProc;
       HasData: Boolean); override;
+    //Please don't use write, better use WriteBinary whenever possible
+    //uuups, WriteBinary is protected ..
+    procedure Write(const Buffer; Count: Longint); virtual;
     procedure WriteBoolean(Value: Boolean);
     procedure WriteCollection(Value: TCollection);
     procedure WriteComponent(Component: TComponent);

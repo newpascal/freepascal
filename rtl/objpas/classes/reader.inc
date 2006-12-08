@@ -617,6 +617,13 @@ begin
   Result := FDriver.NextValue;
 end;
 
+procedure TReader.Read(var Buf; Count: LongInt);
+begin
+  //This should give an exception if read is not implemented (i.e. TTextObjectReader)
+  //but should work with TBinaryObjectReader.
+  Driver.Read(Buf, Count);
+end;
+
 procedure TReader.PropertyError;
 begin
   FDriver.SkipValue;
