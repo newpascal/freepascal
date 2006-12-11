@@ -1191,7 +1191,8 @@ procedure ObjectBinaryToText(Input, Output: TStream);
         vaInt32: OutLn(IntToStr(LongInt(Input.ReadDWord)));
         vaExtended: begin
             Input.Read(ext, SizeOf(ext));
-            OutLn(FloatToStr(ext));
+            Str(ext,S);// Do not use localized strings.
+            OutLn(S);
           end;
         vaString: begin
             OutString(ReadSStr);
@@ -1303,6 +1304,7 @@ type
   PLongWord = ^LongWord;
 const
   signature: PChar = 'TPF0';
+  
 begin
   if Input.ReadDWord <> PLongWord(Pointer(signature))^ then
     raise EReadError.Create('Illegal stream image' {###SInvalidImage});

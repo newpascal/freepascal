@@ -283,11 +283,18 @@ end;
 
 Function TParser.TokenFloat: Extended;
 var
-  FloatError       : Integer;
+  I,FloatError       : Integer;
   Back             : Real;
+  S                : String;
+  
 begin
   Result   := 0;
-  Val(TokenString, Back, FloatError);
+  S:=TokenString;
+  // Convert , decimal separator to ., handle backwards compatibility streams.
+  for I:=1 to Length(S) do
+    if (S[i]=',') then
+      S[i]:='.';
+  Val(S, Back, FloatError);
   Result := Back;
 end;
 
