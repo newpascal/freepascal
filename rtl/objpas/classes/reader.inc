@@ -1266,7 +1266,7 @@ begin
   StringType := FDriver.ReadValue;
   if StringType in [vaString, vaLString] then
     Result := FDriver.ReadString(StringType)
-  else if StringType=vawString then
+  else if StringType in [vaWString,vaUTF8String] then
     Result:= FDriver.ReadWidestring
   else
     raise EReadError.Create(SInvalidPropertyValue);
@@ -1278,7 +1278,7 @@ var
  s: String;
  i: Integer;
 begin
-  if NextValue = vaWString then
+  if NextValue in [vaWString,vaUTF8String] then
   begin
     ReadValue;
     Result := FDriver.ReadWideString
