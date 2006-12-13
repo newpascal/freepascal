@@ -381,22 +381,17 @@ end;
 
 Function TStrings.GetTextStr: string;
 
-Const
-{$ifdef Unix}
-  NewLineSize=1;
-{$else}
-  NewLineSize=2;
-{$endif}
-
 Var P : Pchar;
-    I,L : Longint;
-    S : String;
+    I,L,NLS : Longint;
+    S,NL : String;
 
 begin
   // Determine needed place
   L:=0;
+  NL:=sLineBreak; // Force string type. Could be char.
+  NLS:=Length(NL);
   For I:=0 to count-1 do
-    L:=L+Length(Strings[I])+NewLineSize;
+    L:=L+Length(Strings[I])+NLS;
   Setlength(Result,L);
   P:=Pointer(Result);
   For i:=0 To count-1 do
@@ -406,13 +401,11 @@ begin
     if L<>0 then
       System.Move(Pointer(S)^,P^,L);
     P:=P+L;
-{$ifndef Unix}
-    p[0]:=#13;
-    p[1]:=#10;
-{$else}
-    p[0]:=#10;
-{$endif}
-    P:=P+NewLineSize;
+    For L:=1 to NLS do
+      begin
+      P^:=NL[L];
+      inc(P);
+      end;
     end;
 end;
 
