@@ -1136,12 +1136,6 @@ procedure ObjectBinaryToText(Input, Output: TStream);
 
     procedure ProcessValue(ValueType: TValueType; Indent: String);
 
-      procedure Stop(s: String);
-      begin
-        WriteLn(s);
-        Halt;
-      end;
-
       procedure ProcessBinary;
       var
         ToDo, DoNow, i: LongInt;
@@ -1249,7 +1243,7 @@ procedure ObjectBinaryToText(Input, Output: TStream);
             OutLn('');
           end;
         else
-          Stop(IntToStr(Ord(ValueType)));
+          Raise EReadError.CreateFmt(SErrInvalidPropertyType,[Ord(ValueType)]);
       end;
     end;
 
