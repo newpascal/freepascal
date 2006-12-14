@@ -633,8 +633,9 @@ var
   Handled: Boolean;
 
 begin
-
-  if (not Assigned(PPropInfo(PropInfo)^.SetProc)) or
+  // SetProc is not required for class properties
+  if (not Assigned(PPropInfo(PropInfo)^.SetProc) and
+        (PPropInfo(PropInfo)^.PropType^.Kind<>tkClass)) or
     (not Assigned(PPropInfo(PropInfo)^.GetProc)) then
     exit;
 
