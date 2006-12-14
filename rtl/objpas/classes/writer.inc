@@ -633,17 +633,25 @@ var
   Handled: Boolean;
 
 begin
-  // SetProc is not required for class properties
-  if (not Assigned(PPropInfo(PropInfo)^.SetProc) and
-        (PPropInfo(PropInfo)^.PropType^.Kind<>tkClass)) or
-    (not Assigned(PPropInfo(PropInfo)^.GetProc)) then
+  // do not stream properties without getter
+  if not Assigned(PPropInfo(PropInfo)^.GetProc) then
     exit;
+    
+  // properties without setter are only allowed, if they are subcomponents
+  PropType := PPropInfo(PropInfo)^.PropType;
+  if not Assigned(PPropInfo(PropInfo)^.SetProc) then begin
+    if PropType^.Kind<>tkClass then
+      exit;
+    ObjValue := TObject(GetObjectProp(Instance, PropInfo));
+    if not ObjValue.InheritsFrom(TComponent) or
+       not (csSubComponent in TComponent(ObjValue).ComponentStyle) then
+      exit;
+  end;
 
   { Check if the ancestor can be used }
   HasAncestor := Assigned(Ancestor) and ((Instance = Root) or
     (Instance.ClassType = Ancestor.ClassType));
 
-  PropType := PPropInfo(PropInfo)^.PropType;
   case PropType^.Kind of
     tkInteger, tkChar, tkEnumeration, tkSet:
       begin
