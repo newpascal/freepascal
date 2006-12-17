@@ -1,6 +1,7 @@
 {
     This file is part of the Free Pascal Run Time Library (rtl)
-    Copyright (c) 1999-2000 by Michael Van Canneyt and Florian Klaempfl
+    Copyright (c) 1999-2000 by Michael Van Canneyt, Florian Klaempfl,
+    and Micha Nelissen
 
     See the file COPYING.FPC, included in this distribution,
     for details about the copyright.
@@ -56,7 +57,7 @@ const
 
 type
   TSeekOrigin = (soBeginning, soCurrent, soEnd);
-  TDuplicates = (dupIgnore, dupAccept, dupError);
+  TDuplicates = Types.TDuplicates;
 
 { TFileStream create mode }
 const
@@ -118,7 +119,7 @@ type
   EMethodNotFound = class(EFilerError);
   EInvalidImage = class(EFilerError);
   EResNotFound = class(Exception);
-  EListError = class(Exception);
+  EListError = fgl.EListError;
   EBitsError = class(Exception);
   EStringListError = class(Exception);
   EComponentError = class(Exception);
@@ -139,8 +140,10 @@ type
   PPointerList = ^TPointerList;
   TPointerList = array[0..MaxListSize - 1] of Pointer;
   TListSortCompare = function (Item1, Item2: Pointer): Integer;
-  TListCallback = procedure(data,arg:pointer) of object;
-  TListStaticCallback = procedure(data,arg:pointer);
+  TListCallback = Types.TListCallback;
+  TListStaticCallback = Types.TListStaticCallback;
+
+{$ifdef VER2_0}
 
   TFPList = class(TObject)
   private
@@ -152,7 +155,7 @@ type
     procedure Put(Index: Integer; Item: Pointer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
     procedure SetCapacity(NewCapacity: Integer);
     procedure SetCount(NewCount: Integer);
-    Procedure RaiseIndexError(Index : Integer);
+    Procedure RaiseIndexError(Index: Integer);
   public
     destructor Destroy; override;
     function Add(Item: Pointer): Integer; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
@@ -161,7 +164,7 @@ type
     class procedure Error(const Msg: string; Data: PtrInt);
     procedure Exchange(Index1, Index2: Integer);
     function Expand: TFPList; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
-    function Extract(item: Pointer): Pointer;
+    function Extract(Item: Pointer): Pointer;
     function First: Pointer;
     function IndexOf(Item: Pointer): Integer;
     procedure Insert(Index: Integer; Item: Pointer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
@@ -178,6 +181,18 @@ type
     property Items[Index: Integer]: Pointer read Get write Put; default;
     property List: PPointerList read FList;
   end;
+
+{$else VER2_0}
+
+  TFPPtrList = specialize TFPGList<Pointer>;
+
+  TFPList = class(TFPPtrList)
+  public
+    procedure Assign(Source: TFPList);
+    procedure Sort(Compare: TListSortCompare);
+  end;
+
+{$endif}
 
 { TList class}
 
@@ -521,6 +536,10 @@ type
 
   TStringList = class;
 
+  TStringListSortCompare = function(List: TStringList; Index1, Index2: Integer): Integer;
+
+{$ifdef VER2_0}
+
   PStringItem = ^TStringItem;
   TStringItem = record
     FString: string;
@@ -529,7 +548,6 @@ type
 
   PStringItemList = ^TStringItemList;
   TStringItemList = array[0..MaxListSize] of TStringItem;
-  TStringListSortCompare = function(List: TStringList; Index1, Index2: Integer): Integer;
 
   TStringList = class(TStrings)
   private
@@ -578,6 +596,61 @@ type
     property OnChange: TNotifyEvent read FOnChange write FOnChange;
     property OnChanging: TNotifyEvent read FOnChanging write FOnChanging;
   end;
+
+{$else}
+
+  TFPStrObjMap = specialize TFPGMap<string, TObject>;
+
+  TStringListTextCompare = function(const s1, s2: string): PtrInt of object;
+
+  TStringList = class(TStrings)
+  private
+    FMap: TFPStrObjMap;
+    FCaseSensitive: Boolean;
+    FOnChange: TNotifyEvent;
+    FOnChanging: TNotifyEvent;
+    FOnCompareText: TStringListTextCompare;
+    procedure SetCaseSensitive(NewSensitive: Boolean);
+  protected
+    procedure Changed; virtual;
+    procedure Changing; virtual;
+    function DefaultCompareText(const s1, s2: string): PtrInt;
+    function DoCompareText(const s1, s2: string): PtrInt; override;
+    function Get(Index: Integer): string; override;
+    function GetCapacity: Integer; override;
+    function GetDuplicates: TDuplicates;
+    function GetCount: Integer; override;
+    function GetObject(Index: Integer): TObject; override;
+    function GetSorted: Boolean; {$ifdef CLASSESINLINE} inline; {$endif}
+    function MapPtrCompare(Key1, Key2: Pointer): Integer;
+    procedure Put(Index: Integer; const S: string); override;
+    procedure PutObject(Index: Integer; AObject: TObject); override;
+    procedure QuickSort(L, R: Integer; CompareFn: TStringListSortCompare);
+    procedure SetCapacity(NewCapacity: Integer); override;
+    procedure SetDuplicates(NewDuplicates: TDuplicates);
+    procedure SetSorted(NewSorted: Boolean); {$ifdef CLASSESINLINE} inline; {$endif}
+    procedure SetUpdateState(Updating: Boolean); override;
+  public
+    constructor Create;
+    destructor Destroy; override;
+    function Add(const S: string): Integer; override;
+    procedure Clear; override;
+    procedure Delete(Index: Integer); override;
+    procedure Exchange(Index1, Index2: Integer); override;
+    function Find(const S: string; var Index: Integer): Boolean; virtual;
+    function IndexOf(const S: string): Integer; override;
+    procedure Insert(Index: Integer; const S: string); override;
+    procedure Sort; virtual;
+    procedure CustomSort(CompareFn: TStringListSortCompare);
+    property Duplicates: TDuplicates read GetDuplicates write SetDuplicates;
+    property Sorted: Boolean read GetSorted write SetSorted;
+    property CaseSensitive: Boolean read FCaseSensitive write SetCaseSensitive;
+    property OnChange: TNotifyEvent read FOnChange write FOnChange;
+    property OnChanging: TNotifyEvent read FOnChanging write FOnChanging;
+    property OnCompareText: TStringListTextCompare read FOnCompareText write FOnCompareText;
+  end;
+
+{$endif}  
 
 { TStream abstract class }
 
