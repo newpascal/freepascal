@@ -190,6 +190,8 @@ type
   public
     procedure Assign(Source: TFPList);
     procedure Sort(Compare: TListSortCompare);
+    procedure ForEachCall(Proc2call: TListCallback; Arg: Pointer);
+    procedure ForEachCall(Proc2call: TListStaticCallback; Arg: Pointer);
   end;
 
 {$endif}

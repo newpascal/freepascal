@@ -318,6 +318,23 @@ begin
   inherited Sort(TFPPtrListSortCompare(Compare));
 end;
 
+procedure TFPList.ForEachCall(Proc2call: TListCallback; Arg: Pointer);
+var
+  I: integer;
+begin
+  for I:=0 to Count-1 do
+    proc2call(InternalItems[I],arg);
+end;
+
+
+procedure TFPList.ForEachCall(Proc2call: TListStaticCallback; Arg: Pointer);
+var
+  I: integer;
+begin
+  for I:=0 to Count-1 do
+    Proc2call(InternalItems[I], Arg);
+end;
+
 {$endif}
 
 
