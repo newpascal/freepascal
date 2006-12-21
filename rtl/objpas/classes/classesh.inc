@@ -1225,9 +1225,6 @@ type
     FSem: Pointer;
     FInitialSuspended: boolean;
     FSuspendedExternal: boolean;
-  {$ifdef linux}
-    FPid: LongInt;
-  {$endif}
 {$endif}
 {$ifdef netwlibc}
   private
@@ -1241,6 +1238,7 @@ type
     constructor Create(CreateSuspended: Boolean;
                        const StackSize: SizeUInt = DefaultStackSize);
     destructor Destroy; override;
+    procedure AfterConstruction; override;
     procedure Resume;
     procedure Suspend;
     procedure Terminate;

@@ -80,6 +80,15 @@ function ThreadProc(ThreadObjPtr: Pointer): PtrInt;
     FreeThread: Boolean;
     Thread: TThread absolute ThreadObjPtr;
   begin
+    { if Suspend checks FSuspended before doing anything, make sure it }
+    { knows we're currently not suspended (this flag may have been set }
+    { to true if CreateSuspended was true)                             }
+    Thread.FSuspended:=false;
+    // wait until AfterConstruction has been called, so we cannot
+    // free ourselves before TThread.Create has finished
+    // (since that one may check our VTM in case of $R+, and
+    //  will call the AfterConstruction method in all cases)
+    Thread.Suspend;
     try
       Thread.Execute;
     except
@@ -94,8 +103,16 @@ function ThreadProc(ThreadObjPtr: Pointer): PtrInt;
     EndThread(Result);
   end;
 
-{ system dependend code }
+{ system-dependent code }
 {$i tthread.inc}
+
+
+procedure TThread.AfterConstruction;
+begin
+  inherited AfterConstruction;
+  Resume;
+end;
+
 
 class procedure TThread.Synchronize(AThread: TThread; AMethod: TThreadMethod);
   var
