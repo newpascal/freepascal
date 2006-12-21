@@ -88,7 +88,7 @@ function ThreadProc(ThreadObjPtr: Pointer): PtrInt;
     // free ourselves before TThread.Create has finished
     // (since that one may check our VTM in case of $R+, and
     //  will call the AfterConstruction method in all cases)
-    Thread.Suspend;
+//    Thread.Suspend;
     try
       Thread.Execute;
     except
@@ -110,7 +110,7 @@ function ThreadProc(ThreadObjPtr: Pointer): PtrInt;
 procedure TThread.AfterConstruction;
 begin
   inherited AfterConstruction;
-  Resume;
+//  Resume;
 end;
 
 
