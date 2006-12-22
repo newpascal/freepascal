@@ -107,6 +107,12 @@ function ThreadProc(ThreadObjPtr: Pointer): PtrInt;
 {$i tthread.inc}
 
 
+function TThread.GetSuspended: Boolean;
+begin
+  GetSuspended:=FSuspended;
+end;
+
+
 procedure TThread.AfterConstruction;
 begin
   inherited AfterConstruction;

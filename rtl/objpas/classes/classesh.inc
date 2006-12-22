@@ -1200,9 +1200,9 @@ type
   private
     FHandle: TThreadID;
     FTerminated: Boolean;
-    FSuspended: Boolean;
     FFreeOnTerminate: Boolean;
     FFinished: Boolean;
+    FSuspended: LongBool;
     FReturnValue: Integer;
     FOnTerminate: TNotifyEvent;
     FMethod: TThreadMethod;
@@ -1212,6 +1212,7 @@ type
     function GetPriority: TThreadPriority;
     procedure SetPriority(Value: TThreadPriority);
     procedure SetSuspended(Value: Boolean);
+    function GetSuspended: Boolean;
   protected
     FThreadID: TThreadID; // someone might need it for pthread_* calls
     procedure DoTerminate; virtual;
@@ -1247,7 +1248,7 @@ type
     property FreeOnTerminate: Boolean read FFreeOnTerminate write FFreeOnTerminate;
     property Handle: TThreadID read FHandle;
     property Priority: TThreadPriority read GetPriority write SetPriority;
-    property Suspended: Boolean read FSuspended write SetSuspended;
+    property Suspended: Boolean read GetSuspended write SetSuspended;
     property ThreadID: TThreadID read FThreadID;
     property OnTerminate: TNotifyEvent read FOnTerminate write FOnTerminate;
     property FatalException: TObject read FFatalException;
