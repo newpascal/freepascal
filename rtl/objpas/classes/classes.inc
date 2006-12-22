@@ -83,7 +83,7 @@ function ThreadProc(ThreadObjPtr: Pointer): PtrInt;
     { if Suspend checks FSuspended before doing anything, make sure it }
     { knows we're currently not suspended (this flag may have been set }
     { to true if CreateSuspended was true)                             }
-    Thread.FSuspended:=false;
+//    Thread.FSuspended:=false;
     // wait until AfterConstruction has been called, so we cannot
     // free ourselves before TThread.Create has finished
     // (since that one may check our VTM in case of $R+, and
