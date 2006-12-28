@@ -230,7 +230,7 @@ begin
     result := StringReplace (result, QuoteChar+QuoteChar,QuoteChar, [rfReplaceAll]);
 end;
 
-Function GetNextQuotedChar (var P : PChar; Var S : String; Delim,Quote : Char): Boolean;
+Function GetNextQuotedChar (var P : PChar; Var S : String; Delim,Quote : Char; var extra : boolean): Boolean;
 
 Var PS,L : PChar;
 
@@ -242,11 +242,7 @@ begin
   If P^=#0 then exit;
   PS:=P;
   If P^=Quote then
-   begin
-     S:=GetQuotedString(P,Quote);
-     While (p^<>#0) and (byte(p^)<=byte(' ')) do
-      inc(p);
-   end
+     S:=GetQuotedString(P,Quote)
   else
    begin
      While (p^>' ') and (P^<>Delim) do
@@ -255,8 +251,18 @@ begin
      L:=Pointer(S);
      Move (PS^,L^,P-PS);
    end;
-  if p^=Delim then
+ // skip trailing non delimiter separators
+  While (p^<>#0) and (byte(p^)<=byte(' ')) do
    inc(p);
+ // skip trailing delimiter (bug 7247)
+  if p^=Delim then
+   begin
+     if p[1]=#0 then 
+       extra:=true; // add extra empty trailing string here.
+     repeat
+       inc(p);
+     until (p^=#0) or (byte(p^)>byte(' '));
+   end;
   Result:=True;
 end;
 
@@ -265,6 +271,7 @@ Procedure TStrings.SetDelimitedText(const AValue: string);
 Var
   P : PChar;
   S : String;
+  Extra : boolean;
 begin
   CheckSpecialChars;
   BeginUpdate;
@@ -273,8 +280,11 @@ begin
     P:=PChar(AValue);
     if assigned(p) then
      begin
-       While GetNextQuotedChar (P,S,FDelimiter,FQuoteChar) do
+       extra:=false; // trailing empty string?
+       While GetNextQuotedChar (P,S,FDelimiter,FQuoteChar,extra) do
         Add (S);
+       if Extra then
+         add('');
      end;
   finally
     EndUpdate;
