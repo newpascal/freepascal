@@ -130,7 +130,6 @@ class procedure TThread.Synchronize(AThread: TThread; AMethod: TThreadMethod);
     else
       begin
         System.EnterCriticalSection(SynchronizeCritSect);
-        RtlEventStartWait(ExecuteEvent);
         SynchronizeException:=nil;
         SynchronizeMethod:=AMethod;
 
@@ -171,7 +170,6 @@ procedure CheckSynchronize(timeout : longint=0);
       begin
         if timeout>0 then
           begin
-            RtlEventStartWait(SynchronizeTimeoutEvent);
             RtlEventWaitFor(SynchronizeTimeoutEvent,timeout);
           end
          else
