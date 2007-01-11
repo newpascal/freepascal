@@ -56,7 +56,13 @@ const
 
 type
   TSeekOrigin = (soBeginning, soCurrent, soEnd);
-  TDuplicates = (dupIgnore, dupAccept, dupError);
+  TDuplicates = Types.TDuplicates;
+
+// For Delphi and backwards compatibility.  
+const
+  dupIgnore = Types.dupIgnore;
+  dupAccept = Types.dupAccept;
+  dupError  = Types.dupError;
 
 { TFileStream create mode }
 const
