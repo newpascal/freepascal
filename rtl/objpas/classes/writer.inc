@@ -383,6 +383,11 @@ begin
   WriteString(Value);
 end;
 
+procedure TWriter.WriteWideChar(Value: WideChar);
+begin
+  WriteWideString(Value);
+end;
+
 procedure TWriter.WriteCollection(Value: TCollection);
 var
   i: Integer;
@@ -653,7 +658,7 @@ begin
     (Instance.ClassType = Ancestor.ClassType));
 
   case PropType^.Kind of
-    tkInteger, tkChar, tkEnumeration, tkSet:
+    tkInteger, tkChar, tkEnumeration, tkSet, tkWChar:
       begin
         Value := GetOrdProp(Instance, PropInfo);
         if HasAncestor then
@@ -677,6 +682,8 @@ begin
               end;
             tkChar:
               WriteChar(Chr(Value));
+            tkWChar:
+              WriteWideChar(WideChar(Value));
             tkSet:
               Driver.WriteSet(Value, GetTypeData(PropType)^.CompType);
             tkEnumeration:

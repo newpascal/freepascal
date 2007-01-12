@@ -975,6 +975,7 @@ type
 
     function ReadBoolean: Boolean;
     function ReadChar: Char;
+    function ReadWideChar: WideChar;
     procedure ReadCollection(Collection: TCollection);
     function ReadComponent(Component: TComponent): TComponent;
     procedure ReadComponents(AOwner, AParent: TComponent;
@@ -1130,6 +1131,7 @@ type
     procedure WriteCollection(Value: TCollection);
     procedure WriteComponent(Component: TComponent);
     procedure WriteChar(Value: Char);
+    procedure WriteWideChar(Value: WideChar);
     procedure WriteDescendent(ARoot: TComponent; AAncestor: TComponent);
     procedure WriteFloat(const Value: Extended);
     procedure WriteSingle(const Value: Single);

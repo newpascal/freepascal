@@ -654,6 +654,19 @@ begin
     raise EReadError.Create(SInvalidPropertyValue);
 end;
 
+function TReader.ReadWideChar: WideChar;
+
+var
+  W: String;
+  
+begin
+  W := ReadWideString;
+  if Length(W) = 1 then
+    Result := W[1]
+  else
+    raise EReadError.Create(SInvalidPropertyValue);
+end;
+            
 procedure TReader.ReadCollection(Collection: TCollection);
 var
   Item: TPersistent;
@@ -1093,6 +1106,8 @@ begin
       SetOrdProp(Instance, PropInfo, Ord(ReadBoolean));
     tkChar:
       SetOrdProp(Instance, PropInfo, Ord(ReadChar));
+    tkWChar:
+      SetOrdProp(Instance, PropInfo, Ord(ReadWideChar));  
     tkEnumeration:
       begin
         Value := GetEnumValue(PropType, ReadIdent);
