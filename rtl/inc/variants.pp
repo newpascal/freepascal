@@ -3007,7 +3007,7 @@ procedure DynArrayFromVariant(var DynArray: Pointer; const V: Variant; TypeInfo:
 
 function FindCustomVariantType(const AVarType: TVarType; out CustomVariantType: TCustomVariantType): Boolean; overload;
   begin
-    result:=assigned(customvarianttype) and (AVarType>=CMinVarType);
+    result:=(AVarType>=CMinVarType);
     if result then
       begin
         EnterCriticalSection(customvarianttypelock);
