@@ -3264,9 +3264,16 @@ end;
 
 
 constructor TCustomVariantType.Create;
-
 begin
-  NotSupported('TCustomVariantType.Create;');
+  inherited Create;
+  EnterCriticalSection(customvarianttypelock);
+  try
+    SetLength(customvarianttypes,Length(customvarianttypes)+1);
+    customvarianttypes[High(customvarianttypes)]:=self;
+    FVarType:=CMinVarType+High(customvarianttypes);
+  finally
+    LeaveCriticalSection(customvarianttypelock);
+  end;
 end;
 
 
@@ -3278,9 +3285,16 @@ end;
 
 
 destructor TCustomVariantType.Destroy;
-
 begin
-  NotSupported('TCustomVariantType.Destroy');
+  EnterCriticalSection(customvarianttypelock);
+  try
+    if FVarType<>0 then
+      customvarianttypes[FVarType-CMinVarType]:=InvalidCustomVariantType;
+  finally
+    LeaveCriticalSection(customvarianttypelock);
+  end;
+
+  inherited Destroy;
 end;
 
 
@@ -3762,6 +3776,8 @@ begin
    end;
 end;
 
+var
+  i : longint;
 
 Initialization
   InitCriticalSection(customvarianttypelock);
@@ -3776,8 +3792,16 @@ Initialization
   OnSetPropValue:=@SetPropValue;
   OnGetPropValue:=@GetPropValue;
   InvalidCustomVariantType:=TCustomVariantType(-1);
+  SetLength(customvarianttypes,CFirstUserType);
 Finalization
+  EnterCriticalSection(customvarianttypelock);
+  try
+    for i:=0 to high(customvarianttypes) do
+      if customvarianttypes[i]<>InvalidCustomVariantType then
+        customvarianttypes[i].Free;
+  finally
+    LeaveCriticalSection(customvarianttypelock);
+  end;
   UnSetSysVariantManager;
   DoneCriticalSection(customvarianttypelock);
-
 end.
