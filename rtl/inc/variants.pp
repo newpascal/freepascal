@@ -274,6 +274,7 @@ var
 
 procedure VarCastError;
 procedure VarCastError(const ASourceType, ADestType: TVarType);
+procedure VarCastErrorOle(const ASourceType: TVarType);
 procedure VarInvalidOp;
 procedure VarInvalidNullOp;
 procedure VarBadTypeError;
@@ -304,6 +305,10 @@ Function  GetVariantProp(Instance: TObject; PropInfo : PPropInfo): Variant;
 Function  GetVariantProp(Instance: TObject; const PropName: string): Variant;
 Procedure SetVariantProp(Instance: TObject; const PropName: string; const Value: Variant);
 Procedure SetVariantProp(Instance: TObject; PropInfo : PPropInfo; const Value: Variant);
+
+var
+  { Int64 is only supported as OleVariant in Windows XP and newer. If True Int64 is converted to Double. }
+  OleVariantInt64AsDouble: Boolean = False;
 
 implementation
 
@@ -1985,17 +1990,32 @@ procedure sysolevarfromlstr(var dest : olevariant; const source : ansistring);
 procedure sysolevarfromvar(var dest : olevariant; const source : variant);
   begin
     if tvardata(source).vtype=varVariant or varByRef then
-      sysolevarfromvar(dest,source)
+      sysolevarfromvar(dest, Variant(pvardata(tvardata(source).vpointer)^))
     else
-      begin
-        case tvardata(source).vtype of
-          varWord,varShortInt,varByte:
+      case tvardata(source).vtype of
+        varWord,varShortInt,varByte:
+          sysvarcast(variant(tvardata(dest)),source,varInteger);
+        varLongWord: 
+          if tvardata(source).vlongword and $80000000 = 0 then
+            sysvarcast(variant(tvardata(dest)),source,varInteger)
+          else
+            sysvarcast(variant(tvardata(dest)),source,varDouble);
+        varInt64:
+          if (tvardata(source).vint64 < Low(Integer)) or (tvardata(source).vint64 > High(Integer)) then
+            if OleVariantInt64AsDouble then
+              sysvarcast(variant(tvardata(dest)),source,varDouble)
+            else
+              sysvarcopyproc(tvardata(dest),tvardata(source))
+          else
             sysvarcast(variant(tvardata(dest)),source,varInteger);
-          varString:
-            sysolevarfromlstr(dest,source);
+        varString:
+          sysolevarfromlstr(dest,source);
+      else
+        if (tvardata(source).vtype and varTypeMask) <= varBoolean then
+          sysvarcopyproc(tvardata(dest),tvardata(source))            
         else
-          VarCastError;
-        end;
+          { still missing: support for variant arrays of variant }
+          VarCastErrorOle(tvardata(source).vtype);
       end;
   end;
 
@@ -3417,6 +3437,13 @@ procedure VarCastError(const ASourceType, ADestType: TVarType);
     raise EVariantTypeCastError.CreateFmt(SVarTypeCouldNotConvert,
       [VarTypeAsText(ASourceType),VarTypeAsText(ADestType)]);
   end;
+  
+
+procedure VarCastErrorOle(const ASourceType: TVarType);
+  begin
+    raise EVariantTypeCastError.CreateFmt(SVarTypeCouldNotConvert,
+      [VarTypeAsText(ASourceType),'(OleVariant)']);
+  end; 
 
 
 procedure VarInvalidOp;
