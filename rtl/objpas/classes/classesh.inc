@@ -455,9 +455,9 @@ type
     procedure SetCommaText(const Value: string);
     procedure SetStringsAdapter(const Value: IStringsAdapter);
     procedure SetValue(const Name, Value: string);
-                procedure SetDelimiter(c:Char);
-                procedure SetQuoteChar(c:Char);
-                procedure SetNameValueSeparator(c:Char);
+    procedure SetDelimiter(c:Char);
+    procedure SetQuoteChar(c:Char);
+    procedure SetNameValueSeparator(c:Char);
     procedure WriteData(Writer: TWriter);
   protected
     procedure DefineProperties(Filer: TFiler); override;
