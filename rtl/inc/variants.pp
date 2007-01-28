@@ -1743,9 +1743,9 @@ procedure sysvaraddrefproc(var v : tvardata);
   var
     dummy : tvardata;
   begin
-    { create a copy to a dummy }
-    fillchar(dummy,sizeof(dummy),0);
-    sysvarcopyproc(dummy,v);
+    dummy := v;
+    v.VType := varEmpty;
+    sysvarcopyproc(v, dummy);
   end;
 
 
@@ -1888,7 +1888,7 @@ function sysvarcastreal(const v : tvardata) : double;
               HandleConversionException(v.vtype,vardouble);
           end;
         else
-          VariantToDouble(v);
+          Result := VariantToDouble(v);
       end;
     except
       HandleConversionException(v.vtype,vardouble);
@@ -1896,6 +1896,22 @@ function sysvarcastreal(const v : tvardata) : double;
     end;
   end;
 
+function sysvarcastwstr(const v : tvardata) : widestring;
+  begin
+    try
+      case v.vtype of
+        varString  :
+          begin
+            Result := ansistring(v.vString);
+          end;
+        else
+          Result := VariantToWideString(v);
+      end;
+    except
+      HandleConversionException(v.vtype,varolestr);
+      result:='';
+    end;
+  end;
 
 procedure sysvarcast (var dest : variant;const source : variant;vartype : longint);
   var
@@ -1935,6 +1951,8 @@ procedure sysvarcast (var dest : variant;const source : variant;vartype : longin
             sysvarfromsingle(dest,sysvarcastreal(tvardata(source)));
           vardouble:
             sysvarfromdouble(dest,sysvarcastreal(tvardata(source)));
+          varolestr:
+            variantmanager.varfromwstr(dest, sysvarcastwstr(tvardata(source)));
           else
             begin
               if findcustomvarianttype(tvardata(source).vtype,customvarianttype) then
