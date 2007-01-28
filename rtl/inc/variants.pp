@@ -780,7 +780,7 @@ procedure sysvarfromsingle (var dest : variant;const source : single);
     With TVarData(dest) do
       begin
         vtype:=varSingle;
-        vDouble:=Source;
+        vSingle:=Source;
       end;
   end;
 
