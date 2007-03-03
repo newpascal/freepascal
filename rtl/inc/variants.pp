@@ -1845,6 +1845,11 @@ function sysvarcastinteger(const v : tvardata) : longint;
         varInt64:
           result:=v.vint64;
 {$warnings on}
+        VarString  :
+          begin
+            if not(TryStrToInt(ansistring(v.vString),Result)) then
+              HandleConversionException(v.vtype,varinteger);
+          end;
 {$R-}
         else
           VarInvalidOp;
@@ -1953,6 +1958,17 @@ procedure sysvarcast (var dest : variant;const source : variant;vartype : longin
             sysvarfromdouble(dest,sysvarcastreal(tvardata(source)));
           varolestr:
             variantmanager.varfromwstr(dest, sysvarcastwstr(tvardata(source)));
+          varsmallint:
+            variantmanager.varfromint(dest,sysvarcastinteger(tvardata(source)),-2);
+          varshortint:
+            variantmanager.varfromint(dest,sysvarcastinteger(tvardata(source)),-1);
+          varbyte:
+            variantmanager.varfromint(dest,sysvarcastinteger(tvardata(source)),1);
+          varword:
+            variantmanager.varfromint(dest,sysvarcastinteger(tvardata(source)),2);
+          varlongword:
+            variantmanager.varfromint(dest,sysvarcastinteger(tvardata(source)),4);
+
           else
             begin
               if findcustomvarianttype(tvardata(source).vtype,customvarianttype) then
