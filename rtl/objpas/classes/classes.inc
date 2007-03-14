@@ -1132,7 +1132,8 @@ procedure ObjectBinaryToText(Input, Output: TStream);
   begin
     len := Input.ReadByte;
     SetLength(Result, len);
-    Input.Read(Result[1], len);
+    if (len > 0) then
+      Input.Read(Result[1], len);
   end;
 
   function ReadLStr: String;
@@ -1141,7 +1142,8 @@ procedure ObjectBinaryToText(Input, Output: TStream);
   begin
     len := Input.ReadDWord;
     SetLength(Result, len);
-    Input.Read(Result[1], len);
+    if (len > 0) then
+      Input.Read(Result[1], len);
   end;
 
   function ReadWStr: WideString;
@@ -1150,7 +1152,8 @@ procedure ObjectBinaryToText(Input, Output: TStream);
   begin
     len := Input.ReadDWord;
     SetLength(Result, len);
-    Input.Read(Pointer(@Result[1])^, len*2);
+    if (len > 0) then
+      Input.Read(Pointer(@Result[1])^, len*2);
   end;
 
   procedure ReadPropList(indent: String);
