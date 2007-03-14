@@ -425,6 +425,8 @@ type
   end;
 
 
+{$r-}
+
 constructor TVariantArrayIterator.Init(aDims: SizeInt; aBounds : PVarArrayBoundArray);
 var
   i : sizeint;
@@ -464,6 +466,9 @@ begin
   Result := not Finished;
 end;
 
+{$ifndef RANGECHECKINGOFF}
+{$r+}
+{$endif}
 
 destructor TVariantArrayIterator.done;
   begin
@@ -2970,6 +2975,7 @@ end;
               Variant array support procedures and functions
  ****************************************************************************}
 
+{$r-}
 
 function VarArrayCreate(const Bounds: array of SizeInt; aVarType: TVarType): Variant;
   var
@@ -3001,6 +3007,9 @@ function VarArrayCreate(const Bounds: array of SizeInt; aVarType: TVarType): Var
     end;
   end;
 
+{$ifndef RANGECHECKINGOFF}
+{$r+}
+{$endif}
 
 function VarArrayCreate(const Bounds: PVarArrayBoundArray; Dims : SizeInt; aVarType: TVarType): Variant;
   var
@@ -3179,6 +3188,8 @@ function DynArrayGetVariantInfo(p : Pointer; var Dims : sizeint) : sizeint;
     inc(Dims);
   end;
 
+
+{$r-}
 
 procedure DynArrayToVariant(var V: Variant; const DynArray: Pointer; TypeInfo: Pointer);
   var
@@ -3373,6 +3384,9 @@ procedure DynArrayFromVariant(var DynArray: Pointer; const V: Variant; TypeInfo:
       FreeMem(vararraybounds);
     end;
   end;
+{$ifndef RANGECHECKINGOFF}
+{$r+}
+{$endif}
 
 
 function FindCustomVariantType(const aVarType: TVarType; out CustomVariantType: TCustomVariantType): Boolean; overload;
