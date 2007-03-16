@@ -9,17 +9,20 @@ program dbtestframework;
 uses
   SysUtils,
   fpcunit, testregistry, testreport,
-  toolsunit,
+  toolsunit, DBResultsWriter,
   testbasics, testsqlfieldtypes, testdbbasics;
   
 var
   FXMLResultsWriter: TXMLResultsWriter;
+  FDBResultsWriter: TDBResultsWriter;
   testResult: TTestResult;
 begin
   testResult := TTestResult.Create;
   FXMLResultsWriter := TXMLResultsWriter.Create;
+  FDBResultsWriter := TDBResultsWriter.Create;
   try
     testResult.AddListener(FXMLResultsWriter);
+//    testResult.AddListener(FDBResultsWriter);
     FXMLResultsWriter.WriteHeader;
     GetTestRegistry.Run(testResult);
     FXMLResultsWriter.WriteResult(testResult);
