@@ -1066,32 +1066,42 @@ procedure ObjectBinaryToText(Input, Output: TStream);
    if p = nil then begin
     res:= '''''';
    end
-   else begin
+   else 
+    begin
     res := '';
     InString := False;
-    while P < LastP do begin
+    while P < LastP do 
+      begin
       NewInString := InString;
       w := CharToOrdfunc(P);
-      if w = ord('''') then  //quote char
-        if InString then NewStr := ''''''
-        else NewStr := ''''''''
-      else if (Ord(w) >= 32) and (Ord(w) < 127) then begin //printable ascii
+      if w = ord('''') then 
+        begin //quote char
+        if not InString then
+          NewInString := True;
+        NewStr := '''''';
+        end 
+      else if (Ord(w) >= 32) and (Ord(w) < 127) then 
+        begin //printable ascii
         if not InString then
           NewInString := True;
         NewStr := char(w);
-      end else begin //ascii control chars, non ascii
+        end 
+      else 
+        begin //ascii control chars, non ascii
         if InString then
           NewInString := False;
         NewStr := '#' + IntToStr(w);
-      end;
-      if NewInString <> InString then begin
+        end;
+      if NewInString <> InString then 
+        begin
         NewStr := '''' + NewStr;
         InString := NewInString;
-      end;
+        end;
       res := res + NewStr;
+      end;
+    if InString then 
+      res := res + '''';
     end;
-    if InString then res := res + '''';
-   end;
    OutStr(res);
   end;
 
