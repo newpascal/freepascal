@@ -11,6 +11,8 @@
 
  **********************************************************************}
 
+{$if defined(VER2_0) or not defined(FPC_TESTGENERICS)}
+
 {****************************************************************************}
 {*                           TFPList                                        *}
 {****************************************************************************}
@@ -24,21 +26,21 @@ begin
   Error(SListIndexError, Index);
 end;
 
-function TFPList.Get(Index: Integer): Pointer; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
+function TFPList.Get(Index: Integer): Pointer;
 begin
   If (Index < 0) or (Index >= FCount) then
     RaiseIndexError(Index);
   Result:=FList^[Index];
 end;
 
-procedure TFPList.Put(Index: Integer; Item: Pointer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
+procedure TFPList.Put(Index: Integer; Item: Pointer);
 begin
   if (Index < 0) or (Index >= FCount) then
     RaiseIndexError(Index);
   Flist^[Index] := Item;
 end;
 
-function TFPList.Extract(item: Pointer): Pointer;
+function TFPList.Extract(Item: Pointer): Pointer;
 var
   i : Integer;
 begin
@@ -82,7 +84,7 @@ begin
   inherited Destroy;
 end;
 
-function TFPList.Add(Item: Pointer): Integer; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
+function TFPList.Add(Item: Pointer): Integer;
 begin
   if FCount = FCapacity then
     Self.Expand;
@@ -101,7 +103,7 @@ begin
   end;
 end;
 
-procedure TFPList.Delete(Index: Integer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
+procedure TFPList.Delete(Index: Integer);
 begin
   If (Index<0) or (Index>=FCount) then
     Error (SListIndexError, Index);
@@ -133,7 +135,7 @@ begin
   FList^[Index2] := Temp;
 end;
 
-function TFPList.Expand: TFPList; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
+function TFPList.Expand: TFPList;
 var
   IncSize : Longint;
 begin
@@ -161,7 +163,7 @@ begin
   If Result = FCount  then Result := -1;
 end;
 
-procedure TFPList.Insert(Index: Integer; Item: Pointer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
+procedure TFPList.Insert(Index: Integer; Item: Pointer);
 begin
   if (Index < 0) or (Index > FCount )then
     Error(SlistIndexError, Index);
@@ -300,6 +302,42 @@ begin
         proc2call(p,arg);
     end;
 end;
+
+{$else}
+
+{ generics based implementation of TFPList follows }
+
+procedure TFPList.Assign(Source: TFPList);
+begin
+  inherited Assign(Source);
+end;
+
+type
+  TFPPtrListSortCompare = function(const Item1, Item2: Pointer): Integer;
+
+procedure TFPList.Sort(Compare: TListSortCompare);
+begin
+  inherited Sort(TFPPtrListSortCompare(Compare));
+end;
+
+procedure TFPList.ForEachCall(Proc2call: TListCallback; Arg: Pointer);
+var
+  I: integer;
+begin
+  for I:=0 to Count-1 do
+    proc2call(InternalItems[I],arg);
+end;
+
+
+procedure TFPList.ForEachCall(Proc2call: TListStaticCallback; Arg: Pointer);
+var
+  I: integer;
+begin
+  for I:=0 to Count-1 do
+    Proc2call(InternalItems[I], Arg);
+end;
+
+{$endif}
 
 
 
@@ -444,7 +482,7 @@ end;
 function TList.Remove(Item: Pointer): Integer;
 begin
   Result := IndexOf(Item);
-  If Result <> -1 then
+  if Result <> -1 then
     Self.Delete(Result);
 end;
 
@@ -465,7 +503,7 @@ end;
 
 function TList.GetList: PPointerList;
 begin
-  Result := FList.List;
+  Result := PPointerList(FList.List);
 end;
 
 
