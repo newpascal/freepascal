@@ -422,6 +422,8 @@ type
     destructor Done;
 
     function Next : Boolean;
+    { returns true if the iterator reached the end of the variant array }
+    function AtEnd: Boolean;
   end;
 
 
@@ -460,10 +462,25 @@ var
     end;
   end;
 
+
 begin
   Finished := False;
   IncDim(Pred(Dims));
   Result := not Finished;
+end;
+
+
+function TVariantArrayIterator.AtEnd: Boolean;
+var
+  i : sizeint;
+begin
+  result:=true;
+  for i:=0 to Pred(Dims) do
+    if Coords^[i] < Bounds^[i].LowBound + Bounds^[i].ElementCount then
+      begin
+        result:=false;
+        exit;
+      end;
 end;
 
 {$ifndef RANGECHECKINGOFF}
@@ -2083,11 +2100,14 @@ begin
 
       Iterator.Init(Dims, @Bounds);
       try
-        repeat
-          VarResultCheck(SafeArrayPtrOfIndex(SourceArray, Iterator.Coords, SourcePtr));
-          VarResultCheck(SafeArrayPtrOfIndex(DestArray, Iterator.Coords, DestPtr));
-          aCallback(PVarData(DestPtr)^, PVarData(SourcePtr)^);
-        until not Iterator.Next;
+        if not(Iterator.AtEnd) then
+          repeat
+            writeln('ok');
+            VarResultCheck(SafeArrayPtrOfIndex(SourceArray, Iterator.Coords, SourcePtr));
+            VarResultCheck(SafeArrayPtrOfIndex(DestArray, Iterator.Coords, DestPtr));
+            writeln('ok2');
+            aCallback(PVarData(DestPtr)^, PVarData(SourcePtr)^);
+          until not Iterator.Next;
       finally
         Iterator.Done;
       end;
@@ -3801,7 +3821,7 @@ procedure VarCastError(const ASourceType, ADestType: TVarType);
     raise EVariantTypeCastError.CreateFmt(SVarTypeCouldNotConvert,
       [VarTypeAsText(ASourceType),VarTypeAsText(ADestType)]);
   end;
-  
+
 
 procedure VarCastErrorOle(const ASourceType: TVarType);
   begin
