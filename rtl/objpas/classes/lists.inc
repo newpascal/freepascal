@@ -84,6 +84,19 @@ begin
   inherited Destroy;
 end;
 
+Procedure TFPList.AddList(AList : TFPList);
+
+Var
+  I : Integer;
+
+begin
+  If (Capacity<Count+AList.Count) then
+    Capacity:=Count+AList.Count;
+  For I:=0 to AList.Count-1 do
+    Add(AList[i]);  
+end;
+
+
 function TFPList.Add(Item: Pointer): Integer;
 begin
   if FCount = FCapacity then
@@ -416,6 +429,11 @@ begin
   Result := FList.Add(Item);
   if Item <> nil then
     Notify(Item, lnAdded);
+end;
+
+Procedure TList.AddList(AList : TList);
+begin
+  FList.AddList(AList.FList);
 end;
 
 procedure TList.Clear;

@@ -168,6 +168,7 @@ type
     Procedure RaiseIndexError(Index: Integer);
   public
     destructor Destroy; override;
+    Procedure AddList(AList : TFPList);
     function Add(Item: Pointer): Integer; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
     procedure Clear;
     procedure Delete(Index: Integer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
@@ -226,6 +227,7 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+    Procedure AddList(AList : TList);
     function Add(Item: Pointer): Integer;
     procedure Clear; virtual;
     procedure Delete(Index: Integer);
