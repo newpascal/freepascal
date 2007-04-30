@@ -625,7 +625,7 @@ var
   IntToIdentFn: TIntToIdent;
   FloatValue, DefFloatValue: Extended;
   MethodValue: TMethod;
-  DefMethodCodeValue: Pointer;
+  DefMethodValue: TMethod;
   WStrValue, WDefStrValue: WideString;
   StrValue, DefStrValue: String;
   AncestorObj: TObject;
@@ -710,16 +710,18 @@ begin
       begin
         MethodValue := GetMethodProp(Instance, PropInfo);
         if HasAncestor then
-          DefMethodCodeValue := GetMethodProp(Ancestor, PropInfo).Code
-        else
-          DefMethodCodeValue := nil;
+          DefMethodValue := GetMethodProp(Ancestor, PropInfo)
+        else begin
+          DefMethodValue.Data := nil;
+          DefMethodValue.Code := nil;
+        end;
 
         Handled:=false;
         if Assigned(OnWriteMethodProperty) then
           OnWriteMethodProperty(Self,Instance,PPropInfo(PropInfo),MethodValue,
-            DefMethodCodeValue,Handled);
+            DefMethodValue,Handled);
         if (not Handled) and
-          (MethodValue.Code <> DefMethodCodeValue) and
+          (MethodValue.Code <> DefMethodValue.Code) and
           ((not Assigned(MethodValue.Code)) or
           ((Length(FLookupRoot.MethodName(MethodValue.Code)) >= 0))) then
         begin

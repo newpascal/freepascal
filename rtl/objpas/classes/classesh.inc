@@ -1172,8 +1172,9 @@ type
   TFindAncestorEvent = procedure (Writer: TWriter; Component: TComponent;
     const Name: string; var Ancestor, RootAncestor: TComponent) of object;
   TWriteMethodPropertyEvent = procedure (Writer: TWriter; Instance: TPersistent;
-    PropInfo: PPropInfo; const MethodValue: TMethod;
-    const DefMethodCodeValue: Pointer; var Handled: boolean) of object;
+    PropInfo: PPropInfo;
+    const MethodValue, DefMethodValue: TMethod;
+    var Handled: boolean) of object;
 
   TWriter = class(TFiler)
   private
@@ -1232,6 +1233,7 @@ type
     property OnWriteStringProperty: TReadWriteStringPropertyEvent read FOnWriteStringProperty write FOnWriteStringProperty;
 
     property Driver: TAbstractObjectWriter read FDriver;
+    property PropertyPath: string read FPropPath;
   end;
 
 
