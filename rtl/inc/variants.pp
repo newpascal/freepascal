@@ -1171,7 +1171,7 @@ begin
   if OpCode in [opCmpEq, opCmpNe] then
     if Length(AnsiString(Left)) <> Length(AnsiString(Right)) then
       Exit(-1);
-  Result := WideCompareStr(
+  Result := CompareStr(
     AnsiString(Left),
     AnsiString(Right)
   );
