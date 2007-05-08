@@ -14,6 +14,12 @@
 
 {$H+}
 
+
+{$IFDEF VER2_0}
+// Sanity check
+{$UNDEF FPC_TESTGENERICS}
+{$ENDIF}
+
 {$ifdef CLASSESINLINE}{$inline on}{$endif}
 
 
@@ -153,7 +159,8 @@ type
   TListCallback = Types.TListCallback;
   TListStaticCallback = Types.TListStaticCallback;
 
-{$if defined(VER2_0) or not defined(FPC_TESTGENERICS)}
+
+{$IFNDEF FPC_TESTGENERICS}
 
   TFPList = class(TObject)
   private
@@ -552,7 +559,7 @@ type
 
   TStringListSortCompare = function(List: TStringList; Index1, Index2: Integer): Integer;
 
-{$if defined(VER2_0) or not defined(FPC_TESTGENERICS)}
+{$IFNDEF FPC_TESTGENERICS}
 
   PStringItem = ^TStringItem;
   TStringItem = record
