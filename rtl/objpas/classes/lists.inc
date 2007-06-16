@@ -93,7 +93,7 @@ begin
   If (Capacity<Count+AList.Count) then
     Capacity:=Count+AList.Count;
   For I:=0 to AList.Count-1 do
-    Add(AList[i]);  
+    Add(AList[i]);
 end;
 
 
@@ -279,13 +279,36 @@ begin
   QuickSort(Flist, 0, FCount-1, Compare);
 end;
 
-procedure TFPList.Assign(Obj: TFPList);
+
+procedure TFPList.Assign(Obj: TFPList;AOperator: TListAssignOp = laCopy; ListB: TFPList = nil);
 var
   i: Integer;
+  HelperList : TFPList;
 begin
-  Clear;
-  for I := 0 to Obj.Count - 1 do
-    Add(Obj[i]);
+  if assigned(ListB) then
+    begin
+      HelperList:=ListB;
+      Assign(Obj);
+    end
+  else
+    HelperList:=Obj;
+  case AOperator of
+    laCopy:
+      begin
+        Clear;
+        Capacity:=HelperList.Capacity;
+        for i := 0 to HelperList.Count - 1 do
+          Add(HelperList[i]);
+      end;
+    laSrcUnique:
+      begin
+        for i:=Count-1 downto 0 do
+          if HelperList.IndexOf(Items[i])<>-1 then
+            Delete(i);
+      end;
+    else
+      RunError(217);
+  end;
 end;
 
 
@@ -514,9 +537,12 @@ begin
   FList.Sort(Compare);
 end;
 
-procedure TList.Assign(Obj:TList);
+procedure TList.Assign(Obj:TList;AOperator: TListAssignOp = laCopy; ListB: TList = nil);
 begin
-  FList.Assign(Obj.FList);
+  if assigned(ListB) then
+    FList.Assign(Obj.FList,AOperator,ListB.FList)
+  else
+    FList.Assign(Obj.FList,AOperator,nil)
 end;
 
 function TList.GetList: PPointerList;

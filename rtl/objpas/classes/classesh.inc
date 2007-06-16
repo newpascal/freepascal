@@ -65,7 +65,7 @@ type
   TSeekOrigin = (soBeginning, soCurrent, soEnd);
   TDuplicates = Types.TDuplicates;
 
-// For Delphi and backwards compatibility.  
+// For Delphi and backwards compatibility.
 const
   dupIgnore = Types.dupIgnore;
   dupAccept = Types.dupAccept;
@@ -131,7 +131,7 @@ type
   EMethodNotFound = class(EFilerError);
   EInvalidImage = class(EFilerError);
   EResNotFound = class(Exception);
-{$ifdef FPC_TESTGENERICS}  
+{$ifdef FPC_TESTGENERICS}
   EListError = fgl.EListError;
 {$else}
   EListError = class(Exception);
@@ -162,6 +162,8 @@ type
 
 {$IFNDEF FPC_TESTGENERICS}
 
+  TListAssignOp = (laCopy, laAnd, laOr, laXor, laSrcUnique, laDestUnique);
+
   TFPList = class(TObject)
   private
     FList: PPointerList;
@@ -188,7 +190,7 @@ type
     procedure Insert(Index: Integer; Item: Pointer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
     function Last: Pointer;
     procedure Move(CurIndex, NewIndex: Integer);
-    procedure Assign(Obj:TFPList);
+    procedure Assign(Obj:TFPList; AOperator: TListAssignOp = laCopy; ListB: TFPList = nil);
     function Remove(Item: Pointer): Integer;
     procedure Pack;
     procedure Sort(Compare: TListSortCompare);
@@ -215,8 +217,8 @@ type
 {$endif}
 
 { TList class}
-
   TListNotification = (lnAdded, lnExtracted, lnDeleted);
+
 
   TList = class(TObject)
   private
@@ -247,7 +249,7 @@ type
     procedure Insert(Index: Integer; Item: Pointer);
     function Last: Pointer;
     procedure Move(CurIndex, NewIndex: Integer);
-    procedure Assign(Obj:TList);
+    procedure Assign(Obj: TList; AOperator: TListAssignOp = laCopy; ListB: TList = nil);
     function Remove(Item: Pointer): Integer;
     procedure Pack;
     procedure Sort(Compare: TListSortCompare);
@@ -671,7 +673,7 @@ type
     property OnCompareText: TStringListTextCompare read FOnCompareText write FOnCompareText;
   end;
 
-{$endif}  
+{$endif}
 
 { TStream abstract class }
 
