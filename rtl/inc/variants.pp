@@ -3050,17 +3050,9 @@ function VarArrayOf(const Values: array of Variant): Variant;
   var
     i : SizeInt;
   begin
-    if length(Values)>0 then
-      begin
-        Result:=VarArrayCreate([0,high(Values)],varVariant);
-        for i:=0 to high(Values) do
-          Result[i]:=Values[i];
-      end
-    else
-      begin
-        SysVarClear(Result);
-        TVarData(Result).vType:=varEmpty;
-      end;
+    Result:=VarArrayCreate([0,high(Values)],varVariant);
+    for i:=0 to high(Values) do
+      Result[i]:=Values[i];
   end;
 
 
