@@ -2102,10 +2102,8 @@ begin
       try
         if not(Iterator.AtEnd) then
           repeat
-            writeln('ok');
             VarResultCheck(SafeArrayPtrOfIndex(SourceArray, Iterator.Coords, SourcePtr));
             VarResultCheck(SafeArrayPtrOfIndex(DestArray, Iterator.Coords, DestPtr));
-            writeln('ok2');
             aCallback(PVarData(DestPtr)^, PVarData(SourcePtr)^);
           until not Iterator.Next;
       finally
