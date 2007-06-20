@@ -2452,7 +2452,7 @@ begin
       else
         p:=src.vArray;
 
-      if highbound<p^.Bounds[p^.dimcount-1].LowBound then
+      if highbound<p^.Bounds[p^.dimcount-1].LowBound-1 then
         VarInvalidArgError;
 
       newbounds.LowBound:=p^.Bounds[p^.dimcount-1].LowBound;
