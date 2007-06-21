@@ -813,8 +813,6 @@ end;
 procedure sysvartodynarray (var dynarr : Pointer; const v : Variant; TypeInfo : Pointer);
 begin
   DynArrayFromVariant(dynarr, v, TypeInfo);
-  if not assigned(dynarr) then
-    VarCastError;
 end;
 
 procedure sysvarfrombool (var Dest : Variant; const Source : Boolean);
@@ -3239,8 +3237,9 @@ procedure DynArrayToVariant(var V: Variant; const DynArray: Pointer; TypeInfo: P
           vararraybounds^[i].LowBound:=0;
           vararraybounds^[i].ElementCount:=length(TDynArray(p));
           dynarraybounds[i]:=length(TDynArray(p));
-          { we checked that the array is rectangular }
-          p:=TDynArray(p)[0];
+          if dynarraybounds[i]>0 then
+            { we checked that the array is rectangular }
+            p:=TDynArray(p)[0];
         end;
       { .. create Variant array }
       V:=VarArrayCreate(vararraybounds,Dims,vararrtype);
@@ -3249,6 +3248,7 @@ procedure DynArrayToVariant(var V: Variant; const DynArray: Pointer; TypeInfo: P
       try
         iter.init(Dims,PVarArrayBoundArray(vararraybounds));
         dynarriter.init(DynArray,TypeInfo,Dims,dynarraybounds);
+        if not iter.AtEnd then
         repeat
           case vararrtype of
             varSmallInt:
@@ -3343,6 +3343,7 @@ procedure DynArrayFromVariant(var DynArray: Pointer; const V: Variant; TypeInfo:
       try
         iter.init(VarArrayDims,PVarArrayBoundArray(vararraybounds));
         dynarriter.init(DynArray,TypeInfo,VarArrayDims,dynarraybounds);
+        if not iter.AtEnd then
         repeat
           temp:=variantmanager.VarArrayGet(V,VarArrayDims,PSizeInt(iter.Coords));
           case dynarrvartype of
@@ -3382,6 +3383,8 @@ procedure DynArrayFromVariant(var DynArray: Pointer; const V: Variant; TypeInfo:
               PInt64(dynarriter.data)^:=temp;
             varQWord:
               PQWord(dynarriter.data)^:=temp;
+            else
+              VarCastError;
           end;
           dynarriter.next;
         until not(iter.next);
