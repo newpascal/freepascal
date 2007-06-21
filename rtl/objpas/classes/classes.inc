@@ -177,12 +177,12 @@ procedure CheckSynchronize(timeout : longint=0);
 
         if DoSynchronizeMethod then
           begin
+            DoSynchronizeMethod:=false;
             try
               SynchronizeMethod;
             except
               SynchronizeException:=Exception(AcquireExceptionObject);
             end;
-            DoSynchronizeMethod:=false;
             RtlEventSetEvent(ExecuteEvent);
           end;
       end;
