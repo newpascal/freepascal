@@ -1653,9 +1653,10 @@ var
     tthread helpers
   ---------------------------------------------------------------------}
 
-{ procedure to be called when gui thread is ready to execute method
+{ function to be called when gui thread is ready to execute method
+  result is true if a method has been executed
 }
-procedure CheckSynchronize(timeout : longint=0);
+function CheckSynchronize(timeout : longint=0) : boolean;
 
 var
   { method proc that is called to trigger gui thread to execute a
