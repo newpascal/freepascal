@@ -844,33 +844,31 @@ type
 {$endif UNICODE}
 
 { TStreamAdapter }
-{ Implements OLE IStream on VCL TStream }
-{ we don't need that yet
+
+  TStreamOwnership = (soReference, soOwned);
+
+{ Implements OLE IStream on TStream }
   TStreamAdapter = class(TInterfacedObject, IStream)
   private
     FStream: TStream;
+    FOwnership: TStreamOwnership;
   public
-    constructor Create(Stream: TStream);
-    function Read(pv: Pointer; cb: Longint;
-      pcbRead: PLongint): HResult; stdcall;
-    function Write(pv: Pointer; cb: Longint;
-      pcbWritten: PLongint): HResult; stdcall;
-    function Seek(dlibMove: Largeint; dwOrigin: Longint;
-      out libNewPosition: Largeint): HResult; stdcall;
-    function SetSize(libNewSize: Largeint): HResult; stdcall;
-    function CopyTo(stm: IStream; cb: Largeint; out cbRead: Largeint;
-      out cbWritten: Largeint): HResult; stdcall;
-    function Commit(grfCommitFlags: Longint): HResult; stdcall;
-    function Revert: HResult; stdcall;
-    function LockRegion(libOffset: Largeint; cb: Largeint;
-      dwLockType: Longint): HResult; stdcall;
-    function UnlockRegion(libOffset: Largeint; cb: Largeint;
-      dwLockType: Longint): HResult; stdcall;
-    function Stat(out statstg: TStatStg;
-      grfStatFlag: Longint): HResult; stdcall;
-    function Clone(out stm: IStream): HResult; stdcall;
+    constructor Create(Stream: TStream; Ownership: TStreamOwnership = soReference);
+    destructor Destroy; override;
+    function Read(pv: Pointer; cb: DWORD; pcbRead: PDWORD): HResult; virtual; stdcall;
+    function Write(pv: Pointer; cb: DWORD; pcbWritten: PDWORD): HResult; virtual; stdcall;
+    function Seek(dlibMove: Largeint; dwOrigin: Longint; out libNewPosition: Largeint): HResult; virtual; stdcall;
+    function SetSize(libNewSize: Largeint): HResult; virtual; stdcall;
+    function CopyTo(stm: IStream; cb: Largeint; out cbRead: Largeint; out cbWritten: Largeint): HResult; virtual; stdcall;
+    function Commit(grfCommitFlags: Longint): HResult; virtual; stdcall;
+    function Revert: HResult; virtual; stdcall;
+    function LockRegion(libOffset: Largeint; cb: Largeint; dwLockType: Longint): HResult; virtual; stdcall;
+    function UnlockRegion(libOffset: Largeint; cb: Largeint; dwLockType: Longint): HResult; virtual; stdcall;
+    function Stat(out statstg: TStatStg; grfStatFlag: Longint): HResult; virtual; stdcall;
+    function Clone(out stm: IStream): HResult; virtual; stdcall;
+    property Stream: TStream read FStream;
+    property StreamOwnership: TStreamOwnership read FOwnership write FOwnership;
   end;
-}
 
 { TFiler }
 
