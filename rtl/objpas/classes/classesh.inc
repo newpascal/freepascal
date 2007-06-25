@@ -105,7 +105,9 @@ type
     ssMeta, ssSuper, ssHyper, ssAltGr, ssCaps, ssNum,
     ssScroll,ssTriple,ssQuad);
 
+{$packset 1}
   TShiftState = set of TShiftStateEnum;
+{$packset default}
 
   THelpContext = -MaxLongint..MaxLongint;
   THelpType = (htKeyword, htContext);
