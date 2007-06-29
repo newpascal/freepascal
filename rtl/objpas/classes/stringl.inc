@@ -781,7 +781,7 @@ Var
   S : String;
 begin
   S:=Text;
-  Stream.Write(Pointer(S)^,Length(S));
+  Stream.WriteBuffer(Pointer(S)^,Length(S));
 end;
 
 
