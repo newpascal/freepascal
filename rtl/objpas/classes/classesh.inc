@@ -1737,6 +1737,8 @@ procedure RegisterIntegerConsts(IntegerType: Pointer; IdentToIntFn: TIdentToInt;
   IntToIdentFn: TIntToIdent);
 function IdentToInt(const Ident: string; var Int: Longint; const Map: array of TIdentMapEntry): Boolean;
 function IntToIdent(Int: Longint; var Ident: string; const Map: array of TIdentMapEntry): Boolean;
+function FindIntToIdent(AIntegerType: Pointer): TIntToIdent;
+function FindIdentToInt(AIntegerType: Pointer): TIdentToInt;
 
 procedure RegisterFindGlobalComponentProc(AFindGlobalComponent: TFindGlobalComponent);
 procedure UnregisterFindGlobalComponentProc(AFindGlobalComponent: TFindGlobalComponent);
