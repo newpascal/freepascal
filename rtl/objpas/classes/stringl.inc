@@ -110,13 +110,14 @@ begin
     p:=pchar(strings[i]);
     while not(p^ in [#0..' ',QuoteChar,Delimiter]) do
      inc(p);
-    if p^<>#0 then
+// strings in list may contain #0
+    if p<>pchar(strings[i])+length(strings[i]) then
      Result:=Result+QuoteString (Strings[I],QuoteChar)
     else
      result:=result+strings[i];
     if I<Count-1 then Result:=Result+Delimiter;
     end;
-  If Length(Result)=0 then
+  If (Length(Result)=0)and(count=1) then
     Result:=QuoteChar+QuoteChar;
 end;
 
@@ -182,7 +183,6 @@ begin
     end;
 end;
 
-
 procedure TStrings.ReadData(Reader: TReader);
 begin
   Reader.ReadListBegin;
@@ -197,98 +197,63 @@ begin
   Reader.ReadListEnd;
 end;
 
-Function GetQuotedString (Var P : Pchar; QuoteChar : Char) : AnsiString;
-
-Var P1,L : Pchar;
-    ReplaceQuotes : boolean;
-
-begin
-  Result:='';
-  ReplaceQuotes := False;
-  P1:=P+1;
-  While P1^<>#0 do
-    begin
-      If (P1^=QuoteCHar) then
-       begin
-         if (P1[1]<>QuoteChar) then
-          break;
-         inc(p1);
-         ReplaceQuotes := True;
-       end;
-      inc(p1);
-    end;
-  // P1 points to last quote, or to #0;
-  P:=P+1;
-  If P1-P>0 then
-    begin
-    SetLength(Result,(P1-P));
-    L:=Pointer(Result);
-    Move (P^,L^,P1-P);
-    P:=P1+1;
-    end;
-  if ReplaceQuotes then
-    result := StringReplace (result, QuoteChar+QuoteChar,QuoteChar, [rfReplaceAll]);
-end;
-
-Function GetNextQuotedChar (var P : PChar; Var S : String; Delim,Quote : Char; var extra : boolean): Boolean;
-
-Var PS,L : PChar;
-
-begin
-  Result:=False;
-  S:='';
-  While (p^<>#0) and (byte(p^)<=byte(' ')) do
-   inc(p);
-  If P^=#0 then exit;
-  PS:=P;
-  If P^=Quote then
-     S:=GetQuotedString(P,Quote)
-  else
-   begin
-     While (p^>' ') and (P^<>Delim) do
-      inc(p);
-     Setlength (S,P-PS);
-     L:=Pointer(S);
-     Move (PS^,L^,P-PS);
-   end;
- // skip trailing non delimiter separators
-  While (p^<>#0) and (byte(p^)<=byte(' ')) do
-   inc(p);
- // skip trailing delimiter (bug 7247)
-  if p^=Delim then
-   begin
-     if p[1]=#0 then 
-       extra:=true; // add extra empty trailing string here.
-     repeat
-       inc(p);
-     until (p^=#0) or (byte(p^)>byte(' '));
-   end;
-  Result:=True;
-end;
 
 Procedure TStrings.SetDelimitedText(const AValue: string);
 
-Var
-  P : PChar;
-  S : String;
-  Extra : boolean;
+var i,j:integer;
+    aNotFirst:boolean;
 begin
-  CheckSpecialChars;
-  BeginUpdate;
-  try
-    Clear;
-    P:=PChar(AValue);
-    if assigned(p) then
-     begin
-       extra:=false; // trailing empty string?
-       While GetNextQuotedChar (P,S,FDelimiter,FQuoteChar,extra) do
-        Add (S);
-       if Extra then
-         add('');
+ CheckSpecialChars;
+ BeginUpdate;
+
+ i:=1;
+ aNotFirst:=false;
+
+ try
+  Clear;
+  while i<=length(AValue) do begin
+   // skip delimiter
+   if aNotFirst and (i<=length(AValue)) and (AValue[i]=FDelimiter) then inc(i);
+
+   // skip spaces
+   while (i<=length(AValue)) and (Ord(AValue[i])<=Ord(' ')) do inc(i);
+  
+   // read next string
+   if i<=length(AValue) then begin
+    if AValue[i]=FQuoteChar then begin
+     // next string is quoted
+     j:=i+1;
+     while (j<=length(AValue)) and
+           ( (AValue[j]<>FQuoteChar) or
+             ( (j+1<=length(AValue)) and (AValue[j+1]=FQuoteChar) ) ) do begin
+      if (j<=length(AValue)) and (AValue[j]=FQuoteChar) then inc(j,2)
+                                                        else inc(j);
      end;
-  finally
-    EndUpdate;
+     // j is position of closing quote
+     Add( StringReplace (Copy(AValue,i+1,j-i-1),
+                         FQuoteChar+FQuoteChar,FQuoteChar, [rfReplaceAll]));
+     i:=j+1;
+    end else begin
+     // next string is not quoted
+     j:=i;
+     while (j<=length(AValue)) and
+           (Ord(AValue[j])>Ord(' ')) and
+           (AValue[j]<>FDelimiter) do inc(j);
+     Add( Copy(AValue,i,j-i));
+     i:=j;
+    end;
+   end else begin
+    if aNotFirst then Add('');
+   end;
+
+   // skip spaces
+   while (i<=length(AValue)) and (Ord(AValue[i])<=Ord(' ')) do inc(i);
+
+   aNotFirst:=true;
   end;
+ finally
+  EndUpdate;
+ end;
 end;
 
 Procedure TStrings.SetCommaText(const Value: string);
