@@ -4134,6 +4134,7 @@ var
 // TypeData: PTypeData;
  O : Integer;
  S : String;
+ B : Boolean;
 
 begin
    // find the property
@@ -4145,7 +4146,13 @@ begin
 //     TypeData := GetTypeData(PropInfo^.PropType);
      // call Right SetxxxProp
      case PropInfo^.PropType^.Kind of
-       tkInteger, tkChar, tkWChar, tkBool:
+       tkBool:
+         begin
+         { to support the strings 'true' and 'false' }
+         B:=Value;
+         SetOrdProp(Instance, PropInfo, ord(B));
+         end;
+       tkInteger, tkChar, tkWChar:
          begin
          O:=Value;
          SetOrdProp(Instance, PropInfo, O);
