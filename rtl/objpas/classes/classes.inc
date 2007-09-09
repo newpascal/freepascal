@@ -1429,7 +1429,7 @@ var
 	    begin
             setlength(s,length(ws));
             for i:= 1 to length(s) do begin
-              s[i]:= ws[i]; //cut msb
+              s[i]:= chr(ord(ws[i])); //cut msb
             end;
             if (length(S)>255) then begin
             Output.WriteByte(Ord(vaLString));

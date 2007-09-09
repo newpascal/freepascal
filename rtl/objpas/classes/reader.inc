@@ -657,7 +657,7 @@ end;
 function TReader.ReadWideChar: WideChar;
 
 var
-  W: String;
+  W: WideString;
   
 begin
   W := ReadWideString;
@@ -1303,7 +1303,7 @@ begin
     s := ReadString;
     setlength(result,length(s));
     for i:= 1 to length(s) do begin
-     result[i]:= s[i]; //no code conversion
+     result[i]:= widechar(ord(s[i])); //no code conversion
     end;
   end;
 end;
