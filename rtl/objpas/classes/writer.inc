@@ -641,7 +641,6 @@ begin
   // do not stream properties without getter
   if not Assigned(PPropInfo(PropInfo)^.GetProc) then
     exit;
-    
   // properties without setter are only allowed, if they are subcomponents
   PropType := PPropInfo(PropInfo)^.PropType;
   if not Assigned(PPropInfo(PropInfo)^.SetProc) then begin
@@ -784,22 +783,25 @@ begin
           AncestorObj := nil;
 
         if not Assigned(ObjValue) then
-        begin
-          if ObjValue <> AncestorObj then
           begin
+          if ObjValue <> AncestorObj then
+            begin
             Driver.BeginProperty(FPropPath + PPropInfo(PropInfo)^.Name);
             Driver.WriteIdent('NIL');
             Driver.EndProperty;
+            end
           end
-        end else if ObjValue.InheritsFrom(TPersistent) then
+        else if ObjValue.InheritsFrom(TPersistent) then
+          begin
           { Subcomponents are streamed the same way as persistents }
           if ObjValue.InheritsFrom(TComponent)
-          and not (csSubComponent in TComponent(ObjValue).ComponentStyle) then
-          begin
+            and ((not (csSubComponent in TComponent(ObjValue).ComponentStyle)) or
+                 (TComponent(ObjValue).Owner<>Instance)) then
+            begin
             Component := TComponent(ObjValue);
             if (ObjValue <> AncestorObj)
-            and not (csTransient in Component.ComponentStyle) then
-            begin
+                and not (csTransient in Component.ComponentStyle) then
+              begin
               { Determine the correct name of the component this property contains }
               if Component.Owner = LookupRoot then
                 Name := Component.Name
@@ -814,17 +816,18 @@ begin
                 SetLength(Name, 0);
 
               if Length(Name) > 0 then
-              begin
+                begin
                 Driver.BeginProperty(FPropPath + PPropInfo(PropInfo)^.Name);
                 WriteIdent(Name);
                 Driver.EndProperty;
-              end;
-            end;
-          end else if ObjValue.InheritsFrom(TCollection) then
-          begin
+                end;  // length Name>0
+              end; //(ObjValue <> AncestorObj)
+            end // ObjValue.InheritsFrom(TComponent)
+          else if ObjValue.InheritsFrom(TCollection) then
+            begin
             if (not HasAncestor) or (not CollectionsEqual(TCollection(ObjValue),
               TCollection(GetObjectProp(Ancestor, PropInfo)))) then
-            begin
+              begin
               Driver.BeginProperty(FPropPath + PPropInfo(PropInfo)^.Name);
               SavedPropPath := FPropPath;
               try
@@ -834,9 +837,10 @@ begin
                 FPropPath := SavedPropPath;
                 Driver.EndProperty;
               end;
-            end;
-          end else
-          begin
+              end;
+            end // Tcollection
+          else
+            begin
             SavedAncestor := Ancestor;
             SavedPropPath := FPropPath;
             try
@@ -848,7 +852,8 @@ begin
               Ancestor := SavedAncestor;
               FPropPath := SavedPropPath;
             end;
-          end;
+            end;
+          end; // Inheritsfrom(TPersistent)
       end;
     tkInt64, tkQWord:
       begin
