@@ -588,7 +588,7 @@ procedure TThreadList.Add(Item: Pointer);
         (FList.IndexOf(Item)=-1) then
          FList.Add(Item)
        else if (Duplicates=dupError) then
-         FList.Error(SDuplicateItem,PtrInt(Item));
+         FList.Error(SDuplicateItem,PtrUInt(Item));
     finally
       UnlockList;
     end;

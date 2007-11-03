@@ -582,7 +582,7 @@ begin
           GlobalFixupList.Add(CurFixup);
           FFixups[i] := nil;
         end else
-          SetOrdProp(CurFixup.FInstance, CurFixup.FPropInfo, PtrInt(Target));
+          SetOrdProp(CurFixup.FInstance, CurFixup.FPropInfo, PtrUInt(Target));
       end;
     finally
       FreeFixups;

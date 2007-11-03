@@ -83,7 +83,7 @@ destructor TParser.Destroy;
 begin
   if Assigned(FBuffer) then
   begin
-    FStream.Seek(PtrInt(FTokenPtr) - PtrInt(FBufPtr), 1);
+    FStream.Seek(PtrUInt(FTokenPtr) - PtrUInt(FBufPtr), 1);
     FreeMem(FBuffer, ParseBufSize);
   end;
 
