@@ -215,62 +215,59 @@ function CheckSynchronize(timeout : longint=0) : boolean;
  **********************************************************************}
 
 function ExtractStrings(Separators, WhiteSpace: TSysCharSet; Content: PChar; Strings: TStrings): Integer;
+var b, c : pchar;
 
-var
-  Start,P: PChar;
-  InQuote: Boolean;
-  QC: Char;
-  S : string;
-
-begin
-  Result:=0;
-  if Not (Assigned(Content) and (Content^<>#0)) then
-    Exit;
-  P:=Content;
-  InQuote:=False;
-  QC:=#0;
-  WhiteSpace:=WhiteSpace+[#10,#13];
-  Separators:=Separators+[#0,#10,#13,'''','"'];
-  if Assigned(Strings) then
-    Strings.BeginUpdate;
-  Try
-    repeat
-      while P^ in WhiteSpace do
-        Inc(P); // Not MBCS safe
-      Start:=P;
-      while True do
-        begin
-        while (InQuote and not (P^ in [QC, #0])) or
-              not (P^ in Separators) do
-            Inc(P); // Not MBCS safe
-        if P^ in ['''', '"'] then
-          begin
-          If (QC=#0) then
-            QC:=P^
-          else if (QC=P^) then
-            QC:=#0;
-          InQuote:=QC<>#0;
-          Inc(P);
-          end
-        else
-          Break;
-        end;
-      if (Start<>P) then
-        begin
-        if Assigned(Strings) then
-          begin
-            SetString(S,Start,P-Start);
-            Strings.Add(S);
-          end;
-        Inc(Result);
-        end;
-      If (P^<>#0) then
-        Inc(P);
-    until (P^=#0);
-  finally
-    if Assigned(Strings) then
-      Strings.EndUpdate;
+  procedure SkipWhitespace;
+  begin
+    while (c^ in Whitespace) do
+      inc (c);
   end;
+
+  procedure AddString;
+  var l : integer;
+      s : string;
+  begin
+    l := c-b;
+    if l > 0 then
+      begin
+      setlength(s, l);
+      move (b^, s[1],l);
+      Strings.Add (s);
+      inc (result);
+      end;
+  end;
+
+var quoted : char;
+begin
+  result := 0;
+  c := Content;
+  Quoted := #0;
+  Separators := Separators + [#13, #10] - ['''','"'];
+  SkipWhitespace;
+  b := c;
+  while (c^ <> #0) do
+    begin
+    if (c^ = Quoted) then
+      begin
+      if ((c+1)^ = Quoted) then
+        inc (c)
+      else
+        Quoted := #0
+      end
+    else if (Quoted = #0) and (c^ in ['''','"']) then
+      Quoted := c^;
+    if (Quoted = #0) and (c^ in Separators) then
+      begin
+      AddString;
+      inc (c);
+      SkipWhitespace;
+      b := c;
+      end
+    else
+      inc (c);
+    end;
+  if (c <> b) then
+    AddString;
 end;
 
 
