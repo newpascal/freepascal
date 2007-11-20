@@ -215,29 +215,35 @@ function CheckSynchronize(timeout : longint=0) : boolean;
  **********************************************************************}
 
 function ExtractStrings(Separators, WhiteSpace: TSysCharSet; Content: PChar; Strings: TStrings): Integer;
-var b, c : pchar;
+var
+  b, c : pchar;
 
   procedure SkipWhitespace;
-  begin
-    while (c^ in Whitespace) do
-      inc (c);
-  end;
+    begin
+      while (c^ in Whitespace) do
+        inc (c);
+    end;
 
   procedure AddString;
-  var l : integer;
+    var
+      l : integer;
       s : string;
-  begin
-    l := c-b;
-    if l > 0 then
-      begin
-      setlength(s, l);
-      move (b^, s[1],l);
-      Strings.Add (s);
-      inc (result);
-      end;
-  end;
+    begin
+      l := c-b;
+      if l > 0 then
+        begin
+          if assigned(Strings) then
+            begin
+              setlength(s, l);
+              move (b^, s[1],l);
+              Strings.Add (s);
+            end;
+          inc (result);
+        end;
+    end;
 
-var quoted : char;
+var
+  quoted : char;
 begin
   result := 0;
   c := Content;
@@ -247,24 +253,24 @@ begin
   b := c;
   while (c^ <> #0) do
     begin
-    if (c^ = Quoted) then
-      begin
-      if ((c+1)^ = Quoted) then
-        inc (c)
+      if (c^ = Quoted) then
+        begin
+          if ((c+1)^ = Quoted) then
+            inc (c)
+          else
+            Quoted := #0
+        end
+      else if (Quoted = #0) and (c^ in ['''','"']) then
+        Quoted := c^;
+      if (Quoted = #0) and (c^ in Separators) then
+        begin
+          AddString;
+          inc (c);
+          SkipWhitespace;
+          b := c;
+        end
       else
-        Quoted := #0
-      end
-    else if (Quoted = #0) and (c^ in ['''','"']) then
-      Quoted := c^;
-    if (Quoted = #0) and (c^ in Separators) then
-      begin
-      AddString;
-      inc (c);
-      SkipWhitespace;
-      b := c;
-      end
-    else
-      inc (c);
+        inc (c);
     end;
   if (c <> b) then
     AddString;
