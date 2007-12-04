@@ -1277,7 +1277,7 @@ type
     function SourcePos: Longint;
     function TokenComponentIdent: String;
     function TokenFloat: Extended;
-    function TokenInt: Longint;
+    function TokenInt: Int64;
     function TokenString: string;
     function TokenWideString: widestring;
     function TokenSymbolIs(const S: string): Boolean;

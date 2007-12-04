@@ -176,8 +176,8 @@ var
   end;
  
 var
-  I                : Integer;
-  P                : PChar;
+  I : Int64;
+  P : PChar;
 begin
   SkipBlanks;
   P := FSourcePtr;
@@ -298,9 +298,9 @@ begin
   Result := Back;
 end;
 
-Function TParser.TokenInt: Longint;
+Function TParser.TokenInt: Int64;
 begin
-  Result := StrToInt(TokenString);
+  Result := StrToInt64(TokenString);
 end;
 
 Function TParser.TokenString: string;
