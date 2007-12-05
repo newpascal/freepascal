@@ -1058,7 +1058,7 @@ procedure ObjectBinaryToText(Input, Output: TStream);
 
   procedure OutLn(s: String);
   begin
-    OutStr(s + #10);
+    OutStr(s + LineEnding);
   end;
 
   procedure Outchars(P, LastP : Pointer; CharToOrdFunc: CharToOrdFuncty);
@@ -1127,18 +1127,95 @@ procedure ObjectBinaryToText(Input, Output: TStream);
     OutChars(Pointer(S),PChar(S)+Length(S),@Utf8ToOrd);
   end;
 
-  function ReadInt(ValueType: TValueType): LongInt;
+  function ReadWord : word; inline;
+  begin
+    Result:=Input.ReadWord;
+    {$IFDEF ENDIAN_BIG}
+    Result:=SwapEndian(Result);
+    {$ENDIF}
+  end;
+
+  function ReadDWord : longword; inline;
+  begin
+    Result:=Input.ReadDWord;
+    {$IFDEF ENDIAN_BIG}
+    Result:=SwapEndian(Result);
+    {$ENDIF}
+  end;
+
+  function ReadQWord : qword; inline;
+  begin
+    Input.ReadBuffer(Result,sizeof(Result));
+    {$IFDEF ENDIAN_BIG}
+    Result:=SwapEndian(Result);
+    {$ENDIF}
+  end;
+
+  {$IFNDEF FPC_HAS_TYPE_EXTENDED}
+  function ExtendedToDouble(e : pointer) : double;
+  var mant : qword;
+      exp : smallint;
+      sign : boolean;
+      d : qword;
+  begin
+    move(pbyte(e)[0],mant,8); //mantissa         : bytes 0..7
+    move(pbyte(e)[8],exp,2);  //exponent and sign: bytes 8..9
+    {$IFDEF ENDIAN_BIG}
+    mant:=SwapEndian(mant);
+    exp:=SwapEndian(word(exp));
+    {$ENDIF}
+    sign:=(exp and $8000)<>0;
+    if sign then exp:=exp and $7FFF;
+    case exp of
+          0 : mant:=0;  //if denormalized, value is too small for double,
+                        //so it's always zero
+      $7FFF : exp:=2047 //either infinity or NaN
+      else
+      begin
+        dec(exp,16383-1023);
+        if (exp<1) or (exp>2046) then //exponent too large.
+        begin
+          Result:=0;
+          exit;
+        end;
+      end;
+    end;
+    d:=word(exp);
+    d:=d shl 52;
+    mant:=mant shl 1; //hide most significant bit
+    mant:=mant shr 12;
+    d:=d or mant;
+    if sign then d:=d or $8000000000000000;
+    Result:=pdouble(@d)^;
+  end;
+  {$ENDIF}
+  
+  function ReadInt(ValueType: TValueType): Int64;
   begin
     case ValueType of
       vaInt8: Result := ShortInt(Input.ReadByte);
-      vaInt16: Result := SmallInt(Input.ReadWord);
-      vaInt32: Result := LongInt(Input.ReadDWord);
+      vaInt16: Result := SmallInt(ReadWord);
+      vaInt32: Result := LongInt(ReadDWord);
+      vaInt64: Result := Int64(ReadQWord);
     end;
   end;
 
-  function ReadInt: LongInt;
+  function ReadInt: Int64;
   begin
     Result := ReadInt(TValueType(Input.ReadByte));
+  end;
+  
+  function ReadExtended : extended;
+  {$IFNDEF FPC_HAS_TYPE_EXTENDED}
+  var ext : array[0..9] of byte;
+  {$ENDIF}
+  begin
+    {$IFNDEF FPC_HAS_TYPE_EXTENDED}
+    Input.ReadBuffer(ext[0],10);
+    Result:=ExtendedToDouble(@(ext[0]));
+    {$ELSE}
+    Input.ReadBuffer(Result,sizeof(Result));
+    {$ENDIF}
   end;
 
   function ReadSStr: String;
@@ -1148,27 +1225,36 @@ procedure ObjectBinaryToText(Input, Output: TStream);
     len := Input.ReadByte;
     SetLength(Result, len);
     if (len > 0) then
-      Input.Read(Result[1], len);
+      Input.ReadBuffer(Result[1], len);
   end;
 
   function ReadLStr: String;
   var
     len: DWord;
   begin
-    len := Input.ReadDWord;
+    len := ReadDWord;
     SetLength(Result, len);
     if (len > 0) then
-      Input.Read(Result[1], len);
+      Input.ReadBuffer(Result[1], len);
   end;
 
   function ReadWStr: WideString;
   var
     len: DWord;
+  {$IFDEF ENDIAN_BIG}
+    i : integer;
+  {$ENDIF}
   begin
-    len := Input.ReadDWord;
+    len := ReadDWord;
     SetLength(Result, len);
     if (len > 0) then
-      Input.Read(Pointer(@Result[1])^, len*2);
+    begin
+      Input.ReadBuffer(Pointer(@Result[1])^, len*2);
+      {$IFDEF ENDIAN_BIG}
+      for i:=1 to len do
+        Result[i]:=widechar(SwapEndian(word(Result[i])));
+      {$ENDIF}
+    end;
   end;
 
   procedure ReadPropList(indent: String);
@@ -1181,14 +1267,14 @@ procedure ObjectBinaryToText(Input, Output: TStream);
         lbuf: array[0..31] of Byte;
         s: String;
       begin
-        ToDo := Input.ReadDWord;
+        ToDo := ReadDWord;
         OutLn('{');
         while ToDo > 0 do begin
           DoNow := ToDo;
           if DoNow > 32 then DoNow := 32;
           Dec(ToDo, DoNow);
           s := Indent + '  ';
-          Input.Read(lbuf, DoNow);
+          Input.ReadBuffer(lbuf, DoNow);
           for i := 0 to DoNow - 1 do
             s := s + IntToHex(lbuf[i], 2);
           OutLn(s);
@@ -1201,6 +1287,7 @@ procedure ObjectBinaryToText(Input, Output: TStream);
 {      len: LongInt; }
       IsFirst: Boolean;
       ext: Extended;
+      i : integer;
 
     begin
       case ValueType of
@@ -1220,11 +1307,16 @@ procedure ObjectBinaryToText(Input, Output: TStream);
             OutLn(Indent + ')');
           end;
         vaInt8: OutLn(IntToStr(ShortInt(Input.ReadByte)));
-        vaInt16: OutLn( IntToStr(SmallInt(Input.ReadWord)));
-        vaInt32: OutLn(IntToStr(LongInt(Input.ReadDWord)));
+        vaInt16: OutLn( IntToStr(SmallInt(ReadWord)));
+        vaInt32: OutLn(IntToStr(LongInt(ReadDWord)));
+        vaInt64: OutLn(IntToStr(Int64(ReadQWord)));
         vaExtended: begin
-            Input.Read(ext, SizeOf(ext));
-            Str(ext,S);// Do not use localized strings.
+            ext:=ReadExtended;
+            Str(ext:1:20,S);// Do not use localized strings.
+            i:=length(S);
+            while S[i]='0' do //1234.5678 is nicer than 1.2345678000000000E+0003
+              dec(i);
+            SetLength(S,i);
             OutLn(S);
           end;
         vaString: begin
@@ -1349,41 +1441,136 @@ procedure ObjectTextToBinary(Input, Output: TStream);
 var
   parser: TParser;
 
-  procedure WriteString(s: String);
+  procedure WriteWord(w : word); inline;
   begin
-    Output.WriteByte(Length(s));
+    {$IFDEF ENDIAN_BIG}
+    w:=SwapEndian(w);
+    {$ENDIF}
+    Output.WriteWord(w);
+  end;
+
+  procedure WriteDWord(lw : longword); inline;
+  begin
+    {$IFDEF ENDIAN_BIG}
+    lw:=SwapEndian(lw);
+    {$ENDIF}
+    Output.WriteDWord(lw);
+  end;
+
+  procedure WriteQWord(qw : qword); inline;
+  begin
+    {$IFDEF ENDIAN_BIG}
+    qw:=SwapEndian(qw);
+    {$ENDIF}
+    Output.WriteBuffer(qw,sizeof(qword));
+  end;
+  
+  {$IFNDEF FPC_HAS_TYPE_EXTENDED}
+  procedure DoubleToExtended(d : double; e : pointer);
+  var mant : qword;
+      exp : smallint;
+      sign : boolean;
+  begin
+    mant:=(qword(d) and $000FFFFFFFFFFFFF) shl 12;
+    exp :=(qword(d) shr 52) and $7FF;
+    sign:=(qword(d) and $8000000000000000)<>0;
+    case exp of
+         0 : begin
+               if mant<>0 then  //denormalized value: hidden bit is 0. normalize it
+               begin
+                 exp:=16383-1022;
+                 while (mant and $8000000000000000)=0 do
+                 begin
+                   dec(exp);
+                   mant:=mant shl 1;
+                 end;
+                 dec(exp); //don't shift, most significant bit is not hidden in extended
+               end;
+             end;
+      2047 : exp:=$7FFF //either infinity or NaN
+      else
+      begin
+        inc(exp,16383-1023);
+        mant:=(mant shr 1) or $8000000000000000; //unhide hidden bit
+      end;
+    end;
+    if sign then exp:=exp or $8000;
+    {$IFDEF ENDIAN_BIG}
+    mant:=SwapEndian(mant);
+    exp:=SwapEndian(word(exp));
+    {$ENDIF}
+    move(mant,pbyte(e)[0],8); //mantissa         : bytes 0..7
+    move(exp,pbyte(e)[8],2);  //exponent and sign: bytes 8..9
+  end;
+  {$ENDIF}
+
+  procedure WriteExtended(e : extended);
+  {$IFNDEF FPC_HAS_TYPE_EXTENDED}
+  var ext : array[0..9] of byte;
+  {$ENDIF}
+  begin
+    {$IFNDEF FPC_HAS_TYPE_EXTENDED}
+    DoubleToExtended(e,@(ext[0]));
+    Output.WriteBuffer(ext[0],10);
+    {$ELSE}
+    Output.WriteBuffer(e,sizeof(e));
+    {$ENDIF}
+  end;
+
+  procedure WriteString(s: String);
+  var size : byte;
+  begin
+    if length(s)>255 then size:=255
+    else size:=length(s);
+    Output.WriteByte(size);
     if Length(s) > 0 then
-      Output.Write(s[1], Length(s));
+      Output.WriteBuffer(s[1], size);
   end;
 
   procedure WriteLString(Const s: String);
   begin
-    Output.WriteDWord(Length(s));
+    WriteDWord(Length(s));
     if Length(s) > 0 then
-      Output.Write(s[1], Length(s));
+      Output.WriteBuffer(s[1], Length(s));
   end;
 
   procedure WriteWString(Const s: WideString);
+  {$IFDEF ENDIAN_BIG}
+  var i : integer;
+      ws : widestring;
+  {$ENDIF}
   begin
-    Output.WriteDWord(Length(s));
+    WriteDWord(Length(s));
     if Length(s) > 0 then
-      Output.Write(s[1], Length(s)*sizeof(widechar));
-  end;
-
-  procedure WriteInteger(value: LongInt);
-  begin
-    if (value >= -128) and (value <= 127) then begin
-      Output.WriteByte(Ord(vaInt8));
-      Output.WriteByte(Byte(value));
-    end else if (value >= -32768) and (value <= 32767) then begin
-      Output.WriteByte(Ord(vaInt16));
-      Output.WriteWord(Word(value));
-    end else begin
-      Output.WriteByte(ord(vaInt32));
-      Output.WriteDWord(LongWord(value));
+    begin
+      {$IFDEF ENDIAN_BIG}
+      setlength(ws,sizeof(s));
+      for i:=1 to length(s) do
+        ws[i]:=widechar(SwapEndian(word(s[i])));
+      Output.WriteBuffer(ws[1], Length(ws)*sizeof(widechar));
+      {$ELSE}
+      Output.WriteBuffer(s[1], Length(s)*sizeof(widechar));
+      {$ENDIF}
     end;
   end;
 
+  procedure WriteInteger(value: Int64);
+  begin
+    if (value >= -128) and (value <= 127) then begin
+      Output.WriteByte(Ord(vaInt8));
+      Output.WriteByte(byte(value));
+    end else if (value >= -32768) and (value <= 32767) then begin
+      Output.WriteByte(Ord(vaInt16));
+      WriteWord(word(value));
+    end else if (value >= -2147483648) and (value <= 2147483647) then begin
+      Output.WriteByte(Ord(vaInt32));
+      WriteDWord(longword(value));
+    end else begin
+      Output.WriteByte(ord(vaInt64));
+      WriteQWord(qword(value));
+    end;
+  end;
+  
   procedure ProcessProperty; forward;
 
   procedure ProcessValue;
@@ -1405,7 +1592,7 @@ var
         begin
           Output.WriteByte(Ord(vaExtended));
           flt := Parser.TokenFloat;
-          Output.Write(flt, SizeOf(flt));
+          WriteExtended(flt);
           parser.NextToken;
         end;
       toString:
@@ -1514,8 +1701,8 @@ var
           stream := TMemoryStream.Create;
           try
             parser.HexToBinary(stream);
-            Output.WriteDWord(stream.Size);
-            Output.Write(Stream.Memory^, stream.Size);
+            WriteDWord(stream.Size);
+            Output.WriteBuffer(Stream.Memory^, stream.Size);
           finally
             stream.Free;
           end;
@@ -1609,7 +1796,7 @@ const
 begin
   parser := TParser.Create(Input);
   try
-    Output.Write(signature[0], 4);
+    Output.WriteBuffer(signature[0], 4);
     ProcessObject;
   finally
     parser.Free;
@@ -1626,7 +1813,7 @@ end;
 
 procedure ObjectTextToResource(Input, Output: TStream);
 var
-  StartPos, SizeStartPos, BinSize: LongInt;
+  StartPos, FixupInfo: LongInt;
   parser: TParser;
   name: String;
 begin
@@ -1647,19 +1834,10 @@ begin
     Input.Position := StartPos;
   end;
 
-  // Write resource header
   name := UpperCase(name);
-  Output.WriteByte($ff);
-  Output.WriteByte(10);
-  Output.WriteByte(0);
-  Output.Write(name[1], Length(name) + 1);      // Write null-terminated form type name
-  Output.WriteWord($1030);
-  SizeStartPos := Output.Position;
-  Output.WriteDWord(0);                 // Placeholder for data size
-  ObjectTextToBinary(Input, Output);    // Convert the stuff!
-  BinSize := Output.Position - SizeStartPos - 4;
-  Output.Position := SizeStartPos;
-  Output.WriteDWord(BinSize);           // Insert real resource data size
+  Output.WriteResourceHeader(name,FixupInfo); // Write resource header
+  ObjectTextToBinary(Input, Output);          // Convert the stuff!
+  Output.FixupResourceHeader(FixupInfo);      // Insert real resource data size
 end;
 
 
