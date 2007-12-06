@@ -1535,21 +1535,23 @@ var
   end;
 
   procedure WriteWString(Const s: WideString);
+  var len : longword;
   {$IFDEF ENDIAN_BIG}
-  var i : integer;
+      i : integer;
       ws : widestring;
   {$ENDIF}
   begin
-    WriteDWord(Length(s));
-    if Length(s) > 0 then
+    len:=Length(s);
+    WriteDWord(len);
+    if len > 0 then
     begin
       {$IFDEF ENDIAN_BIG}
-      setlength(ws,sizeof(s));
-      for i:=1 to length(s) do
+      setlength(ws,len);
+      for i:=1 to len do
         ws[i]:=widechar(SwapEndian(word(s[i])));
-      Output.WriteBuffer(ws[1], Length(ws)*sizeof(widechar));
+      Output.WriteBuffer(ws[1], len*sizeof(widechar));
       {$ELSE}
-      Output.WriteBuffer(s[1], Length(s)*sizeof(widechar));
+      Output.WriteBuffer(s[1], len*sizeof(widechar));
       {$ENDIF}
     end;
   end;
