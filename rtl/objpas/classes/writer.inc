@@ -16,6 +16,82 @@
 {*                         TBinaryObjectWriter                              *}
 {****************************************************************************}
 
+{$IFNDEF FPC_HAS_TYPE_EXTENDED}
+procedure DoubleToExtended(d : double; e : pointer);
+var mant : qword;
+    exp : smallint;
+    sign : boolean;
+begin
+  mant:=(qword(d) and $000FFFFFFFFFFFFF) shl 12;
+  exp :=(qword(d) shr 52) and $7FF;
+  sign:=(qword(d) and $8000000000000000)<>0;
+  case exp of
+       0 : begin
+             if mant<>0 then  //denormalized value: hidden bit is 0. normalize it
+             begin
+               exp:=16383-1022;
+               while (mant and $8000000000000000)=0 do
+               begin
+                 dec(exp);
+                 mant:=mant shl 1;
+               end;
+               dec(exp); //don't shift, most significant bit is not hidden in extended
+             end;
+           end;
+    2047 : exp:=$7FFF //either infinity or NaN
+    else
+    begin
+      inc(exp,16383-1023);
+      mant:=(mant shr 1) or $8000000000000000; //unhide hidden bit
+    end;
+  end;
+  if sign then exp:=exp or $8000;
+  {$IFDEF ENDIAN_BIG}
+  mant:=SwapEndian(mant);
+  exp:=SwapEndian(word(exp));
+  {$ENDIF}
+  move(mant,pbyte(e)[0],8); //mantissa         : bytes 0..7
+  move(exp,pbyte(e)[8],2);  //exponent and sign: bytes 8..9
+end;
+{$ENDIF}
+
+procedure TBinaryObjectWriter.WriteWord(w : word); inline;
+begin
+  {$IFDEF ENDIAN_BIG}
+  w:=SwapEndian(w);
+  {$ENDIF}
+  Write(w,2);
+end;
+
+procedure TBinaryObjectWriter.WriteDWord(lw : longword); inline;
+begin
+  {$IFDEF ENDIAN_BIG}
+  lw:=SwapEndian(lw);
+  {$ENDIF}
+  Write(lw,4);
+end;
+
+procedure TBinaryObjectWriter.WriteQWord(qw : qword); inline;
+begin
+  {$IFDEF ENDIAN_BIG}
+  qw:=SwapEndian(qw);
+  {$ENDIF}
+  Write(qw,8);
+end;
+
+procedure TBinaryObjectWriter.WriteExtended(e : extended); inline;
+{$IFNDEF FPC_HAS_TYPE_EXTENDED}
+var ext : array[0..9] of byte;
+{$ENDIF}
+begin
+  {$IFNDEF FPC_HAS_TYPE_EXTENDED}
+  DoubleToExtended(e,@(ext[0]));
+  Write(ext[0],10);
+  {$ELSE}
+  Write(e,sizeof(e));
+  {$ENDIF}
+end;
+
 constructor TBinaryObjectWriter.Create(Stream: TStream; BufSize: Integer);
 begin
   inherited Create;
@@ -88,7 +164,7 @@ end;
 procedure TBinaryObjectWriter.WriteBinary(const Buffer; Count: LongInt);
 begin
   WriteValue(vaBinary);
-  Write(Count, 4);
+  WriteDWord(longword(Count));
   Write(Buffer, Count);
 end;
 
@@ -103,26 +179,26 @@ end;
 procedure TBinaryObjectWriter.WriteFloat(const Value: Extended);
 begin
   WriteValue(vaExtended);
-  Write(Value, SizeOf(Value));
+  WriteExtended(Value);
 end;
 
 procedure TBinaryObjectWriter.WriteSingle(const Value: Single);
 begin
   WriteValue(vaSingle);
-  Write(Value, SizeOf(Value));
+  WriteDWord(longword(Value));
 end;
 
 procedure TBinaryObjectWriter.WriteCurrency(const Value: Currency);
 begin
   WriteValue(vaCurrency);
-  Write(Value, SizeOf(Value));
+  WriteQWord(qword(Value));
 end;
 
 
 procedure TBinaryObjectWriter.WriteDate(const Value: TDateTime);
 begin
   WriteValue(vaDate);
-  Write(Value, SizeOf(Value));
+  WriteQWord(qword(Value));
 end;
 
 procedure TBinaryObjectWriter.WriteIdent(const Ident: string);
@@ -159,16 +235,16 @@ begin
   begin
     WriteValue(vaInt16);
     i := Value;
-    Write(i, 2);
+    WriteWord(word(i));
   end else if (Value >= -$80000000) and (Value <= $7fffffff) then
   begin
     WriteValue(vaInt32);
     l := Value;
-    Write(l, 4);
+    WriteDWord(longword(l));
   end else
   begin
     WriteValue(vaInt64);
-    Write(Value, 8);
+    WriteQWord(qword(Value));
   end;
 end;
 
@@ -212,20 +288,33 @@ begin
   end else
   begin
     WriteValue(vaLString);
-    Write(i, 4);
+    WriteDWord(longword(i));
   end;
   if i > 0 then
     Write(Value[1], i);
 end;
 
 procedure TBinaryObjectWriter.WriteWideString(const Value: WideString);
-var
-  i: Integer;
+var len : longword;
+{$IFDEF ENDIAN_BIG}
+    i : integer;
+    ws : widestring;
+{$ENDIF}
 begin
   WriteValue(vaWString);
-  i := Length(Value);
-  Write(i, 4);
-  Write(Pointer(Value)^, i * 2);
+  len:=Length(Value);
+  WriteDWord(len);
+  if len > 0 then
+  begin
+    {$IFDEF ENDIAN_BIG}
+    setlength(ws,len);
+    for i:=1 to len do
+      ws[i]:=widechar(SwapEndian(word(Value[i])));
+    Write(ws[1], len*sizeof(widechar));
+    {$ELSE}
+    Write(Value[1], len*sizeof(widechar));
+    {$ENDIF}
+  end;
 end;
 
 procedure TBinaryObjectWriter.FlushBuffer;

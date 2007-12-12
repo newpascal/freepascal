@@ -14,6 +14,82 @@
 {*                       TBinaryObjectReader                                *}
 {****************************************************************************}
 
+{$IFNDEF FPC_HAS_TYPE_EXTENDED}
+function ExtendedToDouble(e : pointer) : double;
+var mant : qword;
+    exp : smallint;
+    sign : boolean;
+    d : qword;
+begin
+  move(pbyte(e)[0],mant,8); //mantissa         : bytes 0..7
+  move(pbyte(e)[8],exp,2);  //exponent and sign: bytes 8..9
+  {$IFDEF ENDIAN_BIG}
+  mant:=SwapEndian(mant);
+  exp:=SwapEndian(word(exp));
+  {$ENDIF}
+  sign:=(exp and $8000)<>0;
+  if sign then exp:=exp and $7FFF;
+  case exp of
+        0 : mant:=0;  //if denormalized, value is too small for double,
+                      //so it's always zero
+    $7FFF : exp:=2047 //either infinity or NaN
+    else
+    begin
+      dec(exp,16383-1023);
+      if (exp<1) or (exp>2046) then //exponent too large.
+      begin
+        Result:=0;
+        exit;
+      end;
+    end;
+  end;
+  d:=word(exp);
+  d:=d shl 52;
+  mant:=mant shl 1; //hide most significant bit
+  mant:=mant shr 12;
+  d:=d or mant;
+  if sign then d:=d or $8000000000000000;
+  Result:=pdouble(@d)^;
+end;
+{$ENDIF}
+
+function TBinaryObjectReader.ReadWord : word; inline;
+begin
+  Read(Result,2);
+  {$IFDEF ENDIAN_BIG}
+  Result:=SwapEndian(Result);
+  {$ENDIF}
+end;
+
+function TBinaryObjectReader.ReadDWord : longword; inline;
+begin
+  Read(Result,4);
+  {$IFDEF ENDIAN_BIG}
+  Result:=SwapEndian(Result);
+  {$ENDIF}
+end;
+
+function TBinaryObjectReader.ReadQWord : qword; inline;
+begin
+  Read(Result,8);
+  {$IFDEF ENDIAN_BIG}
+  Result:=SwapEndian(Result);
+  {$ENDIF}
+end;
+
+function TBinaryObjectReader.ReadExtended : extended; inline;
+{$IFNDEF FPC_HAS_TYPE_EXTENDED}
+var ext : array[0..9] of byte;
+{$ENDIF}
+begin
+  {$IFNDEF FPC_HAS_TYPE_EXTENDED}
+  Read(ext[0],10);
+  Result:=ExtendedToDouble(@(ext[0]));
+  {$ELSE}
+  Read(Result,sizeof(Result));
+  {$ENDIF}
+end;
+
 constructor TBinaryObjectReader.Create(Stream: TStream; BufSize: Integer);
 begin
   inherited Create;
@@ -101,29 +177,29 @@ procedure TBinaryObjectReader.ReadBinary(const DestData: TMemoryStream);
 var
   BinSize: LongInt;
 begin
-  Read(BinSize, 4);
+  BinSize:=LongInt(ReadDWord);
   DestData.Size := BinSize;
   Read(DestData.Memory^, BinSize);
 end;
 
 function TBinaryObjectReader.ReadFloat: Extended;
 begin
-  Read(Result, SizeOf(Extended))
+  Result:=ReadExtended;
 end;
 
 function TBinaryObjectReader.ReadSingle: Single;
 begin
-  Read(Result, SizeOf(Single))
+  Result:=single(ReadDWord);
 end;
 
 function TBinaryObjectReader.ReadCurrency: Currency;
 begin
-  Read(Result, SizeOf(Currency))
+  Result:=currency(ReadQWord);
 end;
 
 function TBinaryObjectReader.ReadDate: TDateTime;
 begin
-  Read(Result, SizeOf(TDateTime))
+  Result:=TDateTime(ReadQWord);
 end;
 
 function TBinaryObjectReader.ReadIdent(ValueType: TValueType): String;
@@ -155,17 +231,17 @@ end;
 
 function TBinaryObjectReader.ReadInt16: SmallInt;
 begin
-  Read(Result, 2);
+  Result:=SmallInt(ReadWord);
 end;
 
 function TBinaryObjectReader.ReadInt32: LongInt;
 begin
-  Read(Result, 4);
+  Result:=LongInt(ReadDWord);
 end;
 
 function TBinaryObjectReader.ReadInt64: Int64;
 begin
-  Read(Result, 8);
+  Result:=Int64(ReadQWord);
 end;
 
 function TBinaryObjectReader.ReadSet(EnumType: Pointer): Integer;
@@ -213,24 +289,31 @@ begin
         i := b;
       end;
     vaLString:
-      Read(i, 4);
+      i:=ReadDWord;
   end;
   SetLength(Result, i);
   if i > 0 then
     Read(Pointer(@Result[1])^, i);
 end;
 
-
 function TBinaryObjectReader.ReadWideString: WideString;
 var
-  i: Integer;
+  len: DWord;
+{$IFDEF ENDIAN_BIG}
+  i : integer;
+{$ENDIF}
 begin
-  Read(i, 4);
-  SetLength(Result, i);
-  if i > 0 then
-    Read(Pointer(@Result[1])^, i*2);
+  len := ReadDWord;
+  SetLength(Result, len);
+  if (len > 0) then
+  begin
+    Read(Pointer(@Result[1])^, len*2);
+    {$IFDEF ENDIAN_BIG}
+    for i:=1 to len do
+      Result[i]:=widechar(SwapEndian(word(Result[i])));
+    {$ENDIF}
+  end;
 end;
-
 
 procedure TBinaryObjectReader.SkipComponent(SkipComponentInfos: Boolean);
 var
@@ -289,17 +372,17 @@ begin
     vaInt32:
       SkipBytes(4);
     vaExtended:
-      SkipBytes(SizeOf(Extended));
+      SkipBytes(10);
     vaString, vaIdent:
       ReadStr;
     vaBinary, vaLString:
       begin
-        Read(Count, 4);
+        Count:=LongInt(ReadDWord);
         SkipBytes(Count);
       end;
     vaWString:
       begin
-        Read(Count, 4);
+        Count:=LongInt(ReadDWord);
         SkipBytes(Count*sizeof(widechar));
       end;
     vaSet:

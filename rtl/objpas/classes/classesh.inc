@@ -951,6 +951,11 @@ type
     FBufSize: Integer;
     FBufPos: Integer;
     FBufEnd: Integer;
+    
+    function ReadWord : word; inline;
+    function ReadDWord : longword; inline;
+    function ReadQWord : qword; inline;
+    function ReadExtended : extended; inline;
     procedure SkipProperty;
     procedure SkipSetBody;
   public
@@ -1143,6 +1148,11 @@ type
     FBufPos: Integer;
     FBufEnd: Integer;
     FSignatureWritten: Boolean;
+
+    procedure WriteWord(w : word); inline;
+    procedure WriteDWord(lw : longword); inline;
+    procedure WriteQWord(qw : qword); inline;
+    procedure WriteExtended(e : extended); inline;
     procedure FlushBuffer;
     procedure WriteValue(Value: TValueType);
     procedure WriteStr(const Value: String);
