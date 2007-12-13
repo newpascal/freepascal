@@ -1130,25 +1130,19 @@ procedure ObjectBinaryToText(Input, Output: TStream);
   function ReadWord : word; inline;
   begin
     Result:=Input.ReadWord;
-    {$IFDEF ENDIAN_BIG}
-    Result:=SwapEndian(Result);
-    {$ENDIF}
+    Result:=LEtoN(Result);
   end;
 
   function ReadDWord : longword; inline;
   begin
     Result:=Input.ReadDWord;
-    {$IFDEF ENDIAN_BIG}
-    Result:=SwapEndian(Result);
-    {$ENDIF}
+    Result:=LEtoN(Result);
   end;
 
   function ReadQWord : qword; inline;
   begin
     Input.ReadBuffer(Result,sizeof(Result));
-    {$IFDEF ENDIAN_BIG}
-    Result:=SwapEndian(Result);
-    {$ENDIF}
+    Result:=LEtoN(Result);
   end;
 
   {$IFNDEF FPC_HAS_TYPE_EXTENDED}
@@ -1160,10 +1154,8 @@ procedure ObjectBinaryToText(Input, Output: TStream);
   begin
     move(pbyte(e)[0],mant,8); //mantissa         : bytes 0..7
     move(pbyte(e)[8],exp,2);  //exponent and sign: bytes 8..9
-    {$IFDEF ENDIAN_BIG}
-    mant:=SwapEndian(mant);
-    exp:=SwapEndian(word(exp));
-    {$ENDIF}
+    mant:=LEtoN(mant);
+    exp:=LetoN(word(exp));
     sign:=(exp and $8000)<>0;
     if sign then exp:=exp and $7FFF;
     case exp of
@@ -1443,25 +1435,19 @@ var
 
   procedure WriteWord(w : word); inline;
   begin
-    {$IFDEF ENDIAN_BIG}
-    w:=SwapEndian(w);
-    {$ENDIF}
+    w:=NtoLE(w);
     Output.WriteWord(w);
   end;
 
   procedure WriteDWord(lw : longword); inline;
   begin
-    {$IFDEF ENDIAN_BIG}
-    lw:=SwapEndian(lw);
-    {$ENDIF}
+    lw:=NtoLE(lw);
     Output.WriteDWord(lw);
   end;
 
   procedure WriteQWord(qw : qword); inline;
   begin
-    {$IFDEF ENDIAN_BIG}
-    qw:=SwapEndian(qw);
-    {$ENDIF}
+    qw:=NtoLE(qw);
     Output.WriteBuffer(qw,sizeof(qword));
   end;
   
@@ -1495,10 +1481,8 @@ var
       end;
     end;
     if sign then exp:=exp or $8000;
-    {$IFDEF ENDIAN_BIG}
-    mant:=SwapEndian(mant);
-    exp:=SwapEndian(word(exp));
-    {$ENDIF}
+    mant:=NtoLE(mant);
+    exp:=NtoLE(word(exp));
     move(mant,pbyte(e)[0],8); //mantissa         : bytes 0..7
     move(exp,pbyte(e)[8],2);  //exponent and sign: bytes 8..9
   end;

@@ -23,10 +23,8 @@ var mant : qword;
 begin
   move(pbyte(e)[0],mant,8); //mantissa         : bytes 0..7
   move(pbyte(e)[8],exp,2);  //exponent and sign: bytes 8..9
-  {$IFDEF ENDIAN_BIG}
-  mant:=SwapEndian(mant);
-  exp:=SwapEndian(word(exp));
-  {$ENDIF}
+  mant:=LEtoN(mant);
+  exp:=LEtoN(word(exp));
   sign:=(exp and $8000)<>0;
   if sign then exp:=exp and $7FFF;
   case exp of
@@ -56,25 +54,19 @@ end;
 function TBinaryObjectReader.ReadWord : word; inline;
 begin
   Read(Result,2);
-  {$IFDEF ENDIAN_BIG}
-  Result:=SwapEndian(Result);
-  {$ENDIF}
+  Result:=LEtoN(Result);
 end;
 
 function TBinaryObjectReader.ReadDWord : longword; inline;
 begin
   Read(Result,4);
-  {$IFDEF ENDIAN_BIG}
-  Result:=SwapEndian(Result);
-  {$ENDIF}
+  Result:=LEtoN(Result);
 end;
 
 function TBinaryObjectReader.ReadQWord : qword; inline;
 begin
   Read(Result,8);
-  {$IFDEF ENDIAN_BIG}
-  Result:=SwapEndian(Result);
-  {$ENDIF}
+  Result:=LEtoN(Result);
 end;
 
 function TBinaryObjectReader.ReadExtended : extended; inline;

@@ -46,10 +46,8 @@ begin
     end;
   end;
   if sign then exp:=exp or $8000;
-  {$IFDEF ENDIAN_BIG}
-  mant:=SwapEndian(mant);
-  exp:=SwapEndian(word(exp));
-  {$ENDIF}
+  mant:=NtoLE(mant);
+  exp:=NtoLE(word(exp));
   move(mant,pbyte(e)[0],8); //mantissa         : bytes 0..7
   move(exp,pbyte(e)[8],2);  //exponent and sign: bytes 8..9
 end;
@@ -57,25 +55,19 @@ end;
 
 procedure TBinaryObjectWriter.WriteWord(w : word); inline;
 begin
-  {$IFDEF ENDIAN_BIG}
-  w:=SwapEndian(w);
-  {$ENDIF}
+  w:=NtoLE(w);
   Write(w,2);
 end;
 
 procedure TBinaryObjectWriter.WriteDWord(lw : longword); inline;
 begin
-  {$IFDEF ENDIAN_BIG}
-  lw:=SwapEndian(lw);
-  {$ENDIF}
+  lw:=NtoLE(lw);
   Write(lw,4);
 end;
 
 procedure TBinaryObjectWriter.WriteQWord(qw : qword); inline;
 begin
-  {$IFDEF ENDIAN_BIG}
-  qw:=SwapEndian(qw);
-  {$ENDIF}
+  qw:=NtoLE(qw);
   Write(qw,8);
 end;
 
