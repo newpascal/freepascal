@@ -1127,19 +1127,19 @@ procedure ObjectBinaryToText(Input, Output: TStream);
     OutChars(Pointer(S),PChar(S)+Length(S),@Utf8ToOrd);
   end;
 
-  function ReadWord : word; inline;
+  function ReadWord : word; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
   begin
     Result:=Input.ReadWord;
     Result:=LEtoN(Result);
   end;
 
-  function ReadDWord : longword; inline;
+  function ReadDWord : longword; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
   begin
     Result:=Input.ReadDWord;
     Result:=LEtoN(Result);
   end;
 
-  function ReadQWord : qword; inline;
+  function ReadQWord : qword; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
   begin
     Input.ReadBuffer(Result,sizeof(Result));
     Result:=LEtoN(Result);
@@ -1165,23 +1165,31 @@ procedure ObjectBinaryToText(Input, Output: TStream);
       else
       begin
         dec(exp,16383-1023);
-        if (exp<1) or (exp>2046) then //exponent too large.
+        if (exp>=-51) and (exp<=0) then //can be denormalized
+        begin
+          mant:=mant shr (-exp);
+          exp:=0;
+        end
+        else
+        if (exp<-51) or (exp>2046) then //exponent too large.
         begin
           Result:=0;
           exit;
-        end;
+        end
+        else //normalized value
+          mant:=mant shl 1; //hide most significant bit
       end;
     end;
     d:=word(exp);
     d:=d shl 52;
-    mant:=mant shl 1; //hide most significant bit
+
     mant:=mant shr 12;
     d:=d or mant;
     if sign then d:=d or $8000000000000000;
     Result:=pdouble(@d)^;
   end;
   {$ENDIF}
-  
+
   function ReadInt(ValueType: TValueType): Int64;
   begin
     case ValueType of
@@ -1433,19 +1441,19 @@ procedure ObjectTextToBinary(Input, Output: TStream);
 var
   parser: TParser;
 
-  procedure WriteWord(w : word); inline;
+  procedure WriteWord(w : word); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
   begin
     w:=NtoLE(w);
     Output.WriteWord(w);
   end;
 
-  procedure WriteDWord(lw : longword); inline;
+  procedure WriteDWord(lw : longword); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
   begin
     lw:=NtoLE(lw);
     Output.WriteDWord(lw);
   end;
 
-  procedure WriteQWord(qw : qword); inline;
+  procedure WriteQWord(qw : qword); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
   begin
     qw:=NtoLE(qw);
     Output.WriteBuffer(qw,sizeof(qword));

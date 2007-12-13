@@ -53,25 +53,25 @@ begin
 end;
 {$ENDIF}
 
-procedure TBinaryObjectWriter.WriteWord(w : word); inline;
+procedure TBinaryObjectWriter.WriteWord(w : word); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
 begin
   w:=NtoLE(w);
   Write(w,2);
 end;
 
-procedure TBinaryObjectWriter.WriteDWord(lw : longword); inline;
+procedure TBinaryObjectWriter.WriteDWord(lw : longword); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
 begin
   lw:=NtoLE(lw);
   Write(lw,4);
 end;
 
-procedure TBinaryObjectWriter.WriteQWord(qw : qword); inline;
+procedure TBinaryObjectWriter.WriteQWord(qw : qword); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
 begin
   qw:=NtoLE(qw);
   Write(qw,8);
 end;
 
-procedure TBinaryObjectWriter.WriteExtended(e : extended); inline;
+procedure TBinaryObjectWriter.WriteExtended(e : extended); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
 {$IFNDEF FPC_HAS_TYPE_EXTENDED}
 var ext : array[0..9] of byte;
 {$ENDIF}

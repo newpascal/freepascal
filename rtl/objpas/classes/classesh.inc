@@ -952,10 +952,10 @@ type
     FBufPos: Integer;
     FBufEnd: Integer;
     
-    function ReadWord : word; inline;
-    function ReadDWord : longword; inline;
-    function ReadQWord : qword; inline;
-    function ReadExtended : extended; inline;
+    function ReadWord : word; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
+    function ReadDWord : longword; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
+    function ReadQWord : qword; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
+    function ReadExtended : extended; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
     procedure SkipProperty;
     procedure SkipSetBody;
   public
@@ -1149,10 +1149,10 @@ type
     FBufEnd: Integer;
     FSignatureWritten: Boolean;
 
-    procedure WriteWord(w : word); inline;
-    procedure WriteDWord(lw : longword); inline;
-    procedure WriteQWord(qw : qword); inline;
-    procedure WriteExtended(e : extended); inline;
+    procedure WriteWord(w : word); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
+    procedure WriteDWord(lw : longword); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
+    procedure WriteQWord(qw : qword); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
+    procedure WriteExtended(e : extended); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
     procedure FlushBuffer;
     procedure WriteValue(Value: TValueType);
     procedure WriteStr(const Value: String);

@@ -34,16 +34,24 @@ begin
     else
     begin
       dec(exp,16383-1023);
-      if (exp<1) or (exp>2046) then //exponent too large.
+      if (exp>=-51) and (exp<=0) then //can be denormalized
+      begin
+        mant:=mant shr (-exp);
+        exp:=0;
+      end
+      else
+      if (exp<-51) or (exp>2046) then //exponent too large.
       begin
         Result:=0;
         exit;
-      end;
+      end
+      else //normalized value
+        mant:=mant shl 1; //hide most significant bit
     end;
   end;
   d:=word(exp);
   d:=d shl 52;
-  mant:=mant shl 1; //hide most significant bit
+
   mant:=mant shr 12;
   d:=d or mant;
   if sign then d:=d or $8000000000000000;
@@ -51,25 +59,25 @@ begin
 end;
 {$ENDIF}
 
-function TBinaryObjectReader.ReadWord : word; inline;
+function TBinaryObjectReader.ReadWord : word; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
 begin
   Read(Result,2);
   Result:=LEtoN(Result);
 end;
 
-function TBinaryObjectReader.ReadDWord : longword; inline;
+function TBinaryObjectReader.ReadDWord : longword; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
 begin
   Read(Result,4);
   Result:=LEtoN(Result);
 end;
 
-function TBinaryObjectReader.ReadQWord : qword; inline;
+function TBinaryObjectReader.ReadQWord : qword; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
 begin
   Read(Result,8);
   Result:=LEtoN(Result);
 end;
 
-function TBinaryObjectReader.ReadExtended : extended; inline;
+function TBinaryObjectReader.ReadExtended : extended; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
 {$IFNDEF FPC_HAS_TYPE_EXTENDED}
 var ext : array[0..9] of byte;
 {$ENDIF}
