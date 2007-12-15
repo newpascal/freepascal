@@ -788,16 +788,18 @@ end;
 
 Procedure TStringList.Grow;
 
-Var Extra : Longint;
+Var 
+  NC : Integer;
 
 begin
-  If FCapacity>64 then
-    Extra:=FCapacity Div 4
-  Else If FCapacity>8 Then
-    Extra:=16
-  Else
-    Extra:=4;
-  SetCapacity(FCapacity+Extra);
+  NC:=FCapacity;
+  If NC>=256 then
+    NC:=NC+(NC Div 4)
+  else if NC=0 then
+    NC:=4
+  else  
+    NC:=NC*4;
+  SetCapacity(NC);
 end;
 
 
