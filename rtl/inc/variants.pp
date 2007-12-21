@@ -1457,7 +1457,7 @@ begin
   Pointer(ws) := nil;
 end;
 
-function DoVarOpLStrCat(var vl: TVarData; const vr : TVarData) : TVarData;
+procedure DoVarOpLStrCat(var vl: TVarData; const vr : TVarData);
 var
   s: AnsiString;
 begin
@@ -2591,6 +2591,7 @@ begin
   GetVariantManager(variantmanager);
   variantmanager.vartolstr(s,v);
   fpc_write_text_ansistr(width,t,s);
+  Result:=nil; // Pointer to what should be returned?
 end;
 
 
@@ -2602,6 +2603,7 @@ begin
   getVariantManager(variantmanager);
   variantmanager.vartolstr(s,v);
   fpc_write_text_ansistr(-1,t,s);
+  Result:=nil; // Pointer to what should be returned?
 end;
 
 Const
