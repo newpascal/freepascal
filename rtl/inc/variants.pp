@@ -1020,6 +1020,7 @@ const
     );
 
   { map a basic type back to a Variant type }
+{ Not used yet
   CommonTypeToVarType : array[TCommonType] of TVarType =
     (
       varEmpty,
@@ -1035,7 +1036,7 @@ const
       varCurrency,
       varString
     );
-
+}
 function MapToCommonType(const vType : TVarType) : TCommonType;
 begin
   case vType of
@@ -1081,6 +1082,7 @@ end;
 function DoVarCmpAny(const Left, Right: TVarData; const OpCode: TVarOp) : ShortInt;
 begin
   VarInvalidOp(Left.vType, Right.vType, OpCode);
+  Result:=0;
 end;
 
 function DoVarCmpLongInt(const Left, Right: LongInt): ShortInt; inline;
@@ -1187,6 +1189,7 @@ function DoVarCmpComplex(const Left, Right: TVarData; const OpCode: TVarOp): Sho
 begin
   {!! custom variants? }
   VarInvalidOp(Left.vType, Right.vType, OpCode);
+  Result:=0;
 end;
 
 
@@ -4051,14 +4054,14 @@ function FindVarData(const V: Variant): PVarData;
 
 Function GetVariantProp(Instance : TObject;PropInfo : PPropInfo): Variant;
 begin
-{$warning GetVariantProp not implemented}
+{$note GetVariantProp not implemented}
   Result:=Null;
 end;
 
 
 Procedure SetVariantProp(Instance : TObject;PropInfo : PPropInfo; const Value: Variant);
 begin
-{$warning SetVariantProp not implemented}
+{$note SetVariantProp not implemented}
 end;
 
 
