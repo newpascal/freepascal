@@ -2879,19 +2879,18 @@ end;
 
 function VarInRange(const AValue, AMin, AMax: Variant): Boolean;
 begin
-//  Result:=(AValue>=AMin) and (AValue<=AMax);
+  Result:=(AValue>=AMin) and (AValue<=AMax);
 end;
 
 
 function VarEnsureRange(const AValue, AMin, AMax: Variant): Variant;
 begin
-  Result:=AValue;
-{ !! Operator not overloaded error...
   If Result>AMAx then
     Result:=AMax
   else If Result<AMin Then
-    Result:=AMin;
-}
+    Result:=AMin
+  else
+    Result:=AValue;
 end;
 
 
