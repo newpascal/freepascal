@@ -4054,14 +4054,12 @@ function FindVarData(const V: Variant): PVarData;
 
 Function GetVariantProp(Instance : TObject;PropInfo : PPropInfo): Variant;
 begin
-{$note GetVariantProp not implemented}
   Result:=Null;
 end;
 
 
 Procedure SetVariantProp(Instance : TObject;PropInfo : PPropInfo; const Value: Variant);
 begin
-{$note SetVariantProp not implemented}
 end;
 
 
