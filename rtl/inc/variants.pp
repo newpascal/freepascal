@@ -4051,15 +4051,59 @@ function FindVarData(const V: Variant): PVarData;
     Variant properties from typinfo
   ---------------------------------------------------------------------}
 
-
-Function GetVariantProp(Instance : TObject;PropInfo : PPropInfo): Variant;
+function GetVariantProp(Instance : TObject;PropInfo : PPropInfo) : Variant;
+type
+  TGetVariantProc = function:Variant of object;
+  TGetVariantProcIndex = function(Index: integer): Variant of object;
+var
+  AMethod : TMethod;
 begin
   Result:=Null;
+  case PropInfo^.PropProcs and 3 of
+    ptField:
+      Result:=PVariant(Pointer(Instance)+PtrUInt(PropInfo^.GetProc))^;
+    ptStatic,
+    ptVirtual:
+      begin
+        if (PropInfo^.PropProcs and 3)=ptStatic then
+          AMethod.Code:=PropInfo^.GetProc
+        else
+          AMethod.Code:=PPointer(Pointer(Instance.ClassType)+PtrUInt(PropInfo^.GetProc))^;
+        AMethod.Data:=Instance;
+
+        if ((PropInfo^.PropProcs shr 6) and 1)=0 then
+          Result:=TGetVariantProc(AMethod)()
+        else
+          Result:=TGetVariantProcIndex(AMethod)(PropInfo^.Index);
+      end;
+  end;
 end;
 
 
-Procedure SetVariantProp(Instance : TObject;PropInfo : PPropInfo; const Value: Variant);
+Procedure SetVariantProp(Instance : TObject;PropInfo : PPropInfo; const Value : Variant);
+type
+  TSetVariantProc = procedure(const AValue: Variant) of object;
+  TSetVariantProcIndex = procedure(Index: integer; AValue: Variant) of object;
+Var
+  AMethod : TMethod;
 begin
+  case (PropInfo^.PropProcs shr 2) and 3 of
+    ptfield:
+      PVariant(Pointer(Instance)+PtrUInt(PropInfo^.SetProc))^:=Value;	
+    ptVirtual,ptStatic:
+      begin
+        if ((PropInfo^.PropProcs shr 2) and 3)=ptStatic then
+          AMethod.Code:=PropInfo^.SetProc
+        else
+          AMethod.Code:=PPointer(Pointer(Instance.ClassType)+PtrUInt(PropInfo^.SetProc))^;
+        AMethod.Data:=Instance;
+        
+	      if ((PropInfo^.PropProcs shr 6) and 1)=0 then
+          TSetVariantProc(AMethod)(Value)
+        else
+          TSetVariantProcIndex(AMethod)(PropInfo^.Index,Value);
+      end;
+  end;
 end;
 
 
