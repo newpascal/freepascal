@@ -482,9 +482,12 @@ type
     FNameValueSeparator : Char;
     FUpdateCount: Integer;
     FAdapter: IStringsAdapter;
+    FLBS : TTextLineBreakStyle;
     function GetCommaText: string;
     function GetName(Index: Integer): string;
     function GetValue(const Name: string): string;
+    Function GetLBS : TTextLineBreakStyle;
+    Procedure SetLBS (AValue : TTextLineBreakStyle); 
     procedure ReadData(Reader: TReader);
     procedure SetCommaText(const Value: string);
     procedure SetStringsAdapter(const Value: IStringsAdapter);
@@ -541,6 +544,7 @@ type
     procedure SaveToStream(Stream: TStream); virtual;
     procedure SetText(TheText: PChar); virtual;
     procedure GetNameValue(Index : Integer; Var AName,AValue : String);
+    Property TextLineBreakStyle : TTextLineBreakStyle Read GetLBS Write SetLBS;
     property Delimiter: Char read FDelimiter write SetDelimiter;
     property DelimitedText: string read GetDelimitedText write SetDelimitedText;
     property QuoteChar: Char read FQuoteChar write SetQuoteChar;

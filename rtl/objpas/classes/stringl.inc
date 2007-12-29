@@ -52,9 +52,21 @@ begin
     FDelimiter:=',';
     FNameValueSeparator:='=';
     FSpecialCharsInited:=true;
+    FLBS:=DefaultTextLineBreakStyle;
     end;
 end;
 
+Function TStrings.GetLBS : TTextLineBreakStyle;
+begin
+  CheckSpecialChars;
+  Result:=FLBS;
+end;
+
+Procedure TStrings.SetLBS (AValue : TTextLineBreakStyle);
+begin
+  CheckSpecialChars;
+  FLBS:=AValue;
+end;
 
 procedure TStrings.SetDelimiter(c:Char);
 begin
@@ -68,7 +80,6 @@ begin
   CheckSpecialChars;
   FQuoteChar:=c;
 end;
-
 
 procedure TStrings.SetNameValueSeparator(c:Char);
 begin
@@ -361,9 +372,14 @@ Var P : Pchar;
     S,NL : String;
 
 begin
+  CheckSpecialChars;
   // Determine needed place
+  Case FLBS of
+    tlbsLF   : NL:=#10;
+    tlbsCRLF : NL:=#13#10;
+    tlbsCR   : NL:=#13; 
+  end;
   L:=0;
-  NL:=sLineBreak; // Force string type. Could be char.
   NLS:=Length(NL);
   For I:=0 to count-1 do
     L:=L+Length(Strings[I])+NLS;
