@@ -1495,6 +1495,8 @@ type
     procedure SetSubComponent(ASubComponent: Boolean);
     function UpdateAction(Action: TBasicAction): Boolean; dynamic;
     // property ComObject: IUnknown read GetComObject;
+    function IsImplementorOf (const Intf:IInterface):boolean;
+    procedure ReferenceInterface(const intf:IInterface;op:TOperation);
     property Components[Index: Integer]: TComponent read GetComponent;
     property ComponentCount: Integer read GetComponentCount;
     property ComponentIndex: Integer read GetComponentIndex write SetComponentIndex;
