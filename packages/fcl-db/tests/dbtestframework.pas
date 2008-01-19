@@ -4,51 +4,34 @@ program dbtestframework;
   {$mode objfpc}{$H+}
 {$ENDIF}
 
-{ $DEFINE STOREDB}
-
 {$APPTYPE CONSOLE}
 
 uses
   SysUtils,
   fpcunit,  testreport, testregistry,
-{$IFDEF STOREDB}
-  DBResultsWriter,
-{$ENDIF}
+  DigestTestReport,
   toolsunit,
 // Units wich contains the tests
   testbasics, testsqlfieldtypes, testdbbasics;
   
 var
   FXMLResultsWriter: TXMLResultsWriter;
-{$IFDEF STOREDB}
-  FDBResultsWriter: TDBResultsWriter;
-{$ENDIF}
+  FDigestResultsWriter: TDigestResultsWriter;
   testResult: TTestResult;
 begin
   testResult := TTestResult.Create;
   FXMLResultsWriter := TXMLResultsWriter.Create;
-{$IFDEF STOREDB}
-  FDBResultsWriter := TDBResultsWriter.Create;
-{$ENDIF}
+  FDigestResultsWriter := TDigestResultsWriter.Create(nil);
   try
     testResult.AddListener(FXMLResultsWriter);
-{$IFDEF STOREDB}
-    testResult.AddListener(FDBResultsWriter);
-{$ENDIF}
+    testResult.AddListener(FDigestResultsWriter);
     FXMLResultsWriter.WriteHeader;
-{$IFDEF STOREDB}
-    FDBResultsWriter.OpenConnection(dbconnectorname+';'+dbconnectorparams);
-{$ENDIF}
+//    FdiDBResultsWriter.OpenConnection(dbconnectorname+';'+dbconnectorparams);
     GetTestRegistry.Run(testResult);
     FXMLResultsWriter.WriteResult(testResult);
-{$IFDEF STOREDB}
-    FDBResultsWriter.CloseConnection;
-{$ENDIF}
   finally
     testResult.Free;
     FXMLResultsWriter.Free;
-{$IFDEF STOREDB}
-    FDBResultsWriter.Free;
-{$ENDIF}
+    FDigestResultsWriter.Free;
   end;
 end.
