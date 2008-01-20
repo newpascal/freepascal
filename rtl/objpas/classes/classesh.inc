@@ -544,6 +544,7 @@ type
     procedure SaveToStream(Stream: TStream); virtual;
     procedure SetText(TheText: PChar); virtual;
     procedure GetNameValue(Index : Integer; Var AName,AValue : String);
+    function  ExtractName(Const S:String):String;
     Property TextLineBreakStyle : TTextLineBreakStyle Read GetLBS Write SetLBS;
     property Delimiter: Char read FDelimiter write SetDelimiter;
     property DelimitedText: string read GetDelimitedText write SetDelimitedText;

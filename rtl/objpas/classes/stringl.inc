@@ -149,6 +149,18 @@ begin
     AName:='';
 end;
 
+function TStrings.ExtractName(const s:String):String;
+var
+  L: Longint;
+begin
+  CheckSpecialChars;
+  L:=Pos(FNameValueSeparator,S);
+  If L<>0 then
+    Result:=Copy(S,1,L-1)
+  else
+    Result:='';
+end;
+
 function TStrings.GetName(Index: Integer): string;
 
 Var
