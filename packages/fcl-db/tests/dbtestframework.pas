@@ -25,6 +25,8 @@ begin
   try
     testResult.AddListener(FXMLResultsWriter);
     testResult.AddListener(FDigestResultsWriter);
+    FDigestResultsWriter.Comment:=dbtype;
+    FDigestResultsWriter.Category:='db';
     FXMLResultsWriter.WriteHeader;
 //    FdiDBResultsWriter.OpenConnection(dbconnectorname+';'+dbconnectorparams);
     GetTestRegistry.Run(testResult);
