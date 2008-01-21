@@ -26,7 +26,7 @@ begin
     testResult.AddListener(FXMLResultsWriter);
     testResult.AddListener(FDigestResultsWriter);
     FDigestResultsWriter.Comment:=dbtype;
-    FDigestResultsWriter.Category:='db';
+    FDigestResultsWriter.Category:='DB';
     FXMLResultsWriter.WriteHeader;
 //    FdiDBResultsWriter.OpenConnection(dbconnectorname+';'+dbconnectorparams);
     GetTestRegistry.Run(testResult);
