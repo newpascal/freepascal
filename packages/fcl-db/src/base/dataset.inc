@@ -264,7 +264,7 @@ end;
 Procedure TDataset.DoAfterClose;
 
 begin
- If assigned(FAfterClose) then
+ If assigned(FAfterClose) and not (csDestroying in ComponentState) then
    FAfterClose(Self);
 end;
 
@@ -327,7 +327,7 @@ end;
 Procedure TDataset.DoBeforeClose;
 
 begin
- If assigned(FBeforeClose) then
+ If assigned(FBeforeClose) and not (csDestroying in ComponentState) then
    FBeforeClose(Self);
 end;
 
@@ -970,10 +970,10 @@ begin
     end
   else if not value and (Fstate <> dsinactive) then
     begin
-    if not (csDestroying in ComponentState) then DoBeforeClose;
+    DoBeforeClose;
     SetState(dsInactive);
     CloseCursor;
-    if not (csDestroying in ComponentState) then DoAfterClose;
+    DoAfterClose;
     end
 end;
 
