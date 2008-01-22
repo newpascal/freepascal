@@ -1110,8 +1110,11 @@ end;
 
 class procedure TWideStringField.CheckTypeSize(aValue: Integer);
 begin
-  if aValue <= 0 then
-    DatabaseErrorFmt(SInvalidFieldSize,[aValue]);
+// A size of 0 is allowed, since for example Firebird allows
+// a query like: 'select '' as fieldname from table' which
+// results in a string with size 0.
+  If (AValue<0) or (AValue>(dsMaxStringSize div 2)) Then
+    databaseErrorFmt(SInvalidFieldSize,[AValue]);
 end;
 
 constructor TWideStringField.Create(AOwner: TComponent);
@@ -1199,6 +1202,15 @@ constructor TNumericField.Create(AOwner: TComponent);
 begin
   Inherited Create(AOwner);
   AlignMent:=taRightJustify;
+end;
+
+class procedure TNumericField.CheckTypeSize(AValue: Longint);
+begin
+  // This procedure is only added because some TDataset descendents have the
+  // but that they set the Size property as if it is the DataSize property.
+  // To avoid problems with those descendents, allow values <= 16.
+  If (AValue>16) Then
+    DatabaseErrorFmt(SInvalidFieldSize,[AValue]);
 end;
 
 procedure TNumericField.RangeError(AValue, Min, Max: Double);
