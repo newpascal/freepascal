@@ -1445,6 +1445,7 @@ type
     function GetNamePath: string; override;
     function GetOwner: TPersistent; override;
     procedure Loaded; virtual;
+    procedure Loading; virtual;
     procedure Notification(AComponent: TComponent;
       Operation: TOperation); virtual;
     procedure PaletteCreated; dynamic;
