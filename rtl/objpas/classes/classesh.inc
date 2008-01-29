@@ -1,6 +1,6 @@
 {
     This file is part of the Free Pascal Run Time Library (rtl)
-    Copyright (c) 1999-2000 by Michael Van Canneyt, Florian Klaempfl,
+    Copyright (c) 1999-2008 by Michael Van Canneyt, Florian Klaempfl,
     and Micha Nelissen
 
     See the file COPYING.FPC, included in this distribution,
@@ -279,6 +279,8 @@ type
     property Duplicates: TDuplicates read FDuplicates write FDuplicates;
   end;
 
+{TBits Class}
+
 const
    BITSHIFT = 5;
    MASK = 31; {for longs that are 32-bit in size}
@@ -293,6 +295,7 @@ type
       { Private declarations }
       FBits : ^TBitArray;
       FSize : longint;  { total longints currently allocated }
+      FBSize: longint;  {total bits currently allocated}
       findIndex : longint;
       findState : boolean;
 
@@ -301,7 +304,7 @@ type
       function GetSize : longint;
       procedure SetSize(value : longint);
       procedure CheckBitIndex (Bit : longint;CurrentSize : Boolean);
-
+      procedure Resize(Nbit : longint);
    public
       { Public declarations }
       constructor Create(TheSize : longint = 0); virtual;
