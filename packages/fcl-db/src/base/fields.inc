@@ -226,6 +226,12 @@ begin
       Add(Name,DataType,Size,Required);
 end;
 
+function TFieldDefs.Find(const AName: string): TFieldDef;
+begin
+  Result := (Inherited Find(AName)) as TFieldDef;
+  if Result=nil then DatabaseErrorFmt(SFieldNotFound,[AName],FDataset);
+end;
+
 {
 procedure TFieldDefs.Clear;
 
