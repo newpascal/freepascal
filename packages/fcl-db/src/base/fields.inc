@@ -384,9 +384,11 @@ begin
 end;
 
 procedure TField.FocusControl;
-
+var
+  Field1: TField;
 begin
-  FDataSet.DataEvent(deFocusControl,ptrint(@Self));
+  Field1 := Self;
+  FDataSet.DataEvent(deFocusControl,ptrint(@Field1));
 end;
 
 procedure TField.FreeBuffers;
