@@ -16,6 +16,7 @@
 {*                         TBinaryObjectWriter                              *}
 {****************************************************************************}
 
+{$ifndef FPUNONE}
 {$IFNDEF FPC_HAS_TYPE_EXTENDED}
 procedure DoubleToExtended(d : double; e : pointer);
 var mant : qword;
@@ -52,6 +53,7 @@ begin
   move(exp,pbyte(e)[8],2);  //exponent and sign: bytes 8..9
 end;
 {$ENDIF}
+{$endif}
 
 procedure TBinaryObjectWriter.WriteWord(w : word); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
 begin
@@ -71,6 +73,7 @@ begin
   Write(qw,8);
 end;
 
+{$ifndef FPUNONE}
 procedure TBinaryObjectWriter.WriteExtended(e : extended); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
 {$IFNDEF FPC_HAS_TYPE_EXTENDED}
 var ext : array[0..9] of byte;
@@ -83,6 +86,7 @@ begin
   Write(e,sizeof(e));
   {$ENDIF}
 end;
+{$endif}
 
 constructor TBinaryObjectWriter.Create(Stream: TStream; BufSize: Integer);
 begin
@@ -168,6 +172,7 @@ begin
     WriteValue(vaFalse);
 end;
 
+{$ifndef FPUNONE}
 procedure TBinaryObjectWriter.WriteFloat(const Value: Extended);
 begin
   WriteValue(vaExtended);
@@ -179,6 +184,7 @@ begin
   WriteValue(vaSingle);
   WriteDWord(longword(Value));
 end;
+{$endif}
 
 procedure TBinaryObjectWriter.WriteCurrency(const Value: Currency);
 begin
@@ -187,11 +193,13 @@ begin
 end;
 
 
+{$ifndef FPUNONE}
 procedure TBinaryObjectWriter.WriteDate(const Value: TDateTime);
 begin
   WriteValue(vaDate);
   WriteQWord(qword(Value));
 end;
+{$endif}
 
 procedure TBinaryObjectWriter.WriteIdent(const Ident: string);
 begin
@@ -624,6 +632,7 @@ begin
   WriteComponent(ARoot);
 end;
 
+{$ifndef FPUNONE}
 procedure TWriter.WriteFloat(const Value: Extended);
 begin
   Driver.WriteFloat(Value);
@@ -633,16 +642,19 @@ procedure TWriter.WriteSingle(const Value: Single);
 begin
   Driver.WriteSingle(Value);
 end;
+{$endif}
 
 procedure TWriter.WriteCurrency(const Value: Currency);
 begin
   Driver.WriteCurrency(Value);
 end;
 
+{$ifndef FPUNONE}
 procedure TWriter.WriteDate(const Value: TDateTime);
 begin
   Driver.WriteDate(Value);
 end;
+{$endif}
 
 procedure TWriter.WriteIdent(const Ident: string);
 begin
@@ -704,7 +716,9 @@ var
   Value, DefValue: LongInt;
   Ident: String;
   IntToIdentFn: TIntToIdent;
+{$ifndef FPUNONE}
   FloatValue, DefFloatValue: Extended;
+{$endif}
   MethodValue: TMethod;
   DefMethodValue: TMethod;
   WStrValue, WDefStrValue: WideString;
@@ -772,6 +786,7 @@ begin
           Driver.EndProperty;
         end;
       end;
+{$ifndef FPUNONE}
     tkFloat:
       begin
         FloatValue := GetFloatProp(Instance, PropInfo);
@@ -786,6 +801,7 @@ begin
           Driver.EndProperty;
         end;
       end;
+{$endif}
     tkMethod:
       begin
         MethodValue := GetMethodProp(Instance, PropInfo);

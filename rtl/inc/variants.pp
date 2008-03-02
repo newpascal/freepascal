@@ -55,7 +55,11 @@ type
 Const
   OrdinalVarTypes = [varSmallInt, varInteger, varBoolean, varShortInt,
                      varByte, varWord,varLongWord,varInt64];
-  FloatVarTypes = [varSingle, varDouble, varCurrency];
+  FloatVarTypes = [
+{$ifndef FPUNONE}
+    varSingle, varDouble,
+{$endif}
+    varCurrency];
 
 { Variant support procedures and functions }
 
@@ -83,8 +87,10 @@ function VarToStrDef(const V: Variant; const ADefault: string): string;
 function VarToWideStr(const V: Variant): WideString;
 function VarToWideStrDef(const V: Variant; const ADefault: WideString): WideString;
 
+{$ifndef FPUNONE}
 function VarToDateTime(const V: Variant): TDateTime;
 function VarFromDateTime(const DateTime: TDateTime): Variant;
+{$endif}
 
 function VarInRange(const AValue, AMin, AMax: Variant): Boolean;
 function VarEnsureRange(const AValue, AMin, AMax: Variant): Variant;
@@ -269,7 +275,9 @@ var
   NullStrictConvert: Boolean = true;
   NullAsStringValue: string = '';
   PackVarCreation: Boolean = True;
+{$ifndef FPUNONE}
   OleVariantInt64AsDouble: Boolean = False;
+{$endif}
 
 
   VarDispProc: TVarDispProc;
@@ -649,6 +657,7 @@ begin
 end;
 
 
+{$ifndef FPUNONE}
 function sysvartoreal (const v : Variant) : Extended;
 begin
   if VarType(v) = varNull then
@@ -659,6 +668,7 @@ begin
   else
     Result := VariantToDouble(TVarData(V));
 end;
+{$endif}
 
 
 function sysvartocurr (const v : Variant) : Currency;
@@ -768,6 +778,7 @@ begin
   end;
 end;
 
+{$ifndef FPUNONE}
 function sysvartotdatetime (const v : Variant) : TDateTime;
 begin
   if VarType(v) = varNull then
@@ -778,6 +789,7 @@ begin
   else
     Result:=VariantToDate(TVarData(v));
 end;
+{$endif}
 
 function DynamicArrayIsRectangular(p : Pointer;TypeInfo : Pointer) : Boolean;
 var
@@ -887,6 +899,7 @@ begin
   end;
 end;
 
+{$ifndef FPUNONE}
 procedure sysvarfromreal (var Dest : Variant; const Source : Extended);
 begin
   DoVarClearIfComplex(TVarData(Dest));
@@ -913,6 +926,7 @@ begin
     vDouble := Source;
   end;
 end;
+{$endif}
 
 procedure sysvarfromcurr (var Dest : Variant; const Source : Currency);
 begin
@@ -924,6 +938,7 @@ begin
 end;
 
 
+{$ifndef FPUNONE}
 procedure sysvarfromtdatetime (var Dest : Variant; const Source : TDateTime);
 begin
   DoVarClearIfComplex(TVarData(Dest));
@@ -932,6 +947,7 @@ begin
     vDate := Source;
   end;
 end;
+{$endif}
 
 
 procedure sysvarfrompstr (var Dest : Variant; const Source : ShortString);
@@ -987,12 +1003,21 @@ begin
 end;
 
 type
-  TCommonType = (ctEmpty,ctAny,ctError,ctLongInt,ctFloat,ctBoolean,
-    ctInt64,ctNull,ctWideStr,ctDate,ctCurrency,ctString);
+  TCommonType = (ctEmpty,ctAny,ctError,ctLongInt,ctBoolean,
+{$ifndef FPUNONE}
+    ctFloat,ctDate,ctCurrency,
+{$endif}
+    ctInt64,ctNull,ctWideStr,ctString);
 
   TCommonVarType = varEmpty..varQWord;
 
 const
+{$ifdef FPUNONE}
+  ctFloat = ctError;
+  ctDate = ctError;
+  ctCurrency = ctError;
+{$endif}
+
   { get the basic type for a Variant type }
   VarTypeToCommonType : array[TCommonVarType] of TCommonType =
     (ctEmpty,           // varEmpty = 0;
@@ -1053,19 +1078,21 @@ end;
 
 const
   FindCmpCommonType : array[TCommonType, TCommonType] of TCommonType = (
-     {              ctEmtpy    ctAny    ctError  ctLongInt   ctFloat    ctBoolean   ctInt64     ctNull   ctWideStr   ctDate   ctCurrency  ctString  }
-    ({ ctEmpty }    ctEmpty,   ctEmpty, ctError, ctEmpty,    ctEmpty,   ctEmpty,    ctEmpty,    ctEmpty, ctEmpty,    ctEmpty, ctEmpty,    ctEmpty   ),
-    ({ ctAny }      ctEmpty,   ctAny,   ctError, ctAny,      ctAny,     ctAny,      ctAny,      ctAny,   ctAny,      ctAny,   ctAny,      ctAny      ),
-    ({ ctError }    ctError,   ctError, ctError, ctError,    ctError,   ctError,    ctError,    ctError, ctError,    ctError, ctError,    ctError    ),
-    ({ ctLongInt }  ctEmpty,   ctAny,   ctError, ctLongInt,  ctFloat,   ctBoolean,  ctInt64,    ctNull,  ctFloat,    ctDate,  ctCurrency, ctFloat    ),
-    ({ ctFloat }    ctEmpty,   ctAny,   ctError, ctFloat,    ctFloat,   ctFloat,    ctFloat,    ctNull,  ctFloat,    ctDate,  ctCurrency, ctFloat    ),
-    ({ ctBoolean }  ctEmpty,   ctAny,   ctError, ctLongInt,  ctFloat,   ctBoolean,  ctInt64,    ctNull,  ctWideStr,  ctDate,  ctCurrency, ctString   ),
-    ({ ctInt64 }    ctEmpty,   ctAny,   ctError, ctInt64,    ctFloat,   ctInt64,    ctInt64,    ctNull,  ctFloat,    ctDate,  ctCurrency, ctFloat    ),
-    ({ ctNull }     ctEmpty,   ctAny,   ctError, ctNull,     ctNull,    ctNull,     ctNull,     ctNull,  ctNull,     ctNull,  ctNull,     ctNull     ),
-    ({ ctWideStr }  ctEmpty,   ctAny,   ctError, ctFloat,    ctFloat,   ctWideStr,  ctFloat,    ctNull,  ctWideStr,  ctDate,  ctCurrency, ctWideStr  ),
-    ({ ctDate }     ctEmpty,   ctAny,   ctError, ctDate,     ctDate,    ctDate,     ctDate,     ctNull,  ctDate,     ctDate,  ctDate,     ctDate     ),
-    ({ ctCurrency } ctEmpty,   ctAny,   ctError, ctCurrency, ctCurrency,ctCurrency, ctCurrency, ctNull,  ctCurrency, ctDate,  ctCurrency, ctCurrency ),
-    ({ ctString }   ctEmpty,   ctAny,   ctError, ctFloat,    ctFloat,   ctString,   ctFloat,    ctNull,  ctWideStr,  ctDate,  ctCurrency, ctString   )
+     {              ctEmpty    ctAny    ctError  ctLongInt   ctBoolean                         ctFloat    ctDate   ctCurrency           ctInt64     ctNull   ctWideStr   ctString  }
+    ({ ctEmpty }    ctEmpty,   ctEmpty, ctError, ctEmpty,    ctEmpty,    {$ifndef FPUNONE}ctEmpty,   ctEmpty, ctEmpty,    {$endif}ctEmpty,    ctEmpty, ctEmpty,    ctEmpty   ),
+    ({ ctAny }      ctEmpty,   ctAny,   ctError, ctAny,      ctAny,      {$ifndef FPUNONE}ctAny,     ctAny,   ctAny,      {$endif}ctAny,      ctAny,   ctAny,      ctAny      ),
+    ({ ctError }    ctError,   ctError, ctError, ctError,    ctError,    {$ifndef FPUNONE}ctError,   ctError, ctError,    {$endif}ctError,    ctError, ctError,    ctError    ),
+    ({ ctLongInt }  ctEmpty,   ctAny,   ctError, ctLongInt,  ctBoolean,  {$ifndef FPUNONE}ctFloat,   ctDate,  ctCurrency, {$endif}ctInt64,    ctNull,  ctFloat,    ctFloat    ),
+    ({ ctBoolean }  ctEmpty,   ctAny,   ctError, ctLongInt,  ctBoolean,  {$ifndef FPUNONE}ctFloat,   ctDate,  ctCurrency, {$endif}ctInt64,    ctNull,  ctWideStr,  ctString   ),
+{$ifndef FPUNONE}
+    ({ ctFloat }    ctEmpty,   ctAny,   ctError, ctFloat,    ctFloat,    ctFloat,   ctDate,  ctCurrency, ctFloat,    ctNull,  ctFloat,    ctFloat    ),
+    ({ ctDate }     ctEmpty,   ctAny,   ctError, ctDate,     ctDate,     ctDate,    ctDate,  ctDate,     ctDate,     ctNull,  ctDate,     ctDate     ),
+    ({ ctCurrency } ctEmpty,   ctAny,   ctError, ctCurrency, ctCurrency, ctCurrency,ctDate,  ctCurrency, ctCurrency, ctNull,  ctCurrency, ctCurrency ),
+{$endif}
+    ({ ctInt64 }    ctEmpty,   ctAny,   ctError, ctInt64,    ctInt64,    {$ifndef FPUNONE}ctFloat,   ctDate,  ctCurrency, {$endif}ctInt64,    ctNull,  ctFloat,    ctFloat    ),
+    ({ ctNull }     ctEmpty,   ctAny,   ctError, ctNull,     ctNull,     {$ifndef FPUNONE}ctNull,    ctNull,  ctNull,     {$endif}ctNull,     ctNull,  ctNull,     ctNull     ),
+    ({ ctWideStr }  ctEmpty,   ctAny,   ctError, ctFloat,    ctWideStr,  {$ifndef FPUNONE}ctFloat,   ctDate,  ctCurrency, {$endif}ctFloat,    ctNull,  ctWideStr,  ctWideStr  ),
+    ({ ctString }   ctEmpty,   ctAny,   ctError, ctFloat,    ctString,   {$ifndef FPUNONE}ctFloat,   ctDate,  ctCurrency, {$endif}ctFloat,    ctNull,  ctWideStr,  ctString   )
     );
 
 function DoVarCmpSimple (const Left, Right, Common: TCommonType) : ShortInt; inline;
@@ -1095,6 +1122,7 @@ begin
     Result := 0;
 end;
 
+{$ifndef FPUNONE}
 function DoVarCmpFloat(const Left, Right: Double; const OpCode: TVarOp): ShortInt;
 begin
   if SameValue(Left, Right) then
@@ -1104,6 +1132,7 @@ begin
   else
     Result := 1;
 end;
+{$endif}
 
 function DoVarCmpInt64(const Left, Right: Int64): ShortInt;
 begin
@@ -1220,7 +1249,9 @@ begin
     ctEmpty:    Result := DoVarCmpSimple(lct, rct, ctEmpty);
     ctAny:      Result := DoVarCmpAny(vl, vr, OpCode);
     ctLongInt:  Result := DoVarCmpLongInt(VariantToLongInt(vl), VariantToLongInt(vr));
+{$ifndef FPUNONE}
     ctFloat:    Result := DoVarCmpFloat(VariantToDouble(vl), VariantToDouble(vr), OpCode);
+{$endif}
     ctBoolean:  Result := DoVarCmpLongInt(LongInt(VariantToBoolean(vl)), LongInt(VariantToBoolean(vr)));
     ctInt64:    Result := DoVarCmpInt64(VariantToInt64(vl), VariantToInt64(vr));
     ctNull:     Result := DoVarCmpNull(lct, rct, OpCode);
@@ -1229,8 +1260,10 @@ begin
         Result := DoVarCmpWStrDirect(Pointer(vl.vOleStr), Pointer(vr.vOleStr), OpCode)
       else
         Result := DoVarCmpWStr(vl, vr, OpCode);
+{$ifndef FPUNONE}
     ctDate:     Result := DoVarCmpFloat(VariantToDate(vl), VariantToDate(vr), OpCode);
     ctCurrency: Result := DoVarCmpCurr(VariantToCurrency(vl), VariantToCurrency(vr));
+{$endif}
     ctString:
       if (vl.vType = varString) and (vr.vType = varString) then
         Result := DoVarCmpLStrDirect(Pointer(vl.vString), Pointer(vr.vString), OpCode)
@@ -1267,22 +1300,25 @@ end;
 
 const
   FindOpCommonType : array[TCommonType,TCommonType] of TCommonType = (
-     {              ctEmtpy  ctAny    ctError  ctLongInt   ctFloat     ctBoolean   ctInt64     ctNull    ctWideStr   ctDate   ctCurrency  ctString  }
-    ({ ctEmpty }    ctEmpty, ctAny,   ctError, ctEmpty,    ctEmpty,    ctEmpty,    ctEmpty,    ctEmpty,  ctEmpty,    ctEmpty, ctEmpty,    ctEmpty    ),
-    ({ ctAny }      ctAny,   ctAny,   ctError, ctAny,      ctAny,      ctAny,      ctAny,      ctAny,    ctAny,      ctAny,   ctAny,      ctAny      ),
-    ({ ctError }    ctError, ctError, ctError, ctError,    ctError,    ctError,    ctError,    ctError,  ctError,    ctError, ctError,    ctError    ),
-    ({ ctLongInt }  ctEmpty, ctAny,   ctError, ctLongInt,  ctFloat,    ctBoolean,  ctInt64,    ctNull,   ctFloat,    ctDate,  ctCurrency, ctFloat    ),
-    ({ ctFloat }    ctEmpty, ctAny,   ctError, ctFloat,    ctFloat,    ctFloat,    ctFloat,    ctNull,   ctFloat,    ctDate,  ctCurrency, ctFloat    ),
-    ({ ctBoolean }  ctEmpty, ctAny,   ctError, ctLongInt,  ctFloat,    ctBoolean,  ctInt64,    ctNull,   ctBoolean,  ctDate,  ctCurrency, ctBoolean  ),
-    ({ ctInt64 }    ctEmpty, ctAny,   ctError, ctInt64,    ctFloat,    ctInt64,    ctInt64,    ctNull,   ctFloat,    ctDate,  ctCurrency, ctFloat    ),
-    ({ ctNull }     ctEmpty, ctAny,   ctError, ctNull,     ctNull,     ctNull,     ctNull,     ctNull,   ctNull,     ctNull,  ctNull,     ctNull     ),
-    ({ ctWideStr }  ctEmpty, ctAny,   ctError, ctFloat,    ctFloat,    ctBoolean,  ctFloat,    ctNull,   ctWideStr,  ctDate,  ctCurrency, ctWideStr  ),
-    ({ ctDate }     ctEmpty, ctAny,   ctError, ctDate,     ctDate,     ctDate,     ctDate,     ctNull,   ctDate,     ctDate,  ctDate,     ctDate     ),
-    ({ ctCurrency } ctEmpty, ctAny,   ctError, ctCurrency, ctCurrency, ctCurrency, ctCurrency, ctNull,   ctCurrency, ctDate,  ctCurrency, ctCurrency ),
-    ({ ctString }   ctEmpty, ctAny,   ctError, ctFloat,    ctFloat,    ctBoolean,  ctFloat,    ctNull,   ctWideStr,  ctDate,  ctCurrency, ctString   )
+     {              ctEmpty  ctAny    ctError  ctLongInt   ctBoolean   ctFloat     ctDate   ctCurrency  ctInt64     ctNull    ctWideStr   ctString  }
+    ({ ctEmpty }    ctEmpty, ctAny,   ctError, ctEmpty,    ctEmpty,    {$ifndef FPUNONE}ctEmpty,    ctEmpty, ctEmpty,    {$endif}ctEmpty,    ctEmpty,  ctEmpty,    ctEmpty    ),
+    ({ ctAny }      ctAny,   ctAny,   ctError, ctAny,      ctAny,      {$ifndef FPUNONE}ctAny,      ctAny,   ctAny,      {$endif}ctAny,      ctAny,    ctAny,      ctAny      ),
+    ({ ctError }    ctError, ctError, ctError, ctError,    ctError,    {$ifndef FPUNONE}ctError,    ctError, ctError,    {$endif}ctError,    ctError,  ctError,    ctError    ),
+    ({ ctLongInt }  ctEmpty, ctAny,   ctError, ctLongInt,  ctBoolean,  {$ifndef FPUNONE}ctFloat,    ctDate,  ctCurrency, {$endif}ctInt64,    ctNull,   ctFloat,    ctFloat    ),
+    ({ ctBoolean }  ctEmpty, ctAny,   ctError, ctLongInt,  ctBoolean,  {$ifndef FPUNONE}ctFloat,    ctDate,  ctCurrency, {$endif}ctInt64,    ctNull,   ctBoolean,  ctBoolean  ),
+{$ifndef FPUNONE}
+    ({ ctFloat }    ctEmpty, ctAny,   ctError, ctFloat,    ctFloat,    ctFloat,    ctDate,  ctCurrency, ctFloat,    ctNull,   ctFloat,    ctFloat    ),
+    ({ ctDate }     ctEmpty, ctAny,   ctError, ctDate,     ctDate,     ctDate,     ctDate,  ctDate,     ctDate,     ctNull,   ctDate,     ctDate     ),
+    ({ ctCurrency } ctEmpty, ctAny,   ctError, ctCurrency, ctCurrency, ctCurrency, ctDate,  ctCurrency, ctCurrency, ctNull,   ctCurrency, ctCurrency ),
+{$endif}
+    ({ ctInt64 }    ctEmpty, ctAny,   ctError, ctInt64,    ctInt64,    {$ifndef FPUNONE}ctFloat,    ctDate,  ctCurrency, {$endif}ctInt64,    ctNull,   ctFloat,    ctFloat    ),
+    ({ ctNull }     ctEmpty, ctAny,   ctError, ctNull,     ctNull,     {$ifndef FPUNONE}ctNull,     ctNull,  ctNull,     {$endif}ctNull,     ctNull,   ctNull,     ctNull     ),
+    ({ ctWideStr }  ctEmpty, ctAny,   ctError, ctFloat,    ctBoolean,  {$ifndef FPUNONE}ctFloat,    ctDate,  ctCurrency, {$endif}ctFloat,    ctNull,   ctWideStr,  ctWideStr  ),
+    ({ ctString }   ctEmpty, ctAny,   ctError, ctFloat,    ctBoolean,  {$ifndef FPUNONE}ctFloat,    ctDate,  ctCurrency, {$endif}ctFloat,    ctNull,   ctWideStr,  ctString   )
     );
 
 procedure DoVarOpFloat(var vl :TVarData; const vr : TVarData; const OpCode : TVarOp);
+{$ifndef FPUNONE}
 var
   l, r : Double;
 begin
@@ -1300,6 +1336,10 @@ begin
   DoVarClearIfComplex(vl);
   vl.vType := varDouble;
   vl.vDouble := l;
+{$else}
+begin
+   VarInvalidOp(vl.vType, vr.vType, OpCode);
+{$endif}
 end;
 
 procedure DoVarOpAny(var vl : TVarData; const vr : TVarData; const OpCode : TVarOp);
@@ -1344,7 +1384,9 @@ begin
         opAdd      :  l := l  + r;
         opSubtract :  l := l  - r;
         opMultiply :  l := l  * r;
+{$ifndef FPUNONE}
         opPower    :  l := l ** r;
+{$endif}
       end;
     except
       on E: SysUtils.ERangeError do
@@ -1476,6 +1518,7 @@ begin
 end;
 
 procedure DoVarOpDate(var vl : TVarData; const vr : TVarData; const OpCode : TVarOp);
+{$ifndef FPUNONE}
 var
   l, r : TDateTime;
 begin
@@ -1490,9 +1533,14 @@ begin
   DoVarClearIfComplex(vl);
   vl.vType := varDate;
   vl.vDate := l;
+{$else}
+begin
+   VarInvalidOp(vl.vType, vr.vType, OpCode);
+{$endif}
 end;
 
 procedure DoVarOpCurr(var vl : TVarData; const vr : TVarData; const OpCode : TVarOp; const lct, rct : TCommonType);
+{$ifndef FPUNONE}
 var
   c  : Currency;
   d  : Double;
@@ -1545,6 +1593,10 @@ begin
   DoVarClearIfComplex(vl);
   vl.vType := varCurrency;
   vl.vCurrency := c;
+{$else}
+begin
+   VarInvalidOp(vl.vType, vr.vType, OpCode);
+{$endif}
 end;
 
 procedure DoVarOpComplex(var vl : TVarData; const vr : TVarData; const OpCode : TVarOp);
@@ -1600,11 +1652,13 @@ begin
       else
         DoVarOpLongInt(TVarData(Left),TVarData(Right),OpCode);
       end;
+{$ifndef FPUNONE}
     ctFloat:
       if OpCode <> opIntDivide then
         DoVarOpFloat(TVarData(Left),TVarData(Right),OpCode)
       else
         DoVarOpInt64to32(TVarData(Left),TVarData(Right),OpCode);
+{$endif}
     ctBoolean:
       case OpCode of
         opAdd..opMultiply, opPower:
@@ -1634,6 +1688,7 @@ begin
       else
         VarInvalidOp(TVarData(Left).vType, TVarData(Right).vType, OpCode);
       end;
+{$ifndef FPUNONE}
     ctDate:
       case OpCode of
         opAdd:
@@ -1653,6 +1708,7 @@ begin
         DoVarOpCurr(TVarData(Left),TVarData(Right),OpCode, lct, rct)
       else
         DoVarOpInt64to32(TVarData(Left),TVarData(Right),OpCode);
+{$endif}
     ctString:
       case OpCode of
         opAdd:
@@ -1693,11 +1749,15 @@ begin
     varNull:;
     varSmallint: vSmallInt := -vSmallInt;
     varInteger:  vInteger  := -vInteger;
+{$ifndef FPUNONE}
     varSingle:   vSingle   := -vSingle;
     varDouble:   vDouble   := -vDouble;
     varCurrency: vCurrency := -vCurrency;
     varDate:     vDate     := -vDate;
     varOleStr:   sysvarfromreal(v, -VariantToDouble(TVarData(v)));
+{$else}
+    varOleStr:   sysvarfromint64(v, -VariantToInt64(TVarData(v)));
+{$endif}
     varBoolean: begin
       vSmallInt := BoolMap[vBoolean];
       vType := varSmallInt;
@@ -1729,7 +1789,11 @@ begin
     varVariant:  v         := -Variant(PVarData(vPointer)^);
   else {with TVarData(v) do case vType of}
     case vType of
+{$ifndef FPUNONE}
       varString:   sysvarfromreal(v, -VariantToDouble(TVarData(v)));
+{$else}
+      varString:   sysvarfromint64(v, -VariantToInt64(TVarData(v)));
+{$endif}
       varAny:      DoVarNegAny(TVarData(v));
     else {case vType of}
       if (vType and not varTypeMask) = varByRef then
@@ -1742,6 +1806,7 @@ begin
             vInteger := -PInteger(vPointer)^;
             vType := varInteger;
           end;
+{$ifndef FPUNONE}
           varSingle: begin
             vSingle := -PSingle(vPointer)^;
             vType := varSingle;
@@ -1759,6 +1824,9 @@ begin
             vType := varDate;
           end;
           varOleStr: sysvarfromreal(v, -VariantToDouble(TVarData(v)));
+{$else}
+          varOleStr: sysvarfromint64(v, -VariantToInt64(TVarData(v)));
+{$endif}
           varBoolean: begin
             vSmallInt := BoolMap[PWordBool(vPointer)^];
             vType := varSmallInt;
@@ -1890,10 +1958,12 @@ begin
     varNull:;
     varSmallint: vSmallInt := not vSmallInt;
     varInteger:  vInteger  := not vInteger;
+{$ifndef FPUNONE}
     varSingle,
     varDouble,
     varCurrency,
     varDate:     DoVarNotOrdinal(TVarData(v));
+{$endif}
     varOleStr:   DoVarNotWStr(TVarData(v), Pointer(vOleStr));
     varBoolean:  vBoolean := not vBoolean;
     varShortInt: vShortInt := not vShortInt;
@@ -1918,10 +1988,12 @@ begin
             vInteger := not PInteger(vPointer)^;
             vType := varInteger;
           end;
+{$ifndef FPUNONE}
           varSingle,
           varDouble,
           varCurrency,
           varDate: DoVarNotOrdinal(TVarData(v));
+{$endif}
           varOleStr: DoVarNotWStr(TVarData(v), PPointer(vPointer)^);
           varBoolean: begin
             vBoolean := not PWordBool(vPointer)^;
@@ -2243,10 +2315,12 @@ begin
         end;
         varSmallInt: SysVarFromInt(Variant(aDest), VariantToSmallInt(aSource), -2);
         varInteger:  SysVarFromInt(Variant(aDest), VariantToLongInt(aSource), -4);
+{$ifndef FPUNONE}
         varSingle:   SysVarFromSingle(Variant(aDest), VariantToSingle(aSource));
         varDouble:   SysVarFromDouble(Variant(aDest), VariantToDouble(aSource));
         varCurrency: SysVarFromCurr(Variant(aDest), VariantToCurrency(aSource));
         varDate:     SysVarFromTDateTime(Variant(aDest), VariantToDate(aSource));
+{$endif}
         varOleStr:   DoVarCastWStr(aDest, aSource);
         varBoolean:  SysVarFromBool(Variant(aDest), VariantToBoolean(aSource));
         varShortInt: SysVarFromInt(Variant(aDest), VariantToShortInt(aSource), -1);
@@ -2315,23 +2389,29 @@ begin
           if vLongWord and $80000000 = 0 then
             DoVarCast(aDest, aSource, varInteger)
           else
+{$ifndef FPUNONE}
             if OleVariantInt64AsDouble then
               DoVarCast(aDest, aSource, varDouble)
             else
+{$endif}
               DoVarCast(aDest, aSource, varInt64);
         varInt64:
           if (vInt64 < Low(Integer)) or (vInt64 > High(Integer)) then
-            if not OleVariantInt64AsDouble then
-              DoVarCast(aDest, aSource, varInt64)
-            else
+{$ifndef FPUNONE}
+            if OleVariantInt64AsDouble then
               DoVarCast(aDest, aSource, varDouble)
+            else
+{$endif}
+              DoVarCast(aDest, aSource, varInt64)
           else
             DoVarCast(aDest, aSource, varInteger);
         varQWord:
           if vQWord > High(Integer) then
+{$ifndef FPUNONE}
             if OleVariantInt64AsDouble or (vQWord and $8000000000000000 <> 0) then
               DoVarCast(aDest, aSource, varDouble)
             else
+{$endif}
               DoVarCast(aDest, aSource, varInt64)
           else
             DoVarCast(aDest, aSource, varInteger);
@@ -2615,8 +2695,10 @@ Const
     vartoint64    : @sysvartoint64;
     vartoword64   : @sysvartoword64;
     vartobool     : @sysvartobool;
+{$ifndef FPUNONE}
     vartoreal     : @sysvartoreal;
     vartotdatetime: @sysvartotdatetime;
+{$endif}
     vartocurr     : @sysvartocurr;
     vartopstr     : @sysvartopstr;
     vartolstr     : @sysvartolstr;
@@ -2628,8 +2710,10 @@ Const
     varfromint    : @sysvarfromint;
     varfromint64  : @sysvarfromint64;
     varfromword64 : @sysvarfromword64;
+{$ifndef FPUNONE}
     varfromreal   : @sysvarfromreal;
     varfromtdatetime: @sysvarfromtdatetime;
+{$endif}
     varfromcurr   : @sysvarfromcurr;
     varfrompstr   : @sysvarfrompstr;
     varfromlstr   : @sysvarfromlstr;
@@ -2861,8 +2945,9 @@ begin
 end;
 
 
-function VarToDateTime(const V: Variant): TDateTime;
+{$ifndef FPUNONE}
 
+function VarToDateTime(const V: Variant): TDateTime;
 begin
   Result:=VariantToDate(TVarData(V));
 end;
@@ -2878,6 +2963,8 @@ begin
       vdate:=DateTime;
     end;
 end;
+
+{$endif}
 
 
 function VarInRange(const AValue, AMin, AMax: Variant): Boolean;
@@ -3152,8 +3239,11 @@ function VarIsArray(const A: Variant): Boolean;
 
 function VarTypeIsValidArrayType(const aVarType: TVarType): Boolean;
   begin
-    Result:=aVarType in [varSmallInt,varInteger,varSingle,varDouble,
-      varCurrency,varDate,varOleStr,varDispatch,varError,varBoolean,
+    Result:=aVarType in [varSmallInt,varInteger,
+{$ifndef FPUNONE}
+      varSingle,varDouble,varDate,
+{$endif}
+      varCurrency,varOleStr,varDispatch,varError,varBoolean,
       varVariant,varUnknown,varShortInt,varByte,varWord,varLongWord];
   end;
 
@@ -3166,8 +3256,11 @@ function VarTypeIsValidElementType(const aVarType: TVarType): Boolean;
       Result:=true
     else
       begin
-        Result:=(aVarType and not(varByRef)) in [varEmpty,varNull,varSmallInt,varInteger,varSingle,varDouble,
-          varCurrency,varDate,varOleStr,varDispatch,varError,varBoolean,
+        Result:=(aVarType and not(varByRef)) in [varEmpty,varNull,varSmallInt,varInteger,
+{$ifndef FPUNONE}
+          varSingle,varDouble,varDate,
+{$endif}
+          varCurrency,varOleStr,varDispatch,varError,varBoolean,
           varVariant,varUnknown,varShortInt,varByte,varWord,varLongWord,varInt64];
       end;
   end;
@@ -3259,14 +3352,16 @@ procedure DynArrayToVariant(var V: Variant; const DynArray: Pointer; TypeInfo: P
               temp:=PSmallInt(dynarriter.data)^;
             varInteger:
               temp:=PInteger(dynarriter.data)^;
+{$ifndef FPUNONE}
             varSingle:
               temp:=PSingle(dynarriter.data)^;
             varDouble:
               temp:=PDouble(dynarriter.data)^;
-            varCurrency:
-              temp:=PCurrency(dynarriter.data)^;
             varDate:
               temp:=PDouble(dynarriter.data)^;
+{$endif}
+            varCurrency:
+              temp:=PCurrency(dynarriter.data)^;
             varOleStr:
               temp:=PWideString(dynarriter.data)^;
             varDispatch:
@@ -3355,14 +3450,16 @@ procedure DynArrayFromVariant(var DynArray: Pointer; const V: Variant; TypeInfo:
               PSmallInt(dynarriter.data)^:=temp;
             varInteger:
               PInteger(dynarriter.data)^:=temp;
+{$ifndef FPUNONE}
             varSingle:
               PSingle(dynarriter.data)^:=temp;
             varDouble:
               PDouble(dynarriter.data)^:=temp;
-            varCurrency:
-              PCurrency(dynarriter.data)^:=temp;
             varDate:
               PDouble(dynarriter.data)^:=temp;
+{$endif}
+            varCurrency:
+              PCurrency(dynarriter.data)^:=temp;
             varOleStr:
               PWideString(dynarriter.data)^:=temp;
             varDispatch:
@@ -4155,8 +4252,10 @@ begin
          Result := GetSetProp(Instance, PropInfo, False)
        else
          Result := GetOrdProp(Instance, PropInfo);
+{$ifndef FPUNONE}
      tkFloat:
        Result := GetFloatProp(Instance, PropInfo);
+{$endif}
      tkMethod:
        Result := PropInfo^.PropType^.Name;
      tkString, tkLString, tkAString:
@@ -4229,8 +4328,10 @@ begin
            SetOrdProp(Instance, PropInfo, O);
            end;
          end;
+{$ifndef FPUNONE}
        tkFloat:
          SetFloatProp(Instance, PropInfo, Value);
+{$endif}
        tkString, tkLString, tkAString:
          SetStrProp(Instance, PropInfo, VarToStr(Value));
        tkWString:

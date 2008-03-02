@@ -933,10 +933,12 @@ type
     procedure Read(var Buf; Count: LongInt); virtual; abstract;
     { All ReadXXX methods are called _after_ the value type has been read! }
     procedure ReadBinary(const DestData: TMemoryStream); virtual; abstract;
+{$ifndef FPUNONE}
     function ReadFloat: Extended; virtual; abstract;
     function ReadSingle: Single; virtual; abstract;
-    function ReadCurrency: Currency; virtual; abstract;
     function ReadDate: TDateTime; virtual; abstract;
+{$endif}
+    function ReadCurrency: Currency; virtual; abstract;
     function ReadIdent(ValueType: TValueType): String; virtual; abstract;
     function ReadInt8: ShortInt; virtual; abstract;
     function ReadInt16: SmallInt; virtual; abstract;
@@ -959,11 +961,13 @@ type
     FBufSize: Integer;
     FBufPos: Integer;
     FBufEnd: Integer;
-    
+
     function ReadWord : word; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
     function ReadDWord : longword; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
     function ReadQWord : qword; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
+{$ifndef FPUNONE}
     function ReadExtended : extended; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
+{$endif}
     procedure SkipProperty;
     procedure SkipSetBody;
   public
@@ -980,10 +984,12 @@ type
     //Please don't use read, better use ReadBinary whenever possible
     procedure Read(var Buf; Count: LongInt); override;
     procedure ReadBinary(const DestData: TMemoryStream); override;
+{$ifndef FPUNONE}
     function ReadFloat: Extended; override;
     function ReadSingle: Single; override;
-    function ReadCurrency: Currency; override;
     function ReadDate: TDateTime; override;
+{$endif}
+    function ReadCurrency: Currency; override;
     function ReadIdent(ValueType: TValueType): String; override;
     function ReadInt8: ShortInt; override;
     function ReadInt16: SmallInt; override;
@@ -1083,10 +1089,12 @@ type
     function ReadComponent(Component: TComponent): TComponent;
     procedure ReadComponents(AOwner, AParent: TComponent;
       Proc: TReadComponentsProc);
+{$ifndef FPUNONE}
     function ReadFloat: Extended;
     function ReadSingle: Single;
-    function ReadCurrency: Currency;
     function ReadDate: TDateTime;
+{$endif}
+    function ReadCurrency: Currency;
     function ReadIdent: string;
     function ReadInteger: Longint;
     function ReadInt64: Int64;
@@ -1134,10 +1142,12 @@ type
     procedure WriteBinary(const Buffer; Count: Longint); virtual; abstract;
     procedure WriteBoolean(Value: Boolean); virtual; abstract;
     // procedure WriteChar(Value: Char);
+{$ifndef FPUNONE}
     procedure WriteFloat(const Value: Extended); virtual; abstract;
     procedure WriteSingle(const Value: Single); virtual; abstract;
-    procedure WriteCurrency(const Value: Currency); virtual; abstract;
     procedure WriteDate(const Value: TDateTime); virtual; abstract;
+{$endif}
+    procedure WriteCurrency(const Value: Currency); virtual; abstract;
     procedure WriteIdent(const Ident: string); virtual; abstract;
     procedure WriteInteger(Value: Int64); virtual; abstract;
     procedure WriteMethodName(const Name: String); virtual; abstract;
@@ -1160,7 +1170,9 @@ type
     procedure WriteWord(w : word); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
     procedure WriteDWord(lw : longword); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
     procedure WriteQWord(qw : qword); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
+{$ifndef FPUNONE}
     procedure WriteExtended(e : extended); {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
+{$endif}
     procedure FlushBuffer;
     procedure WriteValue(Value: TValueType);
     procedure WriteStr(const Value: String);
@@ -1180,10 +1192,12 @@ type
     procedure Write(const Buffer; Count: Longint); override;
     procedure WriteBinary(const Buffer; Count: LongInt); override;
     procedure WriteBoolean(Value: Boolean); override;
+{$ifndef FPUNONE}
     procedure WriteFloat(const Value: Extended); override;
     procedure WriteSingle(const Value: Single); override;
-    procedure WriteCurrency(const Value: Currency); override;
     procedure WriteDate(const Value: TDateTime); override;
+{$endif}
+    procedure WriteCurrency(const Value: Currency); override;
     procedure WriteIdent(const Ident: string); override;
     procedure WriteInteger(Value: Int64); override;
     procedure WriteMethodName(const Name: String); override;
@@ -1242,10 +1256,12 @@ type
     procedure WriteChar(Value: Char);
     procedure WriteWideChar(Value: WideChar);
     procedure WriteDescendent(ARoot: TComponent; AAncestor: TComponent);
+{$ifndef FPUNONE}
     procedure WriteFloat(const Value: Extended);
     procedure WriteSingle(const Value: Single);
-    procedure WriteCurrency(const Value: Currency);
     procedure WriteDate(const Value: TDateTime);
+{$endif}
+    procedure WriteCurrency(const Value: Currency);
     procedure WriteIdent(const Ident: string);
     procedure WriteInteger(Value: Longint); overload;
     procedure WriteInteger(Value: Int64); overload;
@@ -1294,7 +1310,9 @@ type
     function NextToken: Char;
     function SourcePos: Longint;
     function TokenComponentIdent: String;
+{$ifndef FPUNONE}
     function TokenFloat: Extended;
+{$endif}
     function TokenInt: Int64;
     function TokenString: string;
     function TokenWideString: widestring;

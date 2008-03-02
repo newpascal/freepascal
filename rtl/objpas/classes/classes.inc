@@ -1145,6 +1145,7 @@ procedure ObjectBinaryToText(Input, Output: TStream);
     Result:=LEtoN(Result);
   end;
 
+{$ifndef FPUNONE}
   {$IFNDEF FPC_HAS_TYPE_EXTENDED}
   function ExtendedToDouble(e : pointer) : double;
   var mant : qword;
@@ -1189,6 +1190,7 @@ procedure ObjectBinaryToText(Input, Output: TStream);
     Result:=pdouble(@d)^;
   end;
   {$ENDIF}
+{$endif}
 
   function ReadInt(ValueType: TValueType): Int64;
   begin
@@ -1204,7 +1206,8 @@ procedure ObjectBinaryToText(Input, Output: TStream);
   begin
     Result := ReadInt(TValueType(Input.ReadByte));
   end;
-  
+
+{$ifndef FPUNONE}
   function ReadExtended : extended;
   {$IFNDEF FPC_HAS_TYPE_EXTENDED}
   var ext : array[0..9] of byte;
@@ -1217,6 +1220,7 @@ procedure ObjectBinaryToText(Input, Output: TStream);
     Input.ReadBuffer(Result,sizeof(Result));
     {$ENDIF}
   end;
+{$endif}
 
   function ReadSStr: String;
   var
@@ -1286,7 +1290,9 @@ procedure ObjectBinaryToText(Input, Output: TStream);
       s: String;
 {      len: LongInt; }
       IsFirst: Boolean;
+{$ifndef FPUNONE}
       ext: Extended;
+{$endif}
       i : integer;
 
     begin
@@ -1310,6 +1316,7 @@ procedure ObjectBinaryToText(Input, Output: TStream);
         vaInt16: OutLn( IntToStr(SmallInt(ReadWord)));
         vaInt32: OutLn(IntToStr(LongInt(ReadDWord)));
         vaInt64: OutLn(IntToStr(Int64(ReadQWord)));
+{$ifndef FPUNONE}
         vaExtended: begin
             ext:=ReadExtended;
             Str(ext:1:20,S);// Do not use localized strings.
@@ -1319,6 +1326,7 @@ procedure ObjectBinaryToText(Input, Output: TStream);
             SetLength(S,i);
             OutLn(S);
           end;
+{$endif}
         vaString: begin
             OutString(ReadSStr);
             OutLn('');
@@ -1458,7 +1466,8 @@ var
     qw:=NtoLE(qw);
     Output.WriteBuffer(qw,sizeof(qword));
   end;
-  
+
+{$ifndef FPUNONE}
   {$IFNDEF FPC_HAS_TYPE_EXTENDED}
   procedure DoubleToExtended(d : double; e : pointer);
   var mant : qword;
@@ -1508,6 +1517,7 @@ var
     Output.WriteBuffer(e,sizeof(e));
     {$ENDIF}
   end;
+{$endif}
 
   procedure WriteString(s: String);
   var size : byte;
@@ -1569,7 +1579,9 @@ var
 
   procedure ProcessValue;
   var
+{$ifndef FPUNONE}
     flt: Extended;
+{$endif}
     s: String;
     ws: WideString;
     stream: TMemoryStream;
@@ -1582,6 +1594,7 @@ var
           WriteInteger(parser.TokenInt);
           parser.NextToken;
         end;
+{$ifndef FPUNONE}
       toFloat:
         begin
           Output.WriteByte(Ord(vaExtended));
@@ -1589,6 +1602,7 @@ var
           WriteExtended(flt);
           parser.NextToken;
         end;
+{$endif}
       toString:
         begin
           ws := parser.TokenWideString;

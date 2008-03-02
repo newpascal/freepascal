@@ -281,6 +281,7 @@ begin
   Result := TokenString;
 end;
 
+{$ifndef FPUNONE}
 Function TParser.TokenFloat: Extended;
 var
   I,FloatError       : Integer;
@@ -297,6 +298,7 @@ begin
   Val(S, Back, FloatError);
   Result := Back;
 end;
+{$endif}
 
 Function TParser.TokenInt: Int64;
 begin
