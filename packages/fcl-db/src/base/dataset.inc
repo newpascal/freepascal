@@ -967,6 +967,7 @@ begin
         if FState <> dsOpening then OpenCursorComplete;
         end;
       end;
+    FModified:=False;
     end
   else if not value and (Fstate <> dsinactive) then
     begin
@@ -974,6 +975,7 @@ begin
     SetState(dsInactive);
     CloseCursor;
     DoAfterClose;
+    FModified:=False;
     end
 end;
 
