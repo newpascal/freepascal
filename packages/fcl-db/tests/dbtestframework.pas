@@ -12,13 +12,14 @@ uses
   DigestTestReport,
   toolsunit,
 // Units wich contains the tests
-  testbasics, testfieldtypes, testdbbasics;
+  testbasics, testfieldtypes, TestDatasources, testdbbasics;
   
 var
   FXMLResultsWriter: TXMLResultsWriter;
   FDigestResultsWriter: TDigestResultsWriter;
   testResult: TTestResult;
 begin
+  InitialiseDBConnector;
   testResult := TTestResult.Create;
   FXMLResultsWriter := TXMLResultsWriter.Create;
   FDigestResultsWriter := TDigestResultsWriter.Create(nil);
