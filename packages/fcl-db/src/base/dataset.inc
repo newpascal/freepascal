@@ -114,6 +114,7 @@ begin
           if FieldIndex <> -1 then begin
             FieldDef := FieldDefs[FieldIndex];
             FFieldNo := FieldDef.FieldNo;
+            if FieldDef.InternalCalcField then FInternalCalcFields := True;
             if IsBlob then begin
               FSize := FieldDef.Size;
               FOffset := FBlobFieldCount;
@@ -961,6 +962,7 @@ begin
     else
       begin
       DoBeforeOpen;
+      FInternalCalcFields:=False;
       try
         OpenCursor(False);
       finally
