@@ -27,6 +27,7 @@ begin
   FFieldDefs:=TFieldDefs.Create(Self);
   FFieldList:=TFields.Create(Self);
   FDataSources:=TList.Create;
+  FConstraints:=TCheckConstraints.Create(Self);
   
 // FBuffer must be allocated on create, to make Activebuffer return nil
   ReAllocMem(FBuffers,SizeOf(PChar));
@@ -58,6 +59,7 @@ begin
     end;
   for i := 0 to FBufferCount do
     FreeRecordBuffer(FBuffers[i]);
+  FConstraints.Free;
   FreeMem(FBuffers);
   Inherited Destroy;
 end;
