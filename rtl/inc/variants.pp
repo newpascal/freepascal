@@ -1654,7 +1654,7 @@ begin
       end;
 {$ifndef FPUNONE}
     ctFloat:
-      if OpCode <> opIntDivide then
+      if OpCode in [opAdd,opSubtract,opMultiply,opDivide] then
         DoVarOpFloat(TVarData(Left),TVarData(Right),OpCode)
       else
         DoVarOpInt64to32(TVarData(Left),TVarData(Right),OpCode);
