@@ -199,22 +199,19 @@ end;
 
 
 function TCollection.GetNamePath: string;
-Var
-        OwnerName,ThePropName : String;
+var o : TObject;
 begin
-  Result:=ClassName;
-  If GetOwner=Nil then Exit;
-  OwnerName:=GetOwner.GetNamePath;
-  If OwnerName='' then Exit;
-  ThePropName:=PropName;
-  if ThePropName='' then exit;
-  Result:=OwnerName+'.'+PropName;
+  o:=getowner;
+  if assigned(o) and (propname<>'') and (o IS TPersistent) then 
+     result:=TPersistent(o).getnamepath+'.'+propname
+   else
+     result:=classname;
 end;
 
 
 procedure TCollection.Changed;
 begin
-        if FUpdateCount=0 then
+  if FUpdateCount=0 then
     Update(Nil);
 end;
 

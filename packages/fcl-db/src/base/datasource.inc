@@ -58,28 +58,14 @@ end;
 
 
 Function TDataLink.CalcFirstRecord(Index : Integer) : Integer;
-
-{ recalculates index of first record in buffer,
-  and returns number of record scrolled.}
-
-Var
-   A,              // Index of active record in buffer
-   F,              // Index of current first record in buffer
-   L : Integer;    // index of Last (for us) record in buffer;
-
 begin
-  Result:=0;
-  A:=DataSource.DataSet.FActiveRecord;
-  F:=FFirstRecord+Index;
-  L:=F+FBufferCount-1;
-  If A>L Then
-    Result:=A-L
-  else If A<F Then
-    Result:=A-F;
-  FFirstRecord:=F+Result;
-{$IfDef dsDebug}
-  WriteLn('CalcFirstRecord: FFirstRecord=',FFirstRecord,' Scrolled=',Result);
-{$Endif}
+  if DataSource.DataSet.FActiveRecord > FFirstRecord + Index + FBufferCount - 1 then
+    Result := DataSource.DataSet.FActiveRecord - (FFirstRecord + Index + FBufferCount - 1)
+  else if DataSource.DataSet.FActiveRecord < FFirstRecord + Index then
+    Result := DataSource.DataSet.FActiveRecord - (FFirstRecord + Index)
+  else Result := 0;
+  
+  Inc(FFirstRecord, Index + Result);
 end;
 
 

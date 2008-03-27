@@ -138,19 +138,19 @@ begin
 end;
 
 Procedure TDataset.CalculateFields(Buffer: PChar);
-
 var
-  I: Integer;
+  i: Integer;
 begin
   FCalcBuffer := Buffer;
-  if (State <> dsInternalCalc) and (FIsUniDirectional = False) then
-  begin
-    ClearCalcFields(CalcBuffer);
-    for I := 0 to Fields.Count - 1 do
-      with Fields[I] do
-        if FieldKind = fkLookup then CalcLookupValue;
+  
+  if not IsUniDirectional and (FState <> dsInternalCalc) then try
+    ClearCalcFields(FCalcBuffer);
+    for i := 0 to FFieldList.Count - 1 do
+      if FFieldList[i].FieldKind = fkLookup then
+        FFieldList[i].CalcLookupValue;
+  finally
+    DoOnCalcFields;
   end;
-  DoOnCalcFields;
 end;
 
 Procedure TDataset.CheckActive;
@@ -224,31 +224,42 @@ end;
 
 Procedure TDataset.DataEvent(Event: TDataEvent; Info: Ptrint);
 
-Var
-  i : longint;
-
-begin
-  // Do some bookkeeping;
-  case Event of
-    deFieldChange: begin
-        if TField(Info).FieldKind in [fkData,fkInternalCalc] then
-          SetModified(True);
-        if State <> dsSetKey then begin
-          if FInternalCalcFields and (TField(Info).FieldKind = fkData) then
-              RefreshInternalCalcFields(ActiveBuffer)
-          else if (FCalcFieldsSize <> 0) and FAutoCalcFields and
-            (TField(Info).FieldKind = fkData) then
-            CalculateFields(ActiveBuffer);
-          TField(Info).Change;
-        end;
+  procedure HandleFieldChange(aField: TField);
+  begin
+    if aField.FieldKind in [fkData, fkInternalCalc] then
+      SetModified(True);
+      
+    if State <> dsSetKey then begin
+      if aField.FieldKind = fkData then begin
+        if FInternalCalcFields then
+          RefreshInternalCalcFields(ActiveBuffer)
+        else if FAutoCalcFields and (FCalcFieldsSize <> 0) then
+          CalculateFields(ActiveBuffer);
+      end;
+      
+      aField.Change;
     end;
-    deDataSetChange, deDataSetScroll:
-      if State <> dsInsert then UpdateCursorPos;
   end;
-  // Distribute event to datasets;
-  if FDisableControlsCount = 0 then
-    for I := 0 to FDataSources.Count - 1 do
-      TDataSource(FDataSources[I]).ProcessEvent(Event, Info);
+  
+  procedure HandleScrollOrChange;
+  begin
+    if State <> dsInsert then
+      UpdateCursorPos;
+  end;
+
+var
+  i: Integer;
+begin
+  case Event of
+    deFieldChange   : HandleFieldChange(TField(Info));
+    deDataSetChange,
+    deDataSetScroll : HandleScrollOrChange;
+  end;
+
+  if not ControlsDisabled then begin
+    for i := 0 to FDataSources.Count - 1 do
+      TDataSource(FDataSources[i]).ProcessEvent(Event, Info);
+  end;
 end;
 
 Procedure TDataset.DestroyFields;
@@ -980,6 +991,7 @@ begin
     CloseCursor;
     DoAfterClose;
     FModified:=False;
+    FModified:=False;
     end
 end;
 
@@ -1566,18 +1578,16 @@ Procedure TDataset.EnableControls;
 
 
 begin
-  If FDisableControlsCount>0 then
-    begin
+  if FDisableControlsCount > 0 then
     Dec(FDisableControlsCount);
-    If FDisableControlsCount=0 then
-      begin
-      // State changed since disablecontrols ?
-      If FDisableControlsState<>FState then
-        DataEvent(deUpdateState,0);
-      If (FDisableControlsState<>dsInactive) and (FState<>dsInactive) then
-        DataEvent(FEnableControlsEvent,0);
-      end;
-    end;
+
+  if FDisableControlsCount = 0 then begin
+    if FState <> FDisableControlsState then
+      DataEvent(deUpdateState, 0);
+
+    if (FState <> dsInactive) and (FDisableControlsState <> dsInactive) then
+      DataEvent(FEnableControlsEvent, 0);
+  end;
 end;
 
 Function TDataset.FieldByName(const FieldName: string): TField;
@@ -2145,21 +2155,21 @@ end;
 
 procedure TDataset.SetFieldValues(Fieldname: string; Value: Variant);
 
-var i: Integer;
-    FieldList: TList;
+var
+  i : Integer;
+  FieldList: TList;
 begin
-  if Pos(';', FieldName) <> 0 then
-  begin
+  if Pos(';', FieldName) <> 0 then begin
     FieldList := TList.Create;
     try
       GetFieldList(FieldList, FieldName);
-      for i := 0 to FieldList.Count - 1 do
+      for i := 0 to FieldList.Count -1 do
         TField(FieldList[i]).Value := Value[i];
     finally
       FieldList.Free;
     end;
   end else
-    FieldByName(FieldName).Value := Value;
+    FieldByName(Fieldname).Value := Value;
 end;
 
 Function TDataset.Locate(const keyfields: string; const keyvalues: Variant; options: TLocateOptions) : boolean;

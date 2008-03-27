@@ -85,6 +85,7 @@ const
   toString  = Char(2);
   toInteger = Char(3);
   toFloat   = Char(4);
+  toWString = Char(5);
 
 Const
   FilerSignature : Array[1..4] of char = 'TPF0';
@@ -171,6 +172,14 @@ type
     FList: PPointerList;
     FCount: Integer;
     FCapacity: Integer;
+    procedure CopyMove (aList : TFPList);
+    procedure MergeMove (aList : TFPList);
+    procedure DoCopy(ListA, ListB : TFPList);
+    procedure DoSrcUnique(ListA, ListB : TFPList);
+    procedure DoAnd(ListA, ListB : TFPList);
+    procedure DoDestUnique(ListA, ListB : TFPList);
+    procedure DoOr(ListA, ListB : TFPList);
+    procedure DoXOr(ListA, ListB : TFPList);
   protected
     function Get(Index: Integer): Pointer; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
     procedure Put(Index: Integer; Item: Pointer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
@@ -192,7 +201,7 @@ type
     procedure Insert(Index: Integer; Item: Pointer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
     function Last: Pointer;
     procedure Move(CurIndex, NewIndex: Integer);
-    procedure Assign(Obj:TFPList; AOperator: TListAssignOp = laCopy; ListB: TFPList = nil);
+    procedure Assign (ListA: TFPList; AOperator: TListAssignOp=laCopy; ListB: TFPList=nil);
     function Remove(Item: Pointer): Integer;
     procedure Pack;
     procedure Sort(Compare: TListSortCompare);
@@ -225,6 +234,14 @@ type
   TList = class(TObject)
   private
     FList: TFPList;
+    procedure CopyMove (aList : TList);
+    procedure MergeMove (aList : TList);
+    procedure DoCopy(ListA, ListB : TList);
+    procedure DoSrcUnique(ListA, ListB : TList);
+    procedure DoAnd(ListA, ListB : TList);
+    procedure DoDestUnique(ListA, ListB : TList);
+    procedure DoOr(ListA, ListB : TList);
+    procedure DoXOr(ListA, ListB : TList);
   protected
     function Get(Index: Integer): Pointer;
     procedure Grow; virtual;
@@ -251,7 +268,7 @@ type
     procedure Insert(Index: Integer; Item: Pointer);
     function Last: Pointer;
     procedure Move(CurIndex, NewIndex: Integer);
-    procedure Assign(Obj: TList; AOperator: TListAssignOp = laCopy; ListB: TList = nil);
+    procedure Assign (ListA: TList; AOperator: TListAssignOp=laCopy; ListB: TList=nil);
     function Remove(Item: Pointer): Integer;
     procedure Pack;
     procedure Sort(Compare: TListSortCompare);
@@ -1036,7 +1053,7 @@ type
     FDriver: TAbstractObjectReader;
     FOwner: TComponent;
     FParent: TComponent;
-    FFixups: TList;
+    FFixups: TObject;
     FLoaded: TList;
     FOnFindMethod: TFindMethodEvent;
     FOnSetMethodProperty: TSetMethodPropertyEvent;
@@ -1051,7 +1068,6 @@ type
     FCanHandleExcepts: Boolean;
     FOnReadStringProperty:TReadWriteStringPropertyEvent;
     procedure DoFixupReferences;
-    procedure FreeFixups;
     function FindComponentClass(const AClassName: string): TComponentClass;
   protected
     function Error(const Message: string): Boolean; virtual;
@@ -1284,20 +1300,39 @@ type
 
   TParser = class(TObject)
   private
-    FStream: TStream;
-    FOrigin: Longint;
-    FBuffer: PChar;
-    FBufPtr: PChar;
-    FBufEnd: PChar;
-    FSourcePtr: PChar;
-    FSourceEnd: PChar;
-    FTokenPtr: PChar;
-    FString: widestring;
-    FSourceLine: Integer;
-    FSaveChar: Char;
-    FToken: Char;
-    procedure ReadBuffer;
-    procedure SkipBlanks;
+    fStream : TStream;
+    fBuf : pchar;
+    fBufLen : integer;
+    fPos : integer;
+    fDeltaPos : integer;
+    fFloatType : char;
+    fSourceLine : integer;
+    fToken : char;
+    fEofReached : boolean;
+    fLastTokenStr : string;
+    fLastTokenWStr : widestring;
+    function GetTokenName(aTok : char) : string;
+    procedure LoadBuffer;
+    procedure CheckLoadBuffer; inline;
+    procedure ProcessChar; inline;
+    function IsNumber : boolean; inline;
+    function IsHexNum : boolean; inline;
+    function IsAlpha : boolean; inline;
+    function IsAlphaNum : boolean; inline;
+    function GetHexValue(c : char) : byte; inline;
+    function GetAlphaNum : string;
+    procedure HandleNewLine;
+    procedure SkipSpaces;
+    procedure SkipWhitespace;
+    procedure HandleEof;
+    procedure HandleAlphaNum;
+    procedure HandleNumber;
+    procedure HandleHexNumber;
+    function HandleQuotedString : string;
+    function HandleDecimalString(var ascii : boolean) : widestring;
+    procedure HandleString;
+    procedure HandleMinus;
+    procedure HandleUnknown;
   public
     constructor Create(Stream: TStream);
     destructor Destroy; override;
@@ -1309,18 +1344,18 @@ type
     procedure HexToBinary(Stream: TStream);
     function NextToken: Char;
     function SourcePos: Longint;
-    function TokenComponentIdent: String;
+    function TokenComponentIdent: string;
 {$ifndef FPUNONE}
     function TokenFloat: Extended;
 {$endif}
     function TokenInt: Int64;
     function TokenString: string;
-    function TokenWideString: widestring;
+    function TokenWideString: WideString;
     function TokenSymbolIs(const S: string): Boolean;
-    property SourceLine: Integer read FSourceLine;
-    property Token: Char read FToken;
+    property FloatType: Char read fFloatType;
+    property SourceLine: Integer read fSourceLine;
+    property Token: Char read fToken;
   end;
-
 
 { TThread }
 
@@ -1806,7 +1841,7 @@ procedure RedirectFixupReferences(Root: TComponent; const OldRootName,
   NewRootName: string);
 procedure RemoveFixupReferences(Root: TComponent; const RootName: string);
 procedure RemoveFixups(Instance: TPersistent);
-function FindNestedComponent(Root: TComponent; const NamePath: string): TComponent;
+Function FindNestedComponent(Root : TComponent; APath : String; CStyle : Boolean = True) : TComponent;
 
 procedure BeginGlobalLoading;
 procedure NotifyGlobalLoading;

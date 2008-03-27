@@ -583,9 +583,8 @@ procedure TField.CalcLookupValue;
 begin
   if FLookupCache then
     Value := LookupList.ValueOfKey(FDataSet.FieldValues[FKeyFields])
-  else if (FLookupDataSet <> nil) and FLookupDataSet.Active then
-    Value := FLookupDataSet.Lookup(FLookupKeyFields,
-      FDataSet.FieldValues[FKeyFields], FLookupResultField);
+  else if Assigned(FLookupDataSet) and FDataSet.Active then
+    Value := FLookupDataSet.Lookup(FLookupKeyfields, FDataSet.FieldValues[FKeyFields], FLookupresultField);
 end;
 
 function TField.getIndex : longint;
@@ -658,31 +657,32 @@ begin
 end;
 
 procedure TField.RefreshLookupList;
-var SaveActive: Boolean;
+var
+  tmpActive: Boolean;
 begin
-  if (FLookupDataSet <> nil) And (FLookupKeyFields <> '') And
-     (FlookupResultField <> '') And (FKeyFields <> '') then begin
-    SaveActive := FLookupDataSet.Active;
-    with FLookupDataSet do
+  if not Assigned(FLookupDataSet) or (Length(FLookupKeyfields) = 0)
+  or (Length(FLookupresultField) = 0) or (Length(FKeyFields) = 0) then
+    Exit;
+    
+  tmpActive := FLookupDataSet.Active;
+  try
+    FLookupDataSet.Active := True;
+    FFields.CheckFieldNames(FLookupKeyfields);
+    FLookupDataset.FieldByName(FLookupresultField); // I presume that if it doesn't exist it throws exception, and that a field with null value is still valid
+    LookupList.Clear; // have to be F-less because we might be creating it here with getter!
+
+    FLookupDataSet.DisableControls;
     try
-      Active := True;
-      FFields.CheckFieldNames(FLookupKeyFields);
-      FieldByName(FLookupResultField);
-      LookupList.Clear;
-      DisableControls;
-      try
-        First;
-        while not Eof do begin
-          FLookupList.Add(FieldValues[FLookupKeyFields],
-            FieldValues[FLookupResultField]);
-          Next;
-        end;
-      finally
-        EnableControls;
-      end;
+      FLookupDataSet.Open;
+      repeat
+        FLookupList.Add(FLookupDataSet.FieldValues[FLookupKeyfields], FLookupDataSet.FieldValues[FLookupResultField]);
+        FLookupDataSet.Next;
+      until FLookupDataSet.EOF;
     finally
-      Active := SaveActive;
+      FLookupDataSet.EnableControls;
     end;
+  finally
+    FLookupDataSet.Active := tmpActive;
   end;
 end;
 

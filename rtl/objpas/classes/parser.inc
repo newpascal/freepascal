@@ -1,6 +1,6 @@
 {
     This file is part of the Free Component Library (FCL)
-    Copyright (c) 1999-2000 by the Free Pascal development team
+    Copyright (c) 1999-2007 by the Free Pascal development team
 
     See the file COPYING.FPC, included in this distribution,
     for details about the copyright.
@@ -17,318 +17,441 @@
 
 const
   ParseBufSize     = 4096;
+  LastSpecialToken = 5;
 
-procedure TParser.ReadBuffer;
-var
-  Count            : Integer;
+  TokNames : array[0..LastSpecialToken] of string =
+  (
+    'EOF',
+    'Symbol',
+    'String',
+    'Integer',
+    'Float',
+    'WideString'
+  );
+
+function TParser.GetTokenName(aTok: char): string;
 begin
-  Inc(FOrigin, FSourcePtr - FBuffer);
-
-  FSourceEnd[0] := FSaveChar;
-  Count         := FBufPtr - FSourcePtr;
-  if Count <> 0 then
-  begin
-    Move(FSourcePtr[0], FBuffer[0], Count);
-  end;
-
-  FBufPtr := FBuffer + Count;
-  Inc(FBufPtr, FStream.Read(FBufPtr[0], FBufEnd - FBufPtr));
-
-  FSourcePtr := FBuffer;
-  FSourceEnd := FBufPtr;
-  if (FSourceEnd = FBufEnd) then
-  begin
-    FSourceEnd := LineStart(FBuffer, FSourceEnd - 1);
-    if FSourceEnd = FBuffer then
-    begin
-      Error(SLineTooLong);
-    end;
-  end;
-  FSaveChar := FSourceEnd[0];
-  FSourceEnd[0] := #0;
+  if ord(aTok) <= LastSpecialToken then
+    Result:=TokNames[ord(aTok)]
+  else Result:=aTok;
 end;
 
-procedure TParser.SkipBlanks;
+procedure TParser.LoadBuffer;
+var toread : integer;
 begin
-  while FSourcePtr^ < #33 do begin
-    if FSourcePtr^ = #0 then begin
-      ReadBuffer;
-      if FSourcePtr^ = #0 then exit;
-      continue;
-    end else if FSourcePtr^ = #10 then Inc(FSourceLine);
-    Inc(FSourcePtr);
+  toread:=fStream.Size-fStream.Position;
+  if toread>ParseBufSize then toread:=ParseBufSize;
+  if toread=0 then
+  begin
+    fEofReached:=true;
+    exit;
   end;
+  fStream.ReadBuffer(fBuf[0],toread);
+  fBuf[toread]:=#0;
+  inc(fDeltaPos,fPos);
+  fPos:=0;
+  fBufLen:=toread;
+end;
+
+procedure TParser.CheckLoadBuffer; inline;
+begin
+  if fBuf[fPos]=#0 then LoadBuffer;
+end;
+
+procedure TParser.ProcessChar; inline;
+begin
+  fLastTokenStr:=fLastTokenStr+fBuf[fPos];
+  inc(fPos);
+  CheckLoadBuffer;
+end;
+
+function TParser.IsNumber: boolean; inline;
+begin
+  Result:=fBuf[fPos] in ['0'..'9'];
+end;
+
+function TParser.IsHexNum: boolean; inline;
+begin
+  Result:=fBuf[fPos] in ['0'..'9','A'..'F','a'..'f'];
+end;
+
+function TParser.IsAlpha: boolean; inline;
+begin
+  Result:=fBuf[fPos] in ['_','A'..'Z','a'..'z'];
+end;
+
+function TParser.IsAlphaNum: boolean; inline;
+begin
+  Result:=IsAlpha or IsNumber;
+end;
+
+function TParser.GetHexValue(c: char): byte; inline;
+begin
+  case c of
+    '0'..'9' : Result:=ord(c)-$30;
+    'A'..'F' : Result:=ord(c)-$37; //-$41+$0A
+    'a'..'f' : Result:=ord(c)-$57; //-$61+$0A
+  end;
+end;
+
+function TParser.GetAlphaNum: string;
+begin
+  if not IsAlpha then
+    ErrorFmt(SParExpected,[GetTokenName(toSymbol)]);
+  Result:='';
+  while IsAlphaNum do
+  begin
+    Result:=Result+fBuf[fPos];
+    inc(fPos);
+    CheckLoadBuffer;
+  end;
+end;
+
+procedure TParser.HandleNewLine;
+begin
+  if fBuf[fPos]=#13 then //CR
+  begin
+    inc(fPos);
+    CheckLoadBuffer;
+    if fBuf[fPos]=#10 then inc(fPos); //CR LF
+  end
+  else inc(fPos); //LF
+  inc(fSourceLine);
+  fDeltaPos:=-(fPos-1);
+end;
+
+procedure TParser.SkipSpaces;
+begin
+  while fBuf[fPos] in [' ',#9] do
+    inc(fPos);
+end;
+
+procedure TParser.SkipWhitespace;
+begin
+  while true do
+  begin
+    CheckLoadBuffer;
+    case fBuf[fPos] of
+      ' ',#9  : SkipSpaces;
+      #10,#13 : HandleNewLine
+      else break;
+    end;
+  end;
+end;
+
+procedure TParser.HandleEof;
+begin
+  fToken:=toEOF;
+  fLastTokenStr:='';
+end;
+
+procedure TParser.HandleAlphaNum;
+begin
+  fLastTokenStr:=GetAlphaNum;
+  fToken:=toSymbol;
+end;
+
+procedure TParser.HandleNumber;
+type
+  floatPunct = (fpDot,fpE);
+  floatPuncts = set of floatPunct;
+var
+  allowed : floatPuncts;
+begin
+  fLastTokenStr:='';
+  while IsNumber do
+    ProcessChar;
+  fToken:=toInteger;
+  if (fBuf[fPos] in ['.','e','E']) then
+  begin
+    fToken:=toFloat;
+    allowed:=[fpDot,fpE];
+    while (fBuf[fPos] in ['.','e','E','0'..'9']) do
+    begin
+      case fBuf[fPos] of
+        '.'     : if fpDot in allowed then Exclude(allowed,fpDot) else break;
+        'E','e' : if fpE in allowed then
+                  begin
+                    allowed:=[];
+                    ProcessChar;
+                    if (fBuf[fPos] in ['+','-']) then ProcessChar;
+                    if not (fBuf[fPos] in ['0'..'9']) then
+                      ErrorFmt(SParInvalidFloat,[fLastTokenStr+fBuf[fPos]]);
+                  end
+                  else break;
+      end;
+      ProcessChar;
+    end;
+  end;
+  if (fBuf[fPos] in ['s','S','d','D','c','C']) then //single, date, currency
+  begin
+    fFloatType:=fBuf[fPos];
+    inc(fPos);
+    fToken:=toFloat;
+  end
+  else fFloatType:=#0;
+end;
+
+procedure TParser.HandleHexNumber;
+var valid : boolean;
+begin
+  fLastTokenStr:='$';
+  inc(fPos);
+  CheckLoadBuffer;
+  valid:=false;
+  while IsHexNum do
+  begin
+    valid:=true;
+    ProcessChar;
+  end;
+  if not valid then
+    ErrorFmt(SParInvalidInteger,[fLastTokenStr]);
+  fToken:=toInteger;
+end;
+
+function TParser.HandleQuotedString: string;
+begin
+  Result:='';
+  inc(fPos);
+  CheckLoadBuffer;
+  while true do
+  begin
+    case fBuf[fPos] of
+      #0     : ErrorStr(SParUnterminatedString);
+      #13,#10 : ErrorStr(SParUnterminatedString);
+      ''''   : begin
+                 inc(fPos);
+                 CheckLoadBuffer;
+                 if fBuf[fPos]<>'''' then exit;
+               end;
+    end;
+    Result:=Result+fBuf[fPos];
+    inc(fPos);
+    CheckLoadBuffer;
+  end;
+end;
+
+function TParser.HandleDecimalString(var ascii : boolean): widestring;
+var i : integer;
+begin
+  Result:='';
+  inc(fPos);
+  CheckLoadBuffer;
+  while IsNumber do
+  begin
+    Result:=Result+fBuf[fPos];
+    inc(fPos);
+    CheckLoadBuffer;
+  end;
+  if TryStrToInt(Result,i) and (i<256) then
+  begin
+    if i>127 then ascii:=false;
+    setlength(Result,1);
+    Result[1]:=widechar(word(i));
+  end
+  else
+    Result:='#'+Result;
+end;
+
+procedure TParser.HandleString;
+var ascii : boolean;
+begin
+  fLastTokenWStr:='';
+  ascii:=true;
+  while true do
+    case fBuf[fPos] of
+      '''' : fLastTokenWStr:=fLastTokenWStr+HandleQuotedString;
+      '#'  : fLastTokenWStr:=fLastTokenWStr+HandleDecimalString(ascii)
+      else break;
+    end;
+  if ascii then
+    fToken:=toString
+  else
+    fToken:=toWString;
+  fLastTokenStr:=fLastTokenWStr;
+end;
+
+procedure TParser.HandleMinus;
+begin
+  inc(fPos);
+  CheckLoadBuffer;
+  if IsNumber then
+  begin
+    HandleNumber;
+    fLastTokenStr:='-'+fLastTokenStr;
+  end
+  else
+  begin
+    fToken:='-';
+    fLastTokenStr:=fToken;
+  end;
+end;
+
+procedure TParser.HandleUnknown;
+begin
+  fToken:=fBuf[fPos];
+  fLastTokenStr:=fToken;
+  inc(fPos);
 end;
 
 constructor TParser.Create(Stream: TStream);
 begin
-  inherited Create;
-
-  FStream := Stream;
-  GetMem(FBuffer, ParseBufSize);
-
-  FBuffer[0]  := #0;
-  FBufPtr     := FBuffer;
-  FBufEnd     := FBuffer + ParseBufSize;
-  FSourcePtr  := FBuffer;
-  FSourceEnd  := FBuffer;
-  FTokenPtr   := FBuffer;
-  FSourceLine := 1;
-
+  fStream:=Stream;
+  fBuf:=GetMem(ParseBufSize+1);
+  fBufLen:=0;
+  fPos:=0;
+  fDeltaPos:=1;
+  fSourceLine:=1;
+  fEofReached:=false;
+  fLastTokenStr:='';
+  fLastTokenWStr:='';
+  fFloatType:=#0;
+  fToken:=#0;
+  LoadBuffer;
   NextToken;
 end;
 
-
 destructor TParser.Destroy;
 begin
-  if Assigned(FBuffer) then
-  begin
-    FStream.Seek(PtrUInt(FTokenPtr) - PtrUInt(FBufPtr), 1);
-    FreeMem(FBuffer, ParseBufSize);
-  end;
-
-  inherited Destroy;
+  fStream.Position:=SourcePos;
+  FreeMem(fBuf);
 end;
 
-procedure TParser.CheckToken(T : Char);
+procedure TParser.CheckToken(T: Char);
 begin
-  if Token <> T then
-  begin
-    case T of
-      toSymbol:
-        Error(SIdentifierExpected);
-      toString:
-        Error(SStringExpected);
-      toInteger, toFloat:
-        Error(SNumberExpected);
-    else
-      ErrorFmt(SCharExpected, [T]);
-    end;
-  end;
+  if fToken<>T then
+    ErrorFmt(SParWrongTokenType,[GetTokenName(T),GetTokenName(fToken)]);
 end;
 
 procedure TParser.CheckTokenSymbol(const S: string);
 begin
-  if not TokenSymbolIs(S) then
-    ErrorFmt(SSymbolExpected, [S]);
+  CheckToken(toSymbol);
+  if CompareText(fLastTokenStr,S)<>0 then
+    ErrorFmt(SParWrongTokenSymbol,[s,fLastTokenStr]);
 end;
 
-Procedure TParser.Error(const Ident: string);
+procedure TParser.Error(const Ident: string);
 begin
   ErrorStr(Ident);
 end;
 
-Procedure TParser.ErrorFmt(const Ident: string; const Args: array of const);
+procedure TParser.ErrorFmt(const Ident: string; const Args: array of const);
 begin
-  ErrorStr(Format(Ident, Args));
+  ErrorStr(Format(Ident,Args));
 end;
 
-Procedure TParser.ErrorStr(const Message: string);
+procedure TParser.ErrorStr(const Message: string);
 begin
-  raise EParserError.CreateFmt(SParseError, [Message, FSourceLine]);
+  raise EParserError.CreateFmt(Message+SParLocInfo,[SourceLine,fPos+fDeltaPos,SourcePos]);
 end;
-
 
 procedure TParser.HexToBinary(Stream: TStream);
-
-  function HexDigitToInt(c: Char): Integer;
-  begin
-    if (c >= '0') and (c <= '9') then Result := Ord(c) - Ord('0')
-    else if (c >= 'A') and (c <= 'F') then Result := Ord(c) - Ord('A') + 10
-    else if (c >= 'a') and (c <= 'f') then Result := Ord(c) - Ord('a') + 10
-    else Result := -1;
-  end;
-
-var
-  buf: array[0..255] of Byte;
-  digit1: Integer;
-  bytes: Integer;
+var outbuf : array[0..ParseBufSize-1] of byte;
+    b : byte;
+    i : integer;
 begin
-  SkipBlanks;
-  while FSourcePtr^ <> '}' do begin
-    bytes := 0;
-    while True do begin
-      digit1 := HexDigitToInt(FSourcePtr[0]);
-      if digit1 < 0 then break;
-      buf[bytes] := digit1 shl 4 or HexDigitToInt(FSourcePtr[1]);
-      Inc(FSourcePtr, 2);
-      Inc(bytes);
+  i:=0;
+  SkipWhitespace;
+  while IsHexNum do
+  begin
+    b:=(GetHexValue(fBuf[fPos]) shl 4);
+    inc(fPos);
+    CheckLoadBuffer;
+    if not IsHexNum then
+      Error(SParUnterminatedBinValue);
+    b:=b or GetHexValue(fBuf[fPos]);
+    inc(fPos);
+    outbuf[i]:=b;
+    inc(i);
+    if i>=ParseBufSize then
+    begin
+      Stream.WriteBuffer(outbuf[0],i);
+      i:=0;
     end;
-    if bytes = 0 then Error(SInvalidBinary);
-    Stream.Write(buf, bytes);
-    SkipBlanks;
+    SkipWhitespace;
   end;
+  if i>0 then
+    Stream.WriteBuffer(outbuf[0],i);
   NextToken;
 end;
 
+function TParser.NextToken: Char;
 
-Function TParser.NextToken: Char;
-var
-  CharCount         : Integer;
- 
-  procedure PutChar(achar: Word);
-  begin
-    inc(CharCount);
-    if length(fString) < CharCount then begin
-     setlength(fString,length(fString) + length(fString) div 4 + 64);
-    end;
-    fString[CharCount]:= WideChar(achar);
-  end;
- 
-var
-  I : Int64;
-  P : PChar;
 begin
-  SkipBlanks;
-  P := FSourcePtr;
-  FTokenPtr := P;
-  case P^ of
-    'A'..'Z', 'a'..'z', '_':
-      begin
-        Inc(P);
-        while P^ in ['A'..'Z', 'a'..'z', '0'..'9', '_'] do Inc(P);
-        Result := toSymbol;
-      end;
-    '#', '''':
-      begin
-        CharCount:= 0;
-        while True do
-          case P^ of
-            '#':
-              begin
-                Inc(P);
-                I := 0;
-                while P^ in ['0'..'9'] do
-                begin
-                  I := I * 10 + (Ord(P^) - Ord('0'));
-                  Inc(P);
-                end;
-                PutChar(I)
-              end;
-            '''':
-              begin
-                Inc(P);
-                while True do
-                begin
-                  case P^ of
-                    #0, #10, #13:
-                      Error(SInvalidString);
-                    '''':
-                      begin
-                        Inc(P);
-                        if P^ <> '''' then Break;
-                      end;
-                  end;
-                  PutChar(Word(P^));
-                  Inc(P);
-                end;
-              end;
-          else
-            Break;
-          end;
-        setlength(fString,CharCount);
-        Result := toString;
-      end;
-    '$':
-      begin
-        Inc(P);
-        while P^ in ['0'..'9', 'A'..'F', 'a'..'f'] do Inc(P);
-        Result := toInteger;
-      end;
-    '-', '0'..'9':
-      begin
-        Inc(P);
-        while P^ in ['0'..'9'] do Inc(P);
-        Result := toInteger;
-        while (P^ in ['0'..'9', '.', 'e', 'E', '+', '-']) and not
-          ((P[0] = '.') and not (P[1] in ['0'..'9', 'e', 'E'])) do
-        begin
-          Inc(P);
-          Result := toFloat;
-        end;
-      end;
+  SkipWhiteSpace;
+  if fEofReached then
+    HandleEof
   else
-    Result := P^;
-    if Result <> toEOF then Inc(P);
-  end;
-  FSourcePtr := P;
-  FToken := Result;
+    case fBuf[fPos] of
+      '_','A'..'Z','a'..'z' : HandleAlphaNum;
+      '$'                   : HandleHexNumber;
+      '-'                   : HandleMinus;
+      '0'..'9'              : HandleNumber;
+      '''','#'              : HandleString
+      else
+        HandleUnknown;
+    end;
+  Result:=fToken;
 end;
 
-Function TParser.SourcePos: Longint;
+function TParser.SourcePos: Longint;
 begin
-  Result := FOrigin + (FTokenPtr - FBuffer);
+  Result:=fStream.Position-fBufLen+fPos;
 end;
 
-
-Function TParser.TokenComponentIdent: String;
-var
-  P                : PChar;
+function TParser.TokenComponentIdent: string;
 begin
-  CheckToken(toSymbol);
-
-  P := FSourcePtr;
-  while P^ = '.' do
+  if fToken<>toSymbol then
+    ErrorFmt(SParExpected,[GetTokenName(toSymbol)]);
+  CheckLoadBuffer;
+  while fBuf[fPos]='.' do
   begin
-    Inc(P);
-    if not (P^ in ['A'..'Z', 'a'..'z', '_']) then
-      Error(SIdentifierExpected);
-    repeat
-      Inc(P)
-    until not (P^ in ['A'..'Z', 'a'..'z', '0'..'9', '_']);
+    ProcessChar;
+    fLastTokenStr:=fLastTokenStr+GetAlphaNum;
   end;
-  FSourcePtr := P;
-  Result := TokenString;
+  Result:=fLastTokenStr;
 end;
 
 {$ifndef FPUNONE}
 Function TParser.TokenFloat: Extended;
-var
-  I,FloatError       : Integer;
-  Back             : Real;
-  S                : String;
-  
+
+var errcode : word;
+
 begin
-  Result   := 0;
-  S:=TokenString;
-  // Convert , decimal separator to ., handle backwards compatibility streams.
-  for I:=1 to Length(S) do
-    if (S[i]=',') then
-      S[i]:='.';
-  Val(S, Back, FloatError);
-  Result := Back;
+  Val(fLastTokenStr,Result,errcode);
+  if errcode<>0 then
+    ErrorFmt(SParInvalidFloat,[fLastTokenStr]);
 end;
 {$endif}
 
 Function TParser.TokenInt: Int64;
 begin
-  Result := StrToInt64(TokenString);
+  if not TryStrToInt64(fLastTokenStr,Result) then
+    Result:=Int64(StrToQWord(fLastTokenStr)); //second chance for malformed files
 end;
 
-Function TParser.TokenString: string;
-var
-  L                : Integer;
+function TParser.TokenString: string;
 begin
-  if FToken = toString then begin
-    result:= fString;
-  end else begin
-    L := FSourcePtr - FTokenPtr;
-    SetLength(Result,L);
-    If (L>0) then
-      Move(FTokenPtr^,Result[1],L);
+  case fToken of
+    toWString : Result:=fLastTokenWStr;
+    toFloat : if fFloatType<>#0 then
+                Result:=fLastTokenStr+fFloatType
+              else Result:=fLastTokenStr
+    else
+      Result:=fLastTokenStr;
   end;
 end;
 
-Function TParser.TokenWideString: widestring;
+function TParser.TokenWideString: WideString;
 begin
-  if FToken = toString then
-    result:= fString
+  if fToken=toWString then
+    Result:=fLastTokenWStr
   else
-    result:= TokenString
+    Result:=fLastTokenStr;
 end;
 
-
-Function TParser.TokenSymbolIs(const S: string): Boolean;
+function TParser.TokenSymbolIs(const S: string): Boolean;
 begin
-  Result := (Token = toSymbol) and (CompareText(S, TokenString) = 0);
+  Result:=(fToken=toSymbol) and (CompareText(fLastTokenStr,S)=0);
 end;
+

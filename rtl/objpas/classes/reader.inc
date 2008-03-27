@@ -546,12 +546,6 @@ end;
 procedure TReader.BeginReferences;
 begin
   FLoaded := TList.Create;
-  try
-    FFixups := TList.Create;
-  except
-    FLoaded.Free;
-    raise;
-  end;
 end;
 
 procedure TReader.CheckValue(Value: TValueType);
@@ -607,7 +601,6 @@ end;
 
 procedure TReader.EndReferences;
 begin
-  FreeFixups;
   FLoaded.Free;
   FLoaded := nil;
 end;
@@ -634,51 +627,43 @@ begin
     raise EReadError.Create(SInvalidPropertyValue);
 end;
 
-procedure RemoveGlobalFixup(Fixup: TPropFixup);
-var
-  i: Integer;
-begin
-  with GlobalFixupList.LockList do
-    try
-      for i := Count - 1 downto 0 do
-        with TPropFixup(Items[i]) do
-          if (FInstance = Fixup.FInstance) and
-            (FPropInfo = Fixup.FPropInfo) then
-          begin
-            Free;
-            Delete(i);
-          end;
-    finally
-      GlobalFixupList.UnlockList;
-    end;
-end;
-
 procedure TReader.DoFixupReferences;
-var
-  i: Integer;
-  CurFixup: TPropFixup;
-  CurName: String;
-  Target: Pointer;
+
+Var
+  R,RN : TLocalUnresolvedReference;
+  G : TUnresolvedInstance;
+  Ref : String;
+  C : TComponent;
+  P : integer;
+  L : TLinkedList;
+  
 begin
-  if Assigned(FFixups) then
-    try
-      for i := 0 to FFixups.Count - 1 do
+  If Assigned(FFixups) then
+    begin
+    L:=TLinkedList(FFixups);
+    R:=TLocalUnresolvedReference(L.Root);
+    While (R<>Nil) do
       begin
-        CurFixup := TPropFixup(FFixups[i]);
-        CurName := CurFixup.FName;
-        if Assigned(FOnReferenceName) then
-          FOnReferenceName(Self, CurName);
-        Target := FindNestedComponent(CurFixup.FInstanceRoot, CurName);
-        RemoveGlobalFixup(CurFixup);
-        if (not Assigned(Target)) and CurFixup.MakeGlobalReference then
+      RN:=TLocalUnresolvedReference(R.Next);
+      Ref:=R.FRelative;
+      If Assigned(FOnReferenceName) then
+        FOnReferenceName(Self,Ref);
+      C:=FindNestedComponent(R.FRoot,Ref);
+      If Assigned(C) then
+        SetObjectProp(R.FInstance,R.FPropInfo,C)
+      else
         begin
-          GlobalFixupList.Add(CurFixup);
-          FFixups[i] := nil;
-        end else
-          SetOrdProp(CurFixup.FInstance, CurFixup.FPropInfo, PtrUInt(Target));
+        P:=Pos('.',R.FRelative);
+        If (P<>0) then
+          begin
+          G:=AddToResolveList(R.FInstance);
+          G.Addreference(R.FRoot,R.FPropInfo,Copy(R.FRelative,1,P-1),Copy(R.FRelative,P+1,Length(R.FRelative)-P));
+          end;
+        end;
+      L.RemoveItem(R);
+      R:=RN;
       end;
-    finally
-      FreeFixups;
+    FreeAndNil(FFixups);
     end;
 end;
 
@@ -692,18 +677,6 @@ begin
     TComponent(FLoaded[I]).Loaded;
 end;
 
-procedure TReader.FreeFixups;
-var
-  i: Integer;
-begin
-  if Assigned(FFixups) then
-  begin
-    for i := 0 to FFixups.Count - 1 do
-      TPropFixup(FFixups[I]).Free;
-    FFixups.Free;
-    FFixups := nil;
-  end;
-end;
 
 function TReader.NextValue: TValueType;
 begin
@@ -762,26 +735,19 @@ end;
             
 procedure TReader.ReadCollection(Collection: TCollection);
 var
-  Item: TPersistent;
+  Item: TCollectionItem;
 begin
   Collection.BeginUpdate;
-  try
-    if not EndOfList then
-      Collection.Clear;
-    while not EndOfList do
-    begin
-      if FDriver.NextValue in [vaInt8, vaInt16, vaInt32] then
-        ReadInteger;            { Skip order value }
-      Item := Collection.Add;
-      ReadListBegin;
-      while not EndOfList do
-        ReadProperty(Item);
-      ReadListEnd;
-    end;
+  Collection.Clear;
+  while not EndOfList do begin
+    ReadListBegin;
+    Item := Collection.Add;
+    while NextValue<>vaNull do
+      ReadProperty(Item);
     ReadListEnd;
-  finally
-    Collection.EndUpdate;
   end;
+  Collection.EndUpdate;
+  ReadListEnd;
 end;
 
 function TReader.ReadComponent(Component: TComponent): TComponent;
@@ -933,16 +899,9 @@ end;
 
 procedure TReader.ReadData(Instance: TComponent);
 var
-  DoFreeFixups: Boolean;
   SavedOwner, SavedParent: TComponent;
+  
 begin
-  if not Assigned(FFixups) then
-  begin
-    FFixups := TList.Create;
-    DoFreeFixups := True;
-  end else
-    DoFreeFixups := False;
-
   try
     { Read properties }
     while not EndOfList do
@@ -967,12 +926,9 @@ begin
     end;
 
     { Fixup references if necessary (normally only if this is the root) }
-    if DoFreeFixups then
-      DoFixupReferences;
-
+    DoFixupReferences;
   finally
-    if DoFreeFixups then
-      FreeFixups;
+    FreeAndNil(FFixups);
   end;
 end;
 
@@ -1263,7 +1219,17 @@ begin
             ReadCollection(TCollection(GetObjectProp(Instance, PropInfo)));
           end
         else
-          FFixups.Add(TPropFixup.Create(Instance, Root, PropInfo, '', ReadIdent));
+          begin
+          If Not Assigned(FFixups) then
+            FFixups:=TLinkedList.Create(TLocalUnresolvedReference);
+          With TLocalUnresolvedReference(TLinkedList(FFixups).Add) do
+            begin
+            FInstance:=Instance;
+            FRoot:=Root;
+            FPropInfo:=PropInfo;
+            FRelative:=ReadIdent;
+            end;
+          end;
       end;
     tkInt64, tkQWord: SetInt64Prop(Instance, PropInfo, ReadInt64);
     else
@@ -1486,13 +1452,60 @@ begin
 end;
 
 function TReader.FindComponentClass(const AClassName: String): TComponentClass;
+
+var
+  PersistentClass: TPersistentClass;
+  UClassName: shortstring;
+
+  procedure FindInFieldTable(RootComponent: TComponent);
+  var
+    FieldClassTable: PFieldClassTable;
+    Entry: TPersistentClass;
+    i: Integer;
+    ComponentClassType: TClass;
+  begin
+    ComponentClassType := RootComponent.ClassType;
+    // it is not necessary to look in the FieldTable of TComponent,
+    // because TComponent doesn't have published properties that are
+    // descendants of TComponent
+    while ComponentClassType<>TComponent do begin
+      FieldClassTable :=
+        PFieldTable((Pointer(RootComponent.ClassType)+vmtFieldTable)^)^.ClassTable;
+      if assigned(FieldClassTable) then begin
+        for i := 0 to FieldClassTable^.Count -1 do begin
+          Entry := FieldClassTable^.Entries[i];
+          //writeln(format('Looking for %s in field table of class %s. Found %s',
+            //[AClassName, ComponentClassType.ClassName, Entry.ClassName]));
+          if (UpperCase(Entry.ClassName)=UClassName) and
+            (Entry.InheritsFrom(TComponent)) then begin
+            Result := TComponentClass(Entry);
+            Exit;
+          end;
+        end;
+      end;
+      // look in parent class
+      ComponentClassType := ComponentClassType.ClassParent;
+    end;
+  end;
+  
 begin
-  TPersistentClass(Result) := GetFieldClass(Root, AClassName);
-  if not Assigned(Result) and Assigned(FLookupRoot) and (FLookupRoot <> Root) then
-    TPersistentClass(Result) := GetFieldClass(FLookupRoot, AClassName);
-  if Assigned(FOnFindComponentClass) then
-    FOnFindComponentClass(Self, AClassName, Result);
-  if not (Assigned(Result) and Result.InheritsFrom(TComponent)) then
+  Result := nil;
+  UClassName:=UpperCase(AClassName);
+  FindInFieldTable(Root);
+  
+  if (Result=nil) and assigned(LookupRoot) and (LookupRoot<>Root) then
+    FindInFieldTable(LookupRoot);
+
+  if (Result=nil) then begin
+    PersistentClass := GetClass(AClassName);
+    if PersistentClass.InheritsFrom(TComponent) then
+      Result := TComponentClass(PersistentClass);
+  end;
+    
+  if (Result=nil) and assigned(OnFindComponentClass) then
+    OnFindComponentClass(Self, AClassName, Result);
+
+  if (Result=nil) or (not Result.InheritsFrom(TComponent)) then
     raise EClassNotFound.CreateFmt(SClassNotFound, [AClassName]);
 end;
 

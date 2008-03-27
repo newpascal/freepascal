@@ -816,7 +816,7 @@ end;
 
 Procedure TStringList.Grow;
 
-Var 
+Var
   NC : Integer;
 
 begin
@@ -825,7 +825,7 @@ begin
     NC:=NC+(NC Div 4)
   else if NC=0 then
     NC:=4
-  else  
+  else
     NC:=NC*4;
   SetCapacity(NC);
 end;
@@ -833,31 +833,41 @@ end;
 
 
 Procedure TStringList.QuickSort(L, R: Integer; CompareFn: TStringListSortCompare);
-
-Var I,J, Pivot : Longint;
-
+var
+  Pivot, vL, vR: Integer;
 begin
-  Repeat
-    I:=L;
-    J:=R;
-    Pivot:=(L+R) div 2;
-    Repeat
-      While CompareFn(Self, I, Pivot)<0 do Inc(I);
-      While CompareFn(Self, J, Pivot)>0 do Dec(J);
-      If I<=J then
-        begin
-        ExchangeItems(I,J); // No check, indices are correct.
-        if Pivot=I then
-          Pivot:=J
-        else if Pivot=J then
-          Pivot := I;
-        Inc(I);
-        Dec(j);
-        end;
-    until I>J;
-    If L<J then QuickSort(L,J, CompareFn);
-    L:=I;
-  Until I>=R;
+  if R - L <= 1 then begin // a little bit of time saver
+    if L < R then
+      if CompareFn(Self, L, R) > 0 then
+        ExchangeItems(L, R);
+
+    Exit;
+  end;
+
+  vL := L;
+  vR := R;
+
+  Pivot := L + Random(R - L); // they say random is best
+
+  while vL < vR do begin
+    while (vL < Pivot) and (CompareFn(Self, vL, Pivot) <= 0) do
+      Inc(vL);
+
+    while (vR > Pivot) and (CompareFn(Self, vR, Pivot) > 0) do
+      Dec(vR);
+
+    ExchangeItems(vL, vR);
+
+    if Pivot = vL then // swap pivot if we just hit it from one side
+      Pivot := vR
+    else if Pivot = vR then
+      Pivot := vL;
+  end;
+
+  if Pivot - 1 >= L then
+    QuickSort(L, Pivot - 1, CompareFn);
+  if Pivot + 1 <= R then
+    QuickSort(Pivot + 1, R, CompareFn);
 end;
 
 
@@ -1139,33 +1149,30 @@ Function TStringList.DoCompareText(const s1,s2 : string) : PtrInt;
 
 Function TStringList.Find(const S: string; var Index: Integer): Boolean;
 
-{ Searches for the first string <= S, returns True if exact match,
-  sets index to the index f the found string. }
-
-Var I,L,R,Temp : Longint;
-
+var
+  L, R, I: Integer;
+  CompareRes: PtrInt;
 begin
-  Result:=False;
+  Result := false;
   // Use binary search.
-  L:=0;
-  R:=FCount-1;
-  While L<=R do
-    begin
-    I:=(L+R) div 2;
-    Temp:=DoCompareText(FList^ [I].FString,S);
-    If Temp<0 then
-      L:=I+1
-    else
-      begin
-      R:=I-1;
-      If Temp=0 then
-        begin
-        Result:=True;
-        If Duplicates<>DupAccept then L:=I;
-        end;
+  L := 0;
+  R := Count - 1;
+  while (L<=R) do
+  begin
+    I := L + (R - L) div 2;
+    CompareRes := DoCompareText(S, Flist^[I].FString);
+    if (CompareRes>0) then
+      L := I+1
+    else begin
+      R := I-1;
+      if (CompareRes=0) then begin
+         Result := true;
+         if (Duplicates<>dupAccept) then
+            L := I; // forces end of while loop
       end;
     end;
-  Index:=L;
+  end;
+  Index := L;
 end;
 
 

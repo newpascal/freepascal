@@ -193,6 +193,9 @@ function CheckSynchronize(timeout : longint=0) : boolean;
 { TPersistent implementation }
 {$i persist.inc }
 
+{$i sllist.inc}
+{$i resref.inc}
+
 { TComponent implementation }
 {$i compon.inc}
 
@@ -462,44 +465,8 @@ begin
 end;
 
 { TPropFixup }
-
-type
-  TPropFixup = class
-    FInstance: TPersistent;
-    FInstanceRoot: TComponent;
-    FPropInfo: PPropInfo;
-    FRootName: string;
-    FName: string;
-    constructor Create(AInstance: TPersistent; AInstanceRoot: TComponent;
-      APropInfo: PPropInfo; const ARootName, AName: String);
-    function MakeGlobalReference: Boolean;
-  end;
-
-var
-  GlobalFixupList: TThreadList;
-
-constructor TPropFixup.Create(AInstance: TPersistent; AInstanceRoot: TComponent;
-  APropInfo: PPropInfo; const ARootName, AName: String);
-begin
-  FInstance := AInstance;
-  FInstanceRoot := AInstanceRoot;
-  FPropInfo := APropInfo;
-  FRootName := ARootName;
-  FName := AName;
-end;
-
-function TPropFixup.MakeGlobalReference: Boolean;
-var
-  i: Integer;
-begin
-  i := Pos('.', FName);
-  if i = 0 then
-    exit(False);
-  FRootName := Copy(FName, 1, i - 1);
-  FName := Copy(FName, i + 1, Length(FName));
-  Result := True;
-end;
-
+// Tainted. TPropFixup is being removed.
+ 
 Type
   TInitHandler = Class(TObject)
     AHandler : TInitComponentHandler;
@@ -694,234 +661,49 @@ begin
 end;
 
 
-procedure GlobalFixupReferences;
-var
-  GlobalList, DoneList, ToDoList: TList;
-  I, Index: Integer;
-  Root: TComponent;
-  Instance: TPersistent;
-  Reference: Pointer;
-begin
-  GlobalNameSpace.BeginWrite;
-  try
-    GlobalList := GlobalFixupList.LockList;
-    try
-      if GlobalList.Count > 0 then
-      begin
-        ToDoList := nil;
-        DoneList := TList.Create;
-        ToDoList := TList.Create;
-        try
-          i := 0;
-          while i < GlobalList.Count do
-            with TPropFixup(GlobalList[i]) do
-            begin
-              Root := FindGlobalComponent(FRootName);
-              if Assigned(Root) or (GetOrdProp(FInstance, FPropInfo) <> 0) then
-              begin
-                if Assigned(Root) then
-                begin
-                  Reference := FindNestedComponent(Root, FName);
-                  SetOrdProp(FInstance, FPropInfo, PtrUInt(Reference));
-                end;
-                // Move component to list of done components, if necessary
-                if (DoneList.IndexOf(FInstance) < 0) and
-                  (ToDoList.IndexOf(FInstance) >= 0) then
-                  DoneList.Add(FInstance);
-                GlobalList.Delete(i);
-                Free;   // ...the fixup
-              end else
-              begin
-                // Move component to list of components to process, if necessary
-                Index := DoneList.IndexOf(FInstance);
-                if Index <> -1 then
-                  DoneList.Delete(Index);
-                if ToDoList.IndexOf(FInstance) < 0 then
-                  ToDoList.Add(FInstance);
-                Inc(i);
-              end;
-            end;
-            for i := 0 to DoneList.Count - 1 do
-            begin
-              Instance := TPersistent(DoneList[I]);
-              if Instance.InheritsFrom(TComponent) then
-                Exclude(TComponent(Instance).FComponentState, csFixups);
-            end;
-          finally
-            ToDoList.Free;
-            DoneList.Free;
-          end;
-        end;
-    finally
-      GlobalFixupList.UnlockList;
-    end;
-  finally
-    GlobalNameSpace.EndWrite;
-  end;
-end;
+Function FindNestedComponent(Root : TComponent; APath : String; CStyle : Boolean = True) : TComponent;
 
-
-function IsStringInList(const AString: String; AList: TStrings): Boolean;
-var
-  i: Integer;
-begin
-  for i := 0 to AList.Count - 1 do
-    if CompareText(AList[i], AString) = 0 then
-      exit(True);
-  Result := False;
-end;
-
-
-procedure GetFixupReferenceNames(Root: TComponent; Names: TStrings);
-var
-  i: Integer;
-  CurFixup: TPropFixup;
-begin
-  with GlobalFixupList.LockList do
-    try
-      for i := 0 to Count - 1 do
-      begin
-        CurFixup := TPropFixup(Items[i]);
-        if ((not Assigned(Root)) or (CurFixup.FInstanceRoot = Root)) and
-          not IsStringInList(CurFixup.FRootName, Names) then
-          Names.Add(CurFixup.FRootName);
-      end;
-    finally
-      GlobalFixupList.UnlockList;
-    end;
-end;
-
-
-procedure GetFixupInstanceNames(Root: TComponent;
-  const ReferenceRootName: string; Names: TStrings);
-var
-  i: Integer;
-  CurFixup: TPropFixup;
-begin
-  with GlobalFixupList.LockList do
-    try
-      for i := 0 to Count - 1 do
-      begin
-        CurFixup := TPropFixup(Items[i]);
-        if (CurFixup.FInstanceRoot = Root) and
-          (UpperCase(ReferenceRootName) = UpperCase(CurFixup.FRootName)) and
-          not IsStringInList(CurFixup.FName, Names) then
-          Names.Add(CurFixup.FName);
-      end;
-    finally
-      GlobalFixupList.UnlockList;
-    end;
-end;
-
-
-procedure RedirectFixupReferences(Root: TComponent; const OldRootName,
-  NewRootName: string);
-var
-  i: Integer;
-  CurFixup: TPropFixup;
-begin
-  with GlobalFixupList.LockList do
-    try
-      for i := 0 to Count - 1 do
-      begin
-        CurFixup := TPropFixup(Items[i]);
-        if ((not Assigned(Root)) or (CurFixup.FInstanceRoot = Root)) and
-          (UpperCase(OldRootName) = UpperCase(CurFixup.FRootName)) then
-          CurFixup.FRootName := NewRootName;
-      end;
-      GlobalFixupReferences;
-    finally
-      GlobalFixupList.Unlocklist;
-    end;
-end;
-
-
-procedure RemoveFixupReferences(Root: TComponent; const RootName: string);
-var
-  i: Integer;
-  CurFixup: TPropFixup;
-begin
-  if not Assigned(GlobalFixupList) then
-    exit;
-
-  with GlobalFixupList.LockList do
-    try
-      for i := Count - 1 downto 0 do
-      begin
-        CurFixup := TPropFixup(Items[i]);
-        if ((not Assigned(Root)) or (CurFixup.FInstanceRoot = Root)) and
-          ((Length(RootName) = 0) or
-          (UpperCase(RootName) = UpperCase(CurFixup.FRootName))) then
-        begin
-          Delete(i);
-          CurFixup.Free;
-        end;
-      end;
-    finally
-      GlobalFixupList.UnlockList;
-    end;
-end;
-
-
-procedure RemoveFixups(Instance: TPersistent);
-var
-  i: Integer;
-  CurFixup: TPropFixup;
-begin
-  if not Assigned(GlobalFixupList) then
-    exit;
-
-  with GlobalFixupList.LockList do
-    try
-      for i := Count - 1 downto 0 do
-      begin
-        CurFixup := TPropFixup(Items[i]);
-        if (CurFixup.FInstance = Instance) then
-        begin
-          Delete(i);
-          CurFixup.Free;
-        end;
-      end;
-    finally
-      GlobalFixupList.UnlockList;
-    end;
-end;
-
-
-function FindNestedComponent(Root: TComponent; const NamePath: string): TComponent;
-var
-  Current, Found: TComponent;
-  s, p: PChar;
-  Name: String;
-begin
-  Result := nil;
-  if Length(NamePath) > 0 then
+  Function GetNextName : String; inline;
+  
+  Var
+    P : Integer;
+    CM : Boolean;
+    
   begin
-    Current := Root;
-    p := PChar(NamePath);
-    while p[0] <> #0 do
-    begin
-      s := p;
-      while not (p^ in ['.', '-', #0]) do
-        Inc(p);
-      SetString(Name, s, p - s);
-      Found := Current.FindComponent(Name);
-      if (not Assigned(Found)) and (UpperCase(Name) = 'OWNER') then
-        Found := Current;
-      if not Assigned(Found) then exit;
-
-      // Remove the dereference operator from the name
-      if p[0] = '.' then
-        Inc(P);
-      if p[0] = '-' then
-        Inc(P);
-      if p[0] = '>' then
-        Inc(P);
-
-      Current := Found;
-    end;
+    P:=Pos('.',APath);
+    CM:=False;
+    If (P=0) then
+      begin
+      If CStyle then
+        begin
+        P:=Pos('->',APath);
+        CM:=P<>0;
+        end;
+      If (P=0) Then
+        P:=Length(APath)+1;
+      end;
+    Result:=Copy(APath,1,P-1);
+    Delete(APath,1,P+Ord(CM));
   end;
-  Result := Current;
+
+Var
+  C : TComponent;
+  S : String;
+begin
+  If (APath='') then
+    Result:=Nil
+  else
+    begin
+    Result:=Root;
+    While (APath<>'') And (Result<>Nil) do
+      begin
+      C:=Result;
+      S:=Uppercase(GetNextName);
+      Result:=C.FindComponent(S);
+      If (Result=Nil) And (S='OWNER') then
+        Result:=C;
+      end;
+    end;
 end;
 
 threadvar
@@ -1864,10 +1646,10 @@ begin
   SynchronizeTimeoutEvent:=RtlEventCreate;
   DoSynchronizeMethod:=false;
   MainThreadID:=GetCurrentThreadID;
+  InitCriticalsection(ResolveSection);
   InitHandlerList:=Nil;
   FindGlobalComponentList:=nil;
   IntConstList := TThreadList.Create;
-  GlobalFixupList := TThreadList.Create;
   ClassList := TThreadList.Create;
   ClassAliasList := TStringList.Create;
   { on unix this maps to a simple rw synchornizer }
@@ -1891,8 +1673,7 @@ begin
   ClassList.Free;
   ClassAliasList.Free;
   RemoveFixupReferences(nil, '');
-  GlobalFixupList.Free;
-  GlobalFixupList := nil;
+  DoneCriticalsection(ResolveSection);
   GlobalLists.Free;
   ComponentPages.Free;
 
