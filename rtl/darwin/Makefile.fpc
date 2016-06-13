@@ -8,7 +8,7 @@ main=rtl
 # disabled units: serial
 [target]
 loaders=
-units=$(SYSTEMUNIT) uuchar unixtype ctypes objpas macpas iso7185 extpas \
+units=$(SYSTEMUNIT) sysinit uuchar unixtype ctypes objpas macpas iso7185 extpas \
       strings sysctl baseunix unixutil \
       unix initc cmem dynlibs $(CPU_UNITS) \
       dos dl blockrtl \
@@ -122,6 +122,8 @@ SYSDEPS=$(SYSINCDEPS) $(SYSCPUDEPS)
 
 $(SYSTEMUNIT)$(PPUEXT) : $(BSDINC)/$(SYSTEMUNIT).pp $(SYSDEPS)
         $(COMPILER) -Us -Sg $(BSDINC)/$(SYSTEMUNIT).pp
+
+sysinit$(PPUEXT) : sysinit.pas $(SYSTEMUNIT)$(PPUEXT)
 
 uuchar$(PPUEXT): $(SYSTEMUNIT)$(PPUEXT) $(INC)/uuchar.pp
 

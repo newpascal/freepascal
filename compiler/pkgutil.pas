@@ -135,10 +135,10 @@ implementation
       { for cross unit type aliases this might happen }
       if def.owner<>symtable then
         exit;
-      def.symtable.SymList.ForEachCall(@exportabstractrecordsymproc,def.symtable);
       { don't export generics or their nested types }
       if df_generic in def.defoptions then
         exit;
+      def.symtable.SymList.ForEachCall(@exportabstractrecordsymproc,def.symtable);
       if (def.typ=objectdef) and (oo_has_vmt in tobjectdef(def).objectoptions) then
         begin
           hp:=texported_item.create;
@@ -181,10 +181,7 @@ implementation
           begin
             if publiconly and not (vo_is_public in tstaticvarsym(sym).varoptions) then
               exit;
-            if target_info.system in systems_indirect_var_imports then
-              varexport(tsym(sym).mangledname)
-            else
-              varexport(tsym(sym).mangledname+suffix_indirect);
+            varexport(tsym(sym).mangledname);
           end;
         else
           begin
