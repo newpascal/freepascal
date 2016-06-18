@@ -1056,6 +1056,7 @@ implementation
         var
           vs : tabstractnormalvarsym;
           tcsym : tstaticvarsym;
+          templist : tasmlist;
         begin
           vs:=tabstractnormalvarsym(sc[0]);
           if sc.count>1 then
@@ -1068,9 +1069,19 @@ implementation
               begin
                 tcsym:=cstaticvarsym.create('$default'+vs.realname,vs_const,vs.vardef,[],true);
                 include(tcsym.symoptions,sp_internal);
-                vs.defaultconstsym:=tcsym;
                 symtablestack.top.insert(tcsym);
-                read_typed_const(current_asmdata.asmlists[al_typedconsts],tcsym,false);
+                templist:=tasmlist.create;
+                read_typed_const(templist,tcsym,false);
+                { in case of a generic routine, this initialisation value is not
+                  used, and will be re-parsed during specialisations (and the
+                  current version is not type-correct and hence breaks code
+                  generation for LLVM) }
+                if not parse_generic then
+                  begin
+                    vs.defaultconstsym:=tcsym;
+                    current_asmdata.asmlists[al_typedconsts].concatlist(templist);
+                  end;
+                templist.free;
               end;
             staticvarsym :
               begin
@@ -1154,7 +1165,7 @@ implementation
                 abssym.addroffset:=Tordconstnode(pt).value.svalue;
 {$if defined(i386) or defined(i8086)}
               tcpuabsolutevarsym(abssym).absseg:=false;
-              if (target_info.system in [system_i386_go32v2,system_i386_watcom,system_i8086_msdos,system_i8086_win16]) and
+              if (target_info.system in [system_i386_go32v2,system_i386_watcom,system_i8086_msdos,system_i8086_win16,system_i8086_embedded]) and
                   try_to_consume(_COLON) then
                 begin
                   pt.free;
