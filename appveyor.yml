@@ -1,0 +1,80 @@
+version: 1.0.{build}
+
+branches:
+  only:
+    - release
+  except:
+    - master
+    - fpc
+
+# Do not build on tags (GitHub only)
+skip_tags: true
+
+#---------------------------------#
+#    environment configuration    #
+#---------------------------------#
+
+# shallow_clone: true
+
+matrix:
+  fast_finish: true
+
+platform:
+  - x86
+
+configuration:
+  - Release
+
+environment:
+  BOOTSTRAP_PATH: '%APPVEYOR_BUILD_FOLDER%\bootstrap'
+  BINW32_PATH: '%APPVEYOR_BUILD_FOLDER%\binw32'
+  BOOTSTRAP_DL:
+    secure: 638jQ7/uOvgtb2oIeUqEe8yQVVDYm4vhHoF1xBYPPXPeCPphBsWpA/50hMhFRdpk
+  BINW32_DL:
+    secure: 638jQ7/uOvgtb2oIeUqEe/6/wQXnTX5Y4M5gGYkz8jE=
+  FPC_CONFIGURE_DL:
+    secure: 638jQ7/uOvgtb2oIeUqEe7dGcShSBkXhN3ms7lBq0Qjd5hK9L6hzBhkhjw4Qinug
+
+install:
+  - appveyor DownloadFile %BOOTSTRAP_DL%
+  - appveyor DownloadFile %BINW32_DL%
+  - 7z x bootstrap.7z -o%APPVEYOR_BUILD_FOLDER% -y
+  - 7z x binw32.7z -o%APPVEYOR_BUILD_FOLDER% -y
+  - git archive --format zip --output fpcsrc.zip release
+  - 7z d fpcsrc.zip appveyor.yml
+  
+build_script:
+  - SET ORIGINAL_PATH=%PATH%
+  - SET PATH=%BOOTSTRAP_PATH%;%BINW32_PATH%;%WINDIR%\System32
+  - make clean all
+
+after_build:
+  - make install INSTALL_PREFIX=%APPVEYOR_BUILD_FOLDER%\newpascal\fpc
+  - SET PATH=%ORIGINAL_PATH%
+  - appveyor DownloadFile %FPC_CONFIGURE_DL% -FileName %APPVEYOR_BUILD_FOLDER%\newpascal\configure.bat
+  - 7z a -tzip fpc.zip %APPVEYOR_BUILD_FOLDER%\newpascal
+  
+artifacts:
+  - path: fpc.zip
+    name: fpc
+  - path: fpcsrc.zip
+    name: fpcsrc
+
+deploy:
+  release: newpascal-v$(appveyor_build_version)
+  description: 'Release of NewPascal compiler'
+  provider: GitHub
+  auth_token:
+    secure: hciZXDslu8epZhwmm/LfiZBmhbPk7BPpLd/3MOtst/uIRw2LPeAEMCXmBFikJzxQ
+  artifact: fpc,fpcsrc
+  draft: false
+  prerelease: false
+  on:
+    branch: release                 # release from master branch only
+    appveyor_repo_tag: false       # ?deploy on tag push only
+
+#---------------------------------#
+#     deployment configuration    #
+#---------------------------------#
+
+# deploy: off
