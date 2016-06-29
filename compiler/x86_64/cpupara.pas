@@ -44,6 +44,7 @@ unit cpupara;
           function get_volatile_registers_int(calloption : tproccalloption):tcpuregisterset;override;
           function get_volatile_registers_mm(calloption : tproccalloption):tcpuregisterset;override;
           function get_volatile_registers_fpu(calloption : tproccalloption):tcpuregisterset;override;
+          procedure get_para_regoff(proccalloption: tproccalloption; paraloc: pcgparalocation; out reg: Byte; out off: LongInt);override;
           function create_paraloc_info(p : tabstractprocdef; side: tcallercallee):longint;override;
           function create_varargs_paraloc_info(p : tabstractprocdef; varargspara:tvarargsparalist):longint;override;
           function get_funcretloc(p : tabstractprocdef; side: tcallercallee; forcetempdef: tdef): tcgpara;override;
@@ -906,11 +907,69 @@ unit cpupara;
           result:=[RS_XMM0..RS_XMM15];
       end;
 
-
     function tcpuparamanager.get_volatile_registers_fpu(calloption : tproccalloption):tcpuregisterset;
       begin
         result:=[RS_ST0..RS_ST7];
       end;
+
+
+    procedure tcpuparamanager.get_para_regoff(proccalloption: tproccalloption; paraloc: pcgparalocation; out reg: Byte; out off: LongInt);
+    var
+      I : SizeInt;
+    begin
+      with paraloc^ do
+        case loc of
+          LOC_REGISTER:
+            begin
+              reg:=getsupreg(register);
+              { winx64 uses different registers }
+              if target_info.system=system_x86_64_win64 then
+                begin
+                  for I := 0 to high(paraintsupregs_winx64) do
+                    if reg=paraintsupregs_winx64[I] then
+                      begin
+                        reg:=I;
+                        break;
+                      end;
+                end
+              else
+                for I := 0 to high(paraintsupregs) do
+                  if reg=paraintsupregs[I] then
+                    begin
+                      reg:=I;
+                      break;
+                    end;
+              off:=0;
+            end;
+          LOC_MMREGISTER:
+            begin
+              reg:=getsupreg(register);
+              { winx64 uses different registers }
+              if target_info.system=system_x86_64_win64 then
+                begin
+                  for I := 0 to high(parammsupregs_winx64) do
+                    if reg=parammsupregs_winx64[I] then
+                      begin
+                        reg:=I;
+                        break;
+                      end;
+                end
+              else
+                for I := 0 to high(parammsupregs) do
+                  if reg=parammsupregs[I] then
+                    begin
+                      reg:=I;
+                      break;
+                    end;
+              off:=0;
+            end;
+          LOC_REFERENCE:
+            begin
+              reg:=255;
+              off:=reference.offset;
+            end;
+        end;
+    end;
 
 
     function tcpuparamanager.get_funcretloc(p : tabstractprocdef; side: tcallercallee; forcetempdef: tdef): tcgpara;
