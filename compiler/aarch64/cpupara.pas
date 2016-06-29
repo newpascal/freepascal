@@ -36,6 +36,7 @@ unit cpupara;
        tcpuparamanager = class(tparamanager)
           function get_volatile_registers_int(calloption: tproccalloption): tcpuregisterset; override;
           function get_volatile_registers_fpu(calloption: tproccalloption): tcpuregisterset; override;
+          procedure get_para_regoff(proccalloption: tproccalloption; paraloc: pcgparalocation; out reg: Byte; out off: LongInt); override;
           function get_volatile_registers_mm(calloption: tproccalloption): tcpuregisterset; override;
           function push_addr_param(varspez: tvarspez; def: tdef; calloption: tproccalloption): boolean; override;
           function ret_in_param(def: tdef; pd: tabstractprocdef):boolean;override;
@@ -80,6 +81,28 @@ unit cpupara;
         result:=[];
       end;
 
+    procedure tcpuparamanager.get_para_regoff(proccalloption: tproccalloption; paraloc: pcgparalocation; out reg: Byte; out off: LongInt);
+    var
+      I : SizeInt;
+    begin
+      with paraloc^ do
+        case loc of
+          LOC_REGISTER:
+            begin
+              reg:=getsupreg(register)-RS_X0;
+              off:=0;
+            end;
+          LOC_MMREGISTER:
+            begin
+              reg:=getsupreg(register)-RS_D0;
+            end;
+          LOC_REFERENCE:
+            begin
+              reg:=255;
+              off:=reference.offset;
+            end;
+        end;
+    end;
 
     function tcpuparamanager.get_volatile_registers_mm(calloption: tproccalloption): tcpuregisterset;
       begin
