@@ -28,12 +28,9 @@ configuration:
 environment:
   BOOTSTRAP_PATH: '%APPVEYOR_BUILD_FOLDER%\bootstrap'
   BINW32_PATH: '%APPVEYOR_BUILD_FOLDER%\binw32'
-  BOOTSTRAP_DL:
-    secure: 638jQ7/uOvgtb2oIeUqEe8yQVVDYm4vhHoF1xBYPPXPeCPphBsWpA/50hMhFRdpk
-  BINW32_DL:
-    secure: 638jQ7/uOvgtb2oIeUqEe/6/wQXnTX5Y4M5gGYkz8jE=
-  FPC_CONFIGURE_DL:
-    secure: 638jQ7/uOvgtb2oIeUqEe7dGcShSBkXhN3ms7lBq0Qjd5hK9L6hzBhkhjw4Qinug
+  BOOTSTRAP_DL: 'https://raw.githubusercontent.com/newpascal/npbuild/master/bootstrap.7z'
+  BINW32_DL: 'https://raw.githubusercontent.com/newpascal/npbuild/master/binw32.7z'
+  FPC_CONFIGURE_DL: 'https://raw.githubusercontent.com/newpascal/npbuild/master/configure.bat'
 
 install:
   - appveyor DownloadFile %BOOTSTRAP_DL%
