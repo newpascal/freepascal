@@ -690,6 +690,7 @@ implementation
     procedure gen_alloc_regvar(list:TAsmList;sym: tabstractnormalvarsym; allocreg: boolean);
       var
         usedef: tdef;
+        varloc: tai_varloc;
       begin
         if allocreg then
           begin
@@ -762,7 +763,16 @@ implementation
 {$endif}
              cg.a_reg_sync(list,sym.initialloc.register);
           end;
-        sym.localloc:=sym.initialloc;
+{$ifdef cpu64bitalu}
+        if (sym.initialloc.size in [OS_128,OS_S128]) then
+          varloc:=tai_varloc.create128(sym,sym.initialloc.register,sym.initialloc.registerhi)
+{$else cpu64bitalu}
+        if (sym.initialloc.size in [OS_64,OS_S64]) then
+          varloc:=tai_varloc.create64(sym,sym.initialloc.register,sym.initialloc.registerhi)
+{$endif cpu64bitalu}
+        else
+          varloc:=tai_varloc.create(sym,sym.initialloc.register);
+        list.concat(varloc);
       end;
 
 
@@ -1313,7 +1323,10 @@ implementation
             { gen_load_cgpara_loc() already allocated the initialloc
               -> don't allocate again }
             if currpara.initialloc.loc in [LOC_CREGISTER,LOC_CFPUREGISTER,LOC_CMMREGISTER] then
-              gen_alloc_regvar(list,currpara,false);
+              begin
+                gen_alloc_regvar(list,currpara,false);
+                hlcg.varsym_set_localloc(list,currpara);
+              end;
           end;
 
         { generate copies of call by value parameters, must be done before
