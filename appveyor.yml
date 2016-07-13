@@ -31,6 +31,8 @@ environment:
   BOOTSTRAP_DL: 'https://raw.githubusercontent.com/newpascal/npbuild/master/bootstrap.7z'
   BINW32_DL: 'https://raw.githubusercontent.com/newpascal/npbuild/master/binw32.7z'
   FPC_CONFIGURE_DL: 'https://raw.githubusercontent.com/newpascal/npbuild/master/configure.bat'
+  NPCFT_DL: 'https://raw.githubusercontent.com/newpascal/npbuild/master/np.cft'
+  CREATECFT_DL: 'https://raw.githubusercontent.com/newpascal/npbuild/master/createctf.js'
 
 install:
   - appveyor DownloadFile %BOOTSTRAP_DL%
@@ -39,7 +41,7 @@ install:
   - 7z x binw32.7z -o%APPVEYOR_BUILD_FOLDER% -y
   - git archive --format zip --output fpcsrc.zip release
   - 7z d fpcsrc.zip appveyor.yml
-  
+
 build_script:
   - SET ORIGINAL_PATH=%PATH%
   - SET PATH=%BOOTSTRAP_PATH%;%BINW32_PATH%;%WINDIR%\System32
@@ -49,6 +51,10 @@ after_build:
   - make install INSTALL_PREFIX=%APPVEYOR_BUILD_FOLDER%\newpascal\fpc
   - SET PATH=%ORIGINAL_PATH%
   - appveyor DownloadFile %FPC_CONFIGURE_DL% -FileName %APPVEYOR_BUILD_FOLDER%\newpascal\configure.bat
+  - appveyor DownloadFile %NPCFT_DL% -FileName %APPVEYOR_BUILD_FOLDER%\np.cft
+  - appveyor DownloadFile %CREATECFT_DL% -FileName %APPVEYOR_BUILD_FOLDER%\createctf.js
+  - npm install concat-files
+  - node createctf.js
   - 7z a -tzip fpc.zip %APPVEYOR_BUILD_FOLDER%\newpascal
   
 artifacts:
