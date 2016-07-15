@@ -392,7 +392,11 @@ type
     { procvar is a function reference }
     po_is_function_ref,
     { procvar is a block (http://en.wikipedia.org/wiki/Blocks_(C_language_extension) ) }
-    po_is_block
+    po_is_block,
+    { procedure is an automatically generated property getter }
+    po_is_auto_getter,
+    { procedure is an automatically generated property setter }
+    po_is_auto_setter
   );
   tprocoptions=set of tprocoption;
 
@@ -432,7 +436,8 @@ type
     tsk_field_getter,          // getter for a field (callthrough property is passed in skpara)
     tsk_field_setter,          // Setter for a field (callthrough property is passed in skpara)
     tsk_block_invoke_procvar,  // Call a procvar to invoke inside a block
-    tsk_interface_wrapper      // Call through to a method from an interface wrapper
+    tsk_interface_wrapper,     // Call through to a method from an interface wrapper
+    tsk_call_no_parameters     // Call skpara procedure without passing any parameters nor returning a result
   );
 
   { synthetic procdef supplementary information (tprocdef.skpara) }
