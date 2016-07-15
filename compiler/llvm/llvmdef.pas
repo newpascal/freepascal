@@ -308,8 +308,6 @@ implementation
     tllvmencodeflags = set of tllvmencodeflag;
 
     procedure llvmaddencodedtype_intern(def: tdef; const flags: tllvmencodeflags; var encodedstr: TSymStr);
-      var
-        elesize: asizeint;
       begin
         case def.typ of
           stringdef :
@@ -459,17 +457,19 @@ implementation
                 end
               else if is_dynamic_array(def) then
                 begin
-                  llvmaddencodedtype_intern(tarraydef(def).elementdef,[],encodedstr);
+                  llvmaddencodedtype_intern(tarraydef(def).elementdef,[lef_inaggregate],encodedstr);
                   encodedstr:=encodedstr+'*';
                 end
               else if is_packed_array(def) and
                       (tarraydef(def).elementdef.typ in [enumdef,orddef]) then
                 begin
-                  elesize:=packedbitsloadsize(tarraydef(def).elementdef.packedbitsize);
-                  encodedstr:=encodedstr+'['+tostr(tarraydef(def).size div elesize)+' x ';
-                  { encode as an array of integers with the size on which we
-                    perform the packedbits operations }
-                  llvmaddencodedtype_intern(cgsize_orddef(int_cgsize(elesize)),[lef_inaggregate],encodedstr);
+                  { encode as an array of bytes rather than as an array of
+                    packedbitsloadsize(elesize), because even if the load size
+                    is e.g. 2 bytes, the array may only be 1 or 3 bytes long
+                    (and if this array is inside a record, it must not be
+                     encoded as a type that is too long) }
+                  encodedstr:=encodedstr+'['+tostr(tarraydef(def).size)+' x ';
+                  llvmaddencodedtype_intern(u8inttype,[lef_inaggregate],encodedstr);
                   encodedstr:=encodedstr+']';
                 end
               else
@@ -856,8 +856,13 @@ implementation
         { single location }
         if not assigned(cgpara.location^.next) then
           begin
-            { def of the location, except in case of zero/sign-extension }
-            usedef:=cgpara.location^.def;
+            { def of the location, except in case of zero/sign-extension and
+              zero-sized records }
+            if not is_special_array(cgpara.def) and
+               (cgpara.def.size=0) then
+              usedef:=cgpara.def
+            else
+              usedef:=cgpara.location^.def;
             if beforevalueext then
               llvmextractvalueextinfo(cgpara.def,usedef,valueext);
             { comp and currency are handled by the x87 in this case. They cannot

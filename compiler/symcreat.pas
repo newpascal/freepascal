@@ -282,6 +282,19 @@ implementation
     end;
 
 
+  function def_unit_name_prefix_if_toplevel(def: tdef): TSymStr;
+    begin
+      result:='';
+      { if the routine is a global routine in a unit, explicitly use this unit
+        name to avoid accidentally calling other same-named routines that may be
+        in scope }
+      if not assigned(def.owner.defowner) and
+         assigned(def.owner.realname) and
+         (def.owner.moduleid<>0) then
+        result:=def.owner.realname^+'.';
+    end;
+
+
   procedure add_missing_parent_constructors_intf(obj: tobjectdef; addvirtclassmeth: boolean; forcevis: tvisibility);
     var
       parent: tobjectdef;
@@ -519,7 +532,10 @@ implementation
       str:='begin ';
       if pd.returndef<>voidtype then
         str:=str+'result:=';
-      str:=str+callpd.procsym.realname+'(';
+      { if the routine is a global routine in a unit/program, explicitly
+        mnetion this program/unit name to avoid accidentally calling other
+        same-named routines that may be in scope }
+      str:=str+def_unit_name_prefix_if_toplevel(callpd)+callpd.procsym.realname+'(';
       addvisibibleparameters(str,pd);
       str:=str+') end;';
       str_parse_method_impl(str,pd,isclassmethod);
@@ -961,6 +977,29 @@ implementation
       pd.skpara:=nil;
     end;
 
+
+  procedure implement_call_no_parameters(pd: tprocdef);
+    var
+      callpd: tprocdef;
+      str: ansistring;
+      warningson,
+      isclassmethod: boolean;
+    begin
+      { avoid warnings about unset function results in these abstract wrappers }
+      warningson:=(status.verbosity and V_Warning)<>0;
+      setverbosity('W-');
+      str:='begin ';
+      callpd:=tprocdef(pd.skpara);
+      str:=str+def_unit_name_prefix_if_toplevel(callpd)+callpd.procsym.realname+'; end;';
+      isclassmethod:=
+        (po_classmethod in pd.procoptions) and
+        not(pd.proctypeoption in [potype_constructor,potype_destructor]);
+      str_parse_method_impl(str,pd,isclassmethod);
+      if warningson then
+        setverbosity('W+');
+    end;
+
+
   procedure add_synthetic_method_implementations_for_st(st: tsymtable);
     var
       i   : longint;
@@ -1035,6 +1074,8 @@ implementation
               implement_block_invoke_procvar(pd);
             tsk_interface_wrapper:
               implement_interface_wrapper(pd);
+            tsk_call_no_parameters:
+              implement_call_no_parameters(pd);
             else
               internalerror(2011032801);
           end;
@@ -1062,9 +1103,9 @@ implementation
              { not true for the "main" procedure, whose localsymtable is the staticsymtable }
              (tprocdef(def).localst.symtabletype=localsymtable) then
             add_synthetic_method_implementations(tprocdef(def).localst)
-          else if (is_javaclass(def) and
-              not(oo_is_external in tobjectdef(def).objectoptions)) or
-              (def.typ=recorddef) then
+          else if ((def.typ=objectdef) and
+                   not(oo_is_external in tobjectdef(def).objectoptions)) or
+                  (def.typ=recorddef) then
            begin
             { also complete nested types }
             add_synthetic_method_implementations(tabstractrecorddef(def).symtable);

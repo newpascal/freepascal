@@ -51,6 +51,9 @@ uses
       procedure alloccpuregisters(list: TAsmList; rt: Tregistertype; const r: Tcpuregisterset); override;
       procedure deallocallcpuregisters(list: TAsmList); override;
 
+      procedure a_bit_test_reg_reg_reg(list: TAsmList; bitnumbersize, valuesize, destsize: tdef; bitnumber, value, destreg: tregister); override;
+      procedure a_bit_set_reg_reg(list: TAsmList; doset: boolean; bitnumbersize, destsize: tdef; bitnumber, dest: tregister); override;
+
      protected
       procedure a_call_common(list: TAsmList; pd: tabstractprocdef; const paras: array of pcgpara; const forceresdef: tdef; out res: tregister; out hlretdef: tdef; out llvmretdef: tdef; out callparas: tfplist);
      public
@@ -93,7 +96,6 @@ uses
       procedure a_loadfpu_reg_reg(list: TAsmList; fromsize, tosize: tdef; reg1, reg2: tregister); override;
 
       procedure gen_proc_symbol(list: TAsmList); override;
-      procedure gen_proc_symbol_end(list: TAsmList); override;
       procedure handle_external_proc(list: TAsmList; pd: tprocdef; const importname: TSymStr); override;
       procedure g_proc_entry(list : TAsmList;localsize : longint;nostackframe:boolean); override;
       procedure g_proc_exit(list : TAsmList;parasize:longint;nostackframe:boolean); override;
@@ -142,7 +144,7 @@ uses
       procedure varsym_set_localloc(list: TAsmList; vs: tabstractnormalvarsym); override;
       procedure paravarsym_set_initialloc_to_paraloc(vs: tparavarsym); override;
 
-      procedure g_external_wrapper(list: TAsmList; procdef: tprocdef; const externalname: string); override;
+      procedure g_external_wrapper(list: TAsmList; procdef: tprocdef; const wrappername, externalname: string; global: boolean); override;
 
      { def is a pointerdef or implicit pointer type (class, classref, procvar,
        dynamic array, ...).  }
@@ -347,6 +349,40 @@ implementation
     end;
 
 
+  procedure thlcgllvm.a_bit_test_reg_reg_reg(list: TAsmList; bitnumbersize, valuesize, destsize: tdef; bitnumber, value, destreg: tregister);
+    var
+      tmpbitnumberreg: tregister;
+    begin
+      { unlike other architectures, llvm requires the bitnumber register to
+        have the same size as the shifted register }
+      if bitnumbersize.size<>valuesize.size then
+        begin
+          tmpbitnumberreg:=hlcg.getintregister(list,valuesize);
+          a_load_reg_reg(list,bitnumbersize,valuesize,bitnumber,tmpbitnumberreg);
+          bitnumbersize:=valuesize;
+          bitnumber:=tmpbitnumberreg;
+        end;
+      inherited;
+    end;
+
+
+  procedure thlcgllvm.a_bit_set_reg_reg(list: TAsmList; doset: boolean; bitnumbersize, destsize: tdef; bitnumber, dest: tregister);
+    var
+      tmpbitnumberreg: tregister;
+    begin
+      { unlike other architectures, llvm requires the bitnumber register to
+        have the same size as the shifted register }
+      if bitnumbersize.size<>destsize.size then
+        begin
+          tmpbitnumberreg:=hlcg.getintregister(list,destsize);
+          a_load_reg_reg(list,bitnumbersize,destsize,bitnumber,tmpbitnumberreg);
+          bitnumbersize:=destsize;
+          bitnumber:=tmpbitnumberreg;
+        end;
+      inherited;
+    end;
+
+
   function get_call_pd(pd: tabstractprocdef): tdef;
     begin
       if (pd.typ=procdef) or
@@ -400,8 +436,7 @@ implementation
     for i:=0 to high(paras) do
       begin
         paraloc:=paras[i]^.location;
-        while assigned(paraloc) and
-              (paraloc^.loc<>LOC_VOID) do
+        while assigned(paraloc) do
           begin
             new(callpara);
             callpara^.def:=paraloc^.def;
@@ -440,6 +475,10 @@ implementation
                         end;
                         callpara^.reg:=paraloc^.register
                     end;
+                  { empty records }
+                  LOC_VOID:
+                    begin
+                    end
                   else
                     internalerror(2014010605);
                 end;
@@ -774,6 +813,11 @@ implementation
           sdref:=make_simple_ref(list,dref,tosize);
           list.concat(taillvm.op_size_ref_size_ref(la_store,fromsize,sref,cpointerdef.getreusable(tosize),sdref));
         end
+      else if (fromsize=tosize) and
+              not(fromsize.typ in [orddef,floatdef,enumdef]) and
+              (sref.refaddr<>addr_full) and
+              (fromsize.size>2*sizeof(aint)) then
+         g_concatcopy(list,fromsize,sref,dref)
       else
         inherited
     end;
@@ -1210,13 +1254,6 @@ implementation
     end;
 
 
-  procedure thlcgllvm.gen_proc_symbol_end(list: TAsmList);
-    begin
-      list.concat(Tai_symbol_end.Createname(current_procinfo.procdef.mangledname));
-      { todo: darwin main proc, or handle in other way? }
-    end;
-
-
   procedure thlcgllvm.handle_external_proc(list: TAsmList; pd: tprocdef; const importname: TSymStr);
     begin
       { don't do anything, because at this point we can't know yet for certain
@@ -1277,6 +1314,12 @@ implementation
                       end;
                    end;
                 list.concat(taillvm.op_size_reg(la_ret,retdef,retreg))
+              end;
+            LOC_VOID:
+              begin
+                { zero-sized records: return an undefined zero-sized record of
+                  the correct type }
+                list.concat(taillvm.op_size_undef(la_ret,retdef));
               end
             else
               { todo: complex returns }
@@ -1808,8 +1851,8 @@ implementation
           a_load_reg_reg(list,ptrdef,ptruinttype,ref.base,hreg1);
         end
       else
-        { todo: support for absolute addresses on embedded platforms }
-        internalerror(2012111302);
+        { for absolute addresses }
+        a_load_const_reg(list,ptruinttype,0,hreg1);
       if ref.index<>NR_NO then
         begin
           { SSA... }
@@ -1959,14 +2002,14 @@ implementation
     end;
 
 
-  procedure thlcgllvm.g_external_wrapper(list: TAsmList; procdef: tprocdef; const externalname: string);
+  procedure thlcgllvm.g_external_wrapper(list: TAsmList; procdef: tprocdef; const wrappername, externalname: string; global: boolean);
     var
       asmsym: TAsmSymbol;
     begin
       if po_external in procdef.procoptions then
         exit;
       asmsym:=current_asmdata.RefAsmSymbol(externalname,AT_FUNCTION);
-      list.concat(taillvmalias.create(asmsym,procdef.mangledname,procdef,asmsym.bind));
+      list.concat(taillvmalias.create(asmsym,wrappername,procdef,asmsym.bind));
     end;
 
 
