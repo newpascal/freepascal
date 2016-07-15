@@ -96,7 +96,6 @@ uses
       procedure a_loadfpu_reg_reg(list: TAsmList; fromsize, tosize: tdef; reg1, reg2: tregister); override;
 
       procedure gen_proc_symbol(list: TAsmList); override;
-      procedure gen_proc_symbol_end(list: TAsmList); override;
       procedure handle_external_proc(list: TAsmList; pd: tprocdef; const importname: TSymStr); override;
       procedure g_proc_entry(list : TAsmList;localsize : longint;nostackframe:boolean); override;
       procedure g_proc_exit(list : TAsmList;parasize:longint;nostackframe:boolean); override;
@@ -437,8 +436,7 @@ implementation
     for i:=0 to high(paras) do
       begin
         paraloc:=paras[i]^.location;
-        while assigned(paraloc) and
-              (paraloc^.loc<>LOC_VOID) do
+        while assigned(paraloc) do
           begin
             new(callpara);
             callpara^.def:=paraloc^.def;
@@ -477,6 +475,10 @@ implementation
                         end;
                         callpara^.reg:=paraloc^.register
                     end;
+                  { empty records }
+                  LOC_VOID:
+                    begin
+                    end
                   else
                     internalerror(2014010605);
                 end;
@@ -811,6 +813,11 @@ implementation
           sdref:=make_simple_ref(list,dref,tosize);
           list.concat(taillvm.op_size_ref_size_ref(la_store,fromsize,sref,cpointerdef.getreusable(tosize),sdref));
         end
+      else if (fromsize=tosize) and
+              not(fromsize.typ in [orddef,floatdef,enumdef]) and
+              (sref.refaddr<>addr_full) and
+              (fromsize.size>2*sizeof(aint)) then
+         g_concatcopy(list,fromsize,sref,dref)
       else
         inherited
     end;
@@ -1244,13 +1251,6 @@ implementation
           item:=TCmdStrListItem(item.next);
         end;
       list.concat(taillvmdecl.createdef(asmsym,current_procinfo.procdef,nil,sec_code,current_procinfo.procdef.alignment));
-    end;
-
-
-  procedure thlcgllvm.gen_proc_symbol_end(list: TAsmList);
-    begin
-      list.concat(Tai_symbol_end.Createname(current_procinfo.procdef.mangledname));
-      { todo: darwin main proc, or handle in other way? }
     end;
 
 
