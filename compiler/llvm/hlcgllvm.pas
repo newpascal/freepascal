@@ -51,6 +51,9 @@ uses
       procedure alloccpuregisters(list: TAsmList; rt: Tregistertype; const r: Tcpuregisterset); override;
       procedure deallocallcpuregisters(list: TAsmList); override;
 
+      procedure a_bit_test_reg_reg_reg(list: TAsmList; bitnumbersize, valuesize, destsize: tdef; bitnumber, value, destreg: tregister); override;
+      procedure a_bit_set_reg_reg(list: TAsmList; doset: boolean; bitnumbersize, destsize: tdef; bitnumber, dest: tregister); override;
+
      protected
       procedure a_call_common(list: TAsmList; pd: tabstractprocdef; const paras: array of pcgpara; const forceresdef: tdef; out res: tregister; out hlretdef: tdef; out llvmretdef: tdef; out callparas: tfplist);
      public
@@ -142,7 +145,7 @@ uses
       procedure varsym_set_localloc(list: TAsmList; vs: tabstractnormalvarsym); override;
       procedure paravarsym_set_initialloc_to_paraloc(vs: tparavarsym); override;
 
-      procedure g_external_wrapper(list: TAsmList; procdef: tprocdef; const externalname: string); override;
+      procedure g_external_wrapper(list: TAsmList; procdef: tprocdef; const wrappername, externalname: string; global: boolean); override;
 
      { def is a pointerdef or implicit pointer type (class, classref, procvar,
        dynamic array, ...).  }
@@ -344,6 +347,40 @@ implementation
   procedure thlcgllvm.deallocallcpuregisters(list: TAsmList);
     begin
       { don't do anything }
+    end;
+
+
+  procedure thlcgllvm.a_bit_test_reg_reg_reg(list: TAsmList; bitnumbersize, valuesize, destsize: tdef; bitnumber, value, destreg: tregister);
+    var
+      tmpbitnumberreg: tregister;
+    begin
+      { unlike other architectures, llvm requires the bitnumber register to
+        have the same size as the shifted register }
+      if bitnumbersize.size<>valuesize.size then
+        begin
+          tmpbitnumberreg:=hlcg.getintregister(list,valuesize);
+          a_load_reg_reg(list,bitnumbersize,valuesize,bitnumber,tmpbitnumberreg);
+          bitnumbersize:=valuesize;
+          bitnumber:=tmpbitnumberreg;
+        end;
+      inherited;
+    end;
+
+
+  procedure thlcgllvm.a_bit_set_reg_reg(list: TAsmList; doset: boolean; bitnumbersize, destsize: tdef; bitnumber, dest: tregister);
+    var
+      tmpbitnumberreg: tregister;
+    begin
+      { unlike other architectures, llvm requires the bitnumber register to
+        have the same size as the shifted register }
+      if bitnumbersize.size<>destsize.size then
+        begin
+          tmpbitnumberreg:=hlcg.getintregister(list,destsize);
+          a_load_reg_reg(list,bitnumbersize,destsize,bitnumber,tmpbitnumberreg);
+          bitnumbersize:=destsize;
+          bitnumber:=tmpbitnumberreg;
+        end;
+      inherited;
     end;
 
 
@@ -1277,6 +1314,12 @@ implementation
                       end;
                    end;
                 list.concat(taillvm.op_size_reg(la_ret,retdef,retreg))
+              end;
+            LOC_VOID:
+              begin
+                { zero-sized records: return an undefined zero-sized record of
+                  the correct type }
+                list.concat(taillvm.op_size_undef(la_ret,retdef));
               end
             else
               { todo: complex returns }
@@ -1808,8 +1851,8 @@ implementation
           a_load_reg_reg(list,ptrdef,ptruinttype,ref.base,hreg1);
         end
       else
-        { todo: support for absolute addresses on embedded platforms }
-        internalerror(2012111302);
+        { for absolute addresses }
+        a_load_const_reg(list,ptruinttype,0,hreg1);
       if ref.index<>NR_NO then
         begin
           { SSA... }
@@ -1959,14 +2002,14 @@ implementation
     end;
 
 
-  procedure thlcgllvm.g_external_wrapper(list: TAsmList; procdef: tprocdef; const externalname: string);
+  procedure thlcgllvm.g_external_wrapper(list: TAsmList; procdef: tprocdef; const wrappername, externalname: string; global: boolean);
     var
       asmsym: TAsmSymbol;
     begin
       if po_external in procdef.procoptions then
         exit;
       asmsym:=current_asmdata.RefAsmSymbol(externalname,AT_FUNCTION);
-      list.concat(taillvmalias.create(asmsym,procdef.mangledname,procdef,asmsym.bind));
+      list.concat(taillvmalias.create(asmsym,wrappername,procdef,asmsym.bind));
     end;
 
 
