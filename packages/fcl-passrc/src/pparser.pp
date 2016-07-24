@@ -68,6 +68,9 @@ const
   nParserArrayPropertiesCannotHaveDefaultValue = 2041;
   nParserDefaultPropertyMustBeArray = 2042;
   nParserUnknownProcedureType = 2043;
+  nParserGenericArray1Element = 2044;
+  nParserGenericClassOrArray = 2045;
+
 
 // resourcestring patterns of messages
 resourcestring
@@ -114,6 +117,8 @@ resourcestring
   SParserArrayPropertiesCannotHaveDefaultValue = 'Array properties cannot have default value';
   SParserDefaultPropertyMustBeArray = 'The default property must be an array property';
   SParserUnknownProcedureType = 'Unknown procedure type "%d"';
+  SParserGenericArray1Element = 'Generic arrays can have only 1 template element';
+  SParserGenericClassOrArray = 'Generic can only be used with classes or arrays';
 
 type
   TPasParserLogHandler = Procedure (Sender : TObject; Const Msg : String) of object;
@@ -180,6 +185,7 @@ type
   private
     FCurModule: TPasModule;
     FFileResolver: TBaseFileResolver;
+    FImplicitUses: TStrings;
     FLastMsg: string;
     FLastMsgArgs: TMessageArgs;
     FLastMsgNumber: integer;
@@ -215,7 +221,6 @@ type
     Function SaveComments : String;
     Function SaveComments(Const AValue : String) : String;
     function LogEvent(E : TPParserLogEvent) : Boolean; inline;
-    procedure SetCurMsg(MsgType: TMessageType; MsgNumber: integer; Const Fmt : String; Args : Array of const);
     Procedure DoLog(MsgType: TMessageType; MsgNumber: integer; Const Msg : String; SkipSourceInfo : Boolean = False);overload;
     Procedure DoLog(MsgType: TMessageType; MsgNumber: integer; Const Fmt : String; Args : Array of const;SkipSourceInfo : Boolean = False);overload;
     function GetProcTypeFromToken(tk: TToken; IsClass: Boolean=False ): TProcType;
@@ -256,6 +261,7 @@ type
   public
     constructor Create(AScanner: TPascalScanner; AFileResolver: TBaseFileResolver;  AEngine: TPasTreeContainer);
     Destructor Destroy; override;
+    procedure SetLastMsg(MsgType: TMessageType; MsgNumber: integer; Const Fmt : String; Args : Array of const);
     // General parsing routines
     function CurTokenName: String;
     function CurTokenText: String;
@@ -323,6 +329,7 @@ type
     Property CurModule : TPasModule Read FCurModule;
     Property LogEvents : TPParserLogEvents Read FLogEvents Write FLogEvents;
     Property OnLog : TPasParserLogHandler Read FOnLog Write FOnLog;
+    property ImplicitUses: TStrings read FImplicitUses;
     property LastMsg: string read FLastMsg write FLastMsg;
     property LastMsgNumber: integer read FLastMsgNumber write FLastMsgNumber;
     property LastMsgType: TMessageType read FLastMsgType write FLastMsgType;
@@ -620,7 +627,7 @@ end;
 procedure TPasParser.ParseExc(MsgNumber: integer; const Fmt: String;
   Args: array of const);
 begin
-  SetCurMsg(mtError,MsgNumber,Fmt,Args);
+  SetLastMsg(mtError,MsgNumber,Fmt,Args);
   raise EParserError.Create(Format(SParserErrorAtToken,
     [FLastMsg, CurTokenName, Scanner.CurFilename, Scanner.CurRow, Scanner.CurColumn])
     {$ifdef addlocation}+' ('+inttostr(scanner.currow)+' '+inttostr(scanner.curcolumn)+')'{$endif},
@@ -657,10 +664,13 @@ begin
     If FEngine.NeedComments then
       FScanner.SkipComments:=Not FEngine.NeedComments;
     end;
+  FImplicitUses := TStringList.Create;
+  FImplicitUses.Add('System'); // system always implicitely first.
 end;
 
 destructor TPasParser.Destroy;
 begin
+  FreeAndNil(FImplicitUses);
   FreeAndNil(FCommentsBuffer[0]);
   FreeAndNil(FCommentsBuffer[1]);
   if Assigned(FEngine) then
@@ -2059,12 +2069,13 @@ var
   ResStrEl: TPasResString;
   TypeEl: TPasType;
   ClassEl: TPasClassType;
+  ArrEl : TPasArrayType;
   List: TFPList;
   i,j: Integer;
   VarEl: TPasVariable;
   ExpEl: TPasExportSymbol;
   PropEl : TPasProperty;
-  TypeName: String;
+  TypeName,ETN: String;
   PT : TProcType;
 
 begin
@@ -2250,21 +2261,44 @@ begin
           if CurBlock <> declType then
             ParseExcSyntaxError;
           TypeName := ExpectIdentifier;
-          ClassEl := TPasClassType(Engine.CreateElement(TPasClassType,TypeName,Declarations, Scanner.CurFilename, Scanner.CurRow));
-          ClassEl.ObjKind:=okGeneric;
+          List:=TFPList.Create;
           try
-            ReadGenericArguments(ClassEl.GenericTemplateTypes,ClassEl);
-          Except
+            ReadGenericArguments(List,Nil);
+            ExpectToken(tkEqual);
+            NextToken;
+            Case CurToken of
+              tkClass :
+                 begin
+                 ClassEl := TPasClassType(Engine.CreateElement(TPasClassType,TypeName,Declarations, Scanner.CurFilename, Scanner.CurRow));
+                 ClassEl.ObjKind:=okGeneric;
+                 For I:=0 to List.Count-1 do
+                   begin
+                   TPasElement(List[i]).Parent:=ClassEl;
+                   ClassEl.GenericTemplateTypes.Add(List[i]);
+                   end;
+                 NextToken;
+                 DoParseClassType(ClassEl);
+                 Declarations.Declarations.Add(ClassEl);
+                 Declarations.Classes.Add(ClassEl);
+                 CheckHint(classel,True);
+                 end;
+              tkArray:
+                 begin
+                 if List.Count<>1 then
+                   ParseExc(nParserGenericArray1Element,sParserGenericArray1Element);
+                 ArrEl:=TPasArrayType(ParseArrayType(Declarations,TypeName,pmNone));
+                 CheckHint(ArrEl,True);
+                 ArrEl.ElType.Release;
+                 ArrEl.elType:=TPasGenericTemplateType(List[0]);
+                 Declarations.Declarations.Add(ArrEl);
+                 Declarations.Types.Add(ArrEl);
+                 end;
+            else
+              ParseExc(nParserGenericClassOrArray,SParserGenericClassOrArray);
+            end;
+          finally
             List.Free;
-            Raise;
           end;
-          ExpectToken(tkEqual);
-          ExpectToken(tkClass);
-          NextToken;
-          DoParseClassType(ClassEl);
-          Declarations.Declarations.Add(ClassEl);
-          Declarations.Classes.Add(ClassEl);
-          CheckHint(classel,True);
         end;
       tkbegin:
         begin
@@ -2310,9 +2344,15 @@ procedure TPasParser.ParseUsesList(ASection: TPasSection);
 var
   AUnitName: String;
   Element: TPasElement;
+  i: Integer;
 begin
   If not (Asection.ClassType=TImplementationSection) Then // interface,program,library,package
-    Element:=CheckUnit('System'); // system always implicitely first.    
+    begin
+    // load implicit units, like 'System'
+    for i:=0 to ImplicitUses.Count-1 do
+      CheckUnit(ImplicitUses[i]);
+    end;
+
   Repeat
     AUnitName := ExpectIdentifier; 
     NextToken;
@@ -2674,7 +2714,7 @@ begin
   Result:=E in FLogEvents;
 end;
 
-procedure TPasParser.SetCurMsg(MsgType: TMessageType; MsgNumber: integer;
+procedure TPasParser.SetLastMsg(MsgType: TMessageType; MsgNumber: integer;
   const Fmt: String; Args: array of const);
 begin
   FLastMsgType := MsgType;
@@ -2693,7 +2733,7 @@ end;
 procedure TPasParser.DoLog(MsgType: TMessageType; MsgNumber: integer;
   const Fmt: String; Args: array of const; SkipSourceInfo: Boolean);
 begin
-  SetCurMsg(MsgType,MsgNumber,Fmt,Args);
+  SetLastMsg(MsgType,MsgNumber,Fmt,Args);
   If Assigned(FOnLog) then
     if SkipSourceInfo or not assigned(scanner) then
       FOnLog(Self,FLastMsg)

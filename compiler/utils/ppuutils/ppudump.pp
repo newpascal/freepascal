@@ -537,7 +537,7 @@ type
     str  : string[30];
   end;
 const
-  flagopts=28;
+  flagopts=31;
   flagopt : array[1..flagopts] of tflagopt=(
     (mask: $1    ;str:'init'),
     (mask: $2    ;str:'final'),
@@ -568,7 +568,10 @@ const
     (mask: $2000000 ;str:'i8086_far_code'),
     (mask: $4000000 ;str:'i8086_far_data'),
     (mask: $8000000 ;str:'i8086_huge_data'),
-    (mask: $10000000;str:'i8086_cs_equals_ds')
+    (mask: $10000000;str:'i8086_cs_equals_ds'),
+    (mask: $20000000;str:'package_deny'),
+    (mask: $40000000;str:'package_weak'),
+    (mask: longint($80000000);str:'i8086_ss_equals_ds')
   );
 var
   i,ntflags : longint;
@@ -869,29 +872,59 @@ end;
 
 
 Procedure ReadAsmSymbols;
+const
+  unitasmlisttype: array[tunitasmlisttype] of string[6]=(
+    'PUBLIC',
+    'EXTERN'
+  );
 type
   { Copied from aasmbase.pas }
-  TAsmsymbind=(
-    AB_NONE,AB_EXTERNAL,AB_COMMON,AB_LOCAL,AB_GLOBAL,AB_WEAK_EXTERNAL,
-    { global in the current program/library, but not visible outside it }
-    AB_PRIVATE_EXTERN,AB_LAZY,AB_IMPORT);
+       TAsmsymbind=(
+         AB_NONE,AB_EXTERNAL,AB_COMMON,AB_LOCAL,AB_GLOBAL,AB_WEAK_EXTERNAL,
+         { global in the current program/library, but not visible outside it }
+         AB_PRIVATE_EXTERN,AB_LAZY,AB_IMPORT,
+         { a symbol that's internal to the compiler and used as a temp }
+         AB_TEMP,
+         { a global symbol that points to another global symbol and is only used
+           to allow indirect loading in case of packages and indirect imports }
+         AB_INDIRECT,AB_EXTERNAL_INDIRECT);
 
-  TAsmsymtype=(
-    AT_NONE,AT_FUNCTION,AT_DATA,AT_SECTION,AT_LABEL,
-    {
-      the address of this code label is taken somewhere in the code
-      so it must be taken care of it when creating pic
-    }
-    AT_ADDR
-    );
+       TAsmsymtype=(
+         AT_NONE,AT_FUNCTION,AT_DATA,AT_SECTION,AT_LABEL,
+         {
+           the address of this code label is taken somewhere in the code
+           so it must be taken care of it when creating pic
+         }
+         AT_ADDR,
+         { Label for debug or other non-program information }
+         AT_METADATA,
+         { label for data that must always be accessed indirectly, because it
+           is handled explcitely in the system unit or (e.g. RTTI and threadvar
+           tables) -- never seen in an assembler/assembler writer, always
+           changed to AT_DATA }
+         AT_DATA_FORCEINDIRECT,
+         { Thread-local symbol (ELF targets) }
+         AT_TLS,
+         { GNU indirect function (ELF targets) }
+         AT_GNU_IFUNC
+         );
 
 var
   s,
   bindstr,
   typestr  : string;
   i : longint;
+  t: tunitasmlisttype;
 begin
-  writeln([space,'Number of AsmSymbols: ',ppufile.getlongint]);
+  writeln([space,'Assembler Symbols']);
+  writeln([space,'-----------------']);
+  t:=tunitasmlisttype(ppufile.getbyte);
+  if (t>=Low(tunitasmlisttype)) and (t<=High(tunitasmlisttype)) then
+    typestr:=unitasmlisttype[t]
+  else
+    typestr:='UNKNOWN';
+  writeln([space,'Type: ',typestr]);
+  writeln([space,'Count: ',ppufile.getlongint]);
   i:=0;
   while (not ppufile.endofentry) and (not ppufile.error) do
    begin
@@ -913,6 +946,12 @@ begin
          bindstr:='Lazy';
        AB_IMPORT :
          bindstr:='Import';
+       AB_TEMP :
+         bindstr:='Temp';
+       AB_INDIRECT :
+         bindstr:='Indirect';
+       AB_EXTERNAL_INDIRECT :
+         bindstr:='Indirect external';
        else
          begin
            bindstr:='<Error !!>';
@@ -930,6 +969,14 @@ begin
          typestr:='Label';
        AT_ADDR :
          typestr:='Label (with address taken)';
+       AT_METADATA :
+         typestr:='Metadata';
+       AT_DATA_FORCEINDIRECT :
+         typestr:='Data (ForceIndirect)';
+       AT_TLS :
+         typestr:='TLS';
+       AT_GNU_IFUNC :
+         typestr:='GNU IFUNC';
        else
          begin
            typestr:='<Error !!>';
@@ -939,6 +986,7 @@ begin
      Writeln([space,'  ',i,' : ',s,' [',bindstr,',',typestr,']']);
      inc(i);
    end;
+  writeln([space]);
 end;
 
 function getexprint:Tconstexprint;

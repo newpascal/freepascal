@@ -1618,11 +1618,11 @@ type
          if target_info.system in systems_windows then
            begin
              new_section(current_asmdata.asmlists[al_globals],sec_data,'_FPCDummy',4);
-             current_asmdata.asmlists[al_globals].concat(tai_symbol.createname_global('_FPCDummy',AT_DATA,0));
+             current_asmdata.asmlists[al_globals].concat(tai_symbol.createname_global('_FPCDummy',AT_DATA,0,u32inttype));
              current_asmdata.asmlists[al_globals].concat(tai_const.create_32bit(0));
 
              new_section(current_asmdata.asmlists[al_procedures],sec_code,'',0);
-             current_asmdata.asmlists[al_procedures].concat(tai_symbol.createname_global('_DLLMainCRTStartup',AT_FUNCTION,0));
+             current_asmdata.asmlists[al_procedures].concat(tai_symbol.createname_global('_DLLMainCRTStartup',AT_FUNCTION,0,voidcodepointertype));
              gen_fpc_dummy(current_asmdata.asmlists[al_procedures]);
              current_asmdata.asmlists[al_procedures].concat(tai_const.createname('_FPCDummy',0));
            end;
@@ -2031,7 +2031,7 @@ type
               { we need to call FPC_LIBMAIN in sysinit which in turn will call PascalMain }
               initname:=target_info.cprefix+'FPC_LIBMAIN'
             else
-              initname:=current_procinfo.procdef.mangledname;
+              initname:=main_procinfo.procdef.mangledname;
             { setinitname may generate a new section -> don't add to the
               current list, because we assume this remains a text section
               -- add to pure assembler section, so in case of special directives

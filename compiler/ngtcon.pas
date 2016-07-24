@@ -1089,10 +1089,10 @@ function get_next_varsym(def: tabstractrecorddef; const SymList:TFPHashObjectLis
                (cs_debuginfo in current_settings.moduleswitches) and
                not assigned(current_asmdata.GetAsmSymbol(fsym.name)) then
               addstabx:=true;
-            asmsym:=current_asmdata.DefineAsmSymbol(fsym.mangledname,AB_GLOBAL,AT_DATA)
+            asmsym:=current_asmdata.DefineAsmSymbol(fsym.mangledname,AB_GLOBAL,AT_DATA,tcsym.vardef)
           end
         else
-          asmsym:=current_asmdata.DefineAsmSymbol(fsym.mangledname,AB_LOCAL,AT_DATA);
+          asmsym:=current_asmdata.DefineAsmSymbol(fsym.mangledname,AB_LOCAL,AT_DATA,tcsym.vardef);
         if vo_has_section in fsym.varoptions then
           begin
             sec:=sec_user;
@@ -1114,7 +1114,7 @@ function get_next_varsym(def: tabstractrecorddef; const SymList:TFPHashObjectLis
           begin
             { see same code in ncgutil.insertbssdata }
             reslist.insert(tai_directive.Create(asd_reference,fsym.name));
-            reslist.insert(tai_symbol.Create(current_asmdata.DefineAsmSymbol(fsym.name,AB_LOCAL,AT_DATA),0));
+            reslist.insert(tai_symbol.Create(current_asmdata.DefineAsmSymbol(fsym.name,AB_LOCAL,AT_DATA,tcsym.vardef),0));
           end;
         datalist:=fdatalist;
       end;
@@ -1343,8 +1343,12 @@ function get_next_varsym(def: tabstractrecorddef; const SymList:TFPHashObjectLis
           end;
         { in case of a nested procdef initialised with a global routine }
         ftcb.maybe_begin_aggregate(def);
-        { to handle type conversions }
-        procaddrdef:=cprocvardef.getreusableprocaddr(def);
+        { get the address of the procedure, except if it's a C-block (then we
+          we will end up with a record that represents the C-block) }
+        if not is_block(def) then
+          procaddrdef:=cprocvardef.getreusableprocaddr(def)
+        else
+          procaddrdef:=def;
         ftcb.queue_init(procaddrdef);
         { remove typeconvs, that will normally insert a lea
           instruction which is not necessary for us }
