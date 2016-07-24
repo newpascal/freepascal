@@ -128,10 +128,24 @@ type
      { end of the above list }
      tcalo_vectorized_dead_strip_end,
      { symbol should be weakle defined }
-     tcalo_weak
+     tcalo_weak,
+     { symbol should be registered with the unit's public assembler symbols }
+     tcalo_is_public_asm,
+     { symbol should be declared with AT_DATA_FORCEINDIRECT }
+     tcalo_data_force_indirect
    );
    ttcasmlistoptions = set of ttcasmlistoption;
 
+   ttcdeadstripsectionsymboloption = (
+     { define the symbol }
+     tcdssso_define,
+     { register the assembler symbol either with the public or extern assembler
+       symbols of the unit }
+     tcdssso_register_asmsym,
+     { use the indirect symbol }
+     tcdssso_use_indirect
+   );
+  ttcdeadstripsectionsymboloptions = set of ttcdeadstripsectionsymboloption;
 
    { information about aggregates we are parsing }
    taggregateinformation = class
@@ -313,13 +327,13 @@ type
        the anonymous record, and insert the alignment once it's finished }
      procedure mark_anon_aggregate_alignment; virtual; abstract;
      procedure insert_marked_aggregate_alignment(def: tdef); virtual; abstract;
-     class function get_vectorized_dead_strip_section_symbol(const basename: string; st: tsymtable; define, start: boolean): tasmsymbol; virtual;
+     class function get_vectorized_dead_strip_section_symbol(const basename: string; st: tsymtable; options: ttcdeadstripsectionsymboloptions; start: boolean): tasmsymbol; virtual;
     public
      class function get_vectorized_dead_strip_custom_section_name(const basename: TSymStr; st: tsymtable; out secname: TSymStr): boolean; virtual;
      { get the start/end symbol for a dead stripable vectorized section, such
        as the resourcestring data of a unit }
-     class function get_vectorized_dead_strip_section_symbol_start(const basename: string; st: tsymtable; define: boolean): tasmsymbol; virtual;
-     class function get_vectorized_dead_strip_section_symbol_end(const basename: string; st: tsymtable; define: boolean): tasmsymbol; virtual;
+     class function get_vectorized_dead_strip_section_symbol_start(const basename: string; st: tsymtable; options: ttcdeadstripsectionsymboloptions): tasmsymbol; virtual;
+     class function get_vectorized_dead_strip_section_symbol_end(const basename: string; st: tsymtable; options: ttcdeadstripsectionsymboloptions): tasmsymbol; virtual;
 
      class function get_dynstring_rec_name(typ: tstringtype; winlike: boolean; len: asizeint): string;
      { the datalist parameter specifies where the data for the string constant
@@ -332,7 +346,7 @@ type
      { emit a shortstring constant, and return its def }
      function emit_shortstring_const(const str: shortstring): tdef;
      { emit a pchar string constant (the characters, not a pointer to them), and return its def }
-     function emit_pchar_const(str: pchar; len: pint): tdef;
+     function emit_pchar_const(str: pchar; len: pint; copypchar: boolean): tdef;
      { emit a guid constant }
      procedure emit_guid_const(const guid: tguid);
      { emit a procdef constant }
@@ -964,7 +978,9 @@ implementation
        sym: tasmsymbol;
        secname: TSymStr;
        sectype: TAsmSectiontype;
+       asmtype : TAsmsymtype;
        customsecname: boolean;
+       dsopts : ttcdeadstripsectionsymboloptions;
      begin
        fvectorized_finalize_called:=true;
        sym:=nil;
@@ -973,12 +989,17 @@ implementation
          sectype:=sec_user
        else
          sectype:=sec_data;
+       dsopts:=[tcdssso_define];
+       if tcalo_is_public_asm in options then
+         include(dsopts,tcdssso_register_asmsym);
+       if tcalo_data_force_indirect in options then
+         include(dsopts,tcdssso_use_indirect);
        if tcalo_vectorized_dead_strip_start in options then
          begin
            { the start and end names are predefined }
            if itemname<>'' then
              internalerror(2015110801);
-           sym:=get_vectorized_dead_strip_section_symbol_start(basename,st,true);
+           sym:=get_vectorized_dead_strip_section_symbol_start(basename,st,dsopts);
            if not customsecname then
              secname:=make_mangledname(basename,st,'1_START');
          end
@@ -987,13 +1008,19 @@ implementation
            { the start and end names are predefined }
            if itemname<>'' then
              internalerror(2015110802);
-           sym:=get_vectorized_dead_strip_section_symbol_end(basename,st,true);
+           sym:=get_vectorized_dead_strip_section_symbol_end(basename,st,dsopts);
            if not customsecname then
              secname:=make_mangledname(basename,st,'3_END');
          end
        else if tcalo_vectorized_dead_strip_item in options then
          begin
-           sym:=current_asmdata.DefineAsmSymbol(make_mangledname(basename,st,itemname),AB_GLOBAL,AT_DATA);
+           if tcalo_data_force_indirect in options then
+             asmtype:=AT_DATA_FORCEINDIRECT
+           else
+             asmtype:=AT_DATA;
+           sym:=current_asmdata.DefineAsmSymbol(make_mangledname(basename,st,itemname),AB_GLOBAL,asmtype,def);
+           if tcalo_is_public_asm in options then
+             current_module.add_public_asmsym(sym);
            if not customsecname then
              secname:=make_mangledname(basename,st,'2_'+itemname);
            exclude(options,tcalo_vectorized_dead_strip_item);
@@ -1373,18 +1400,31 @@ implementation
      end;
 
 
-   class function ttai_typedconstbuilder.get_vectorized_dead_strip_section_symbol(const basename: string; st: tsymtable; define, start: boolean): tasmsymbol;
+   class function ttai_typedconstbuilder.get_vectorized_dead_strip_section_symbol(const basename: string; st: tsymtable; options: ttcdeadstripsectionsymboloptions; start: boolean): tasmsymbol;
      var
        name: TSymStr;
+       asmtype : TAsmsymtype;
      begin
        if start then
          name:=make_mangledname(basename,st,'START')
        else
          name:=make_mangledname(basename,st,'END');
-       if define then
-         result:=current_asmdata.DefineAsmSymbol(name,AB_GLOBAL,AT_DATA)
+       if tcdssso_define in options then
+         begin
+           if tcdssso_use_indirect in options then
+             asmtype:=AT_DATA_FORCEINDIRECT
+           else
+             asmtype:=AT_DATA;
+           result:=current_asmdata.DefineAsmSymbol(name,AB_GLOBAL,asmtype,voidpointertype);
+           if tcdssso_register_asmsym in options then
+             current_module.add_public_asmsym(result);
+         end
        else
-         result:=current_asmdata.RefAsmSymbol(name,AT_DATA)
+         begin
+           result:=current_asmdata.RefAsmSymbol(name,AT_DATA,tcdssso_use_indirect in options);
+           if tcdssso_register_asmsym in options then
+             current_module.add_extern_asmsym(result);
+         end;
      end;
 
 
@@ -1394,15 +1434,15 @@ implementation
      end;
 
 
-   class function ttai_typedconstbuilder.get_vectorized_dead_strip_section_symbol_start(const basename: string; st: tsymtable; define: boolean): tasmsymbol;
+   class function ttai_typedconstbuilder.get_vectorized_dead_strip_section_symbol_start(const basename: string; st: tsymtable; options: ttcdeadstripsectionsymboloptions): tasmsymbol;
      begin
-       result:=get_vectorized_dead_strip_section_symbol(basename,st,define,true);
+       result:=get_vectorized_dead_strip_section_symbol(basename,st,options,true);
      end;
 
 
-   class function ttai_typedconstbuilder.get_vectorized_dead_strip_section_symbol_end(const basename: string; st: tsymtable; define: boolean): tasmsymbol;
+   class function ttai_typedconstbuilder.get_vectorized_dead_strip_section_symbol_end(const basename: string; st: tsymtable; options: ttcdeadstripsectionsymboloptions): tasmsymbol;
      begin
-       result:=get_vectorized_dead_strip_section_symbol(basename,st,define,false);
+       result:=get_vectorized_dead_strip_section_symbol(basename,st,options,false);
      end;
 
 
@@ -1526,14 +1566,26 @@ implementation
      end;
 
 
-   function ttai_typedconstbuilder.emit_pchar_const(str: pchar; len: pint): tdef;
+   function ttai_typedconstbuilder.emit_pchar_const(str: pchar; len: pint; copypchar: boolean): tdef;
+     var
+       newstr: pchar;
      begin
        result:=carraydef.getreusable(cansichartype,len+1);
        maybe_begin_aggregate(result);
-       if len=0 then
+       if (len=0) and
+          (not assigned(str) or
+           copypchar) then
          emit_tai(Tai_const.Create_8bit(0),cansichartype)
        else
-         emit_tai(Tai_string.Create_pchar(str,len+1),result);
+         begin
+           if copypchar then
+             begin
+               getmem(newstr,len+1);
+               move(str^,newstr^,len+1);
+               str:=newstr;
+             end;
+           emit_tai(Tai_string.Create_pchar(str,len+1),result);
+         end;
        maybe_end_aggregate(result);
      end;
 

@@ -909,7 +909,7 @@ implementation
           tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
           tcb.emit_guid_const(_class.iidguid^);
           list.concatlist(tcb.get_final_asmlist(
-            current_asmdata.DefineAsmSymbol(s,AB_GLOBAL,AT_DATA),
+            current_asmdata.DefineAsmSymbol(s,AB_GLOBAL,AT_DATA,rec_tguid),
             rec_tguid,
             sec_rodata,
             s,
@@ -920,7 +920,7 @@ implementation
       tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
       def:=tcb.emit_shortstring_const(_class.iidstr^);
       list.concatlist(tcb.get_final_asmlist(
-        current_asmdata.DefineAsmSymbol(s,AB_GLOBAL,AT_DATA),
+        current_asmdata.DefineAsmSymbol(s,AB_GLOBAL,AT_DATA,def),
         def,
         sec_rodata,
         s,
@@ -1011,13 +1011,21 @@ implementation
                generate_abstract_stub(current_asmdata.AsmLists[al_procedures],vmtpd);
              end
            else if (cs_opt_remove_emtpy_proc in current_settings.optimizerswitches) and RedirectToEmpty(vmtpd) then
-             procname:='FPC_EMPTYMETHOD'
+             begin
+               procname:='FPC_EMPTYMETHOD';
+               if current_module.globalsymtable<>systemunit then
+                 current_module.add_extern_asmsym(procname,AB_GLOBAL,AT_FUNCTION);
+             end
            else if not wpoinfomanager.optimized_name_for_vmt(_class,vmtpd,procname) then
-             procname:=vmtpd.mangledname;
+             begin
+               procname:=vmtpd.mangledname;
+               if current_module.moduleid<>vmtpd.owner.moduleid then
+                 current_module.addimportedsym(vmtpd.procsym);
+             end;
            tcb.emit_tai(Tai_const.Createname(procname,AT_FUNCTION,0),cprocvardef.getreusableprocaddr(vmtpd));
 {$ifdef vtentry}
            hs:='VTENTRY'+'_'+_class.vmt_mangledname+'$$'+tostr(_class.vmtmethodoffset(i) div sizeof(pint));
-           current_asmdata.asmlists[al_globals].concat(tai_symbol.CreateName(hs,AT_DATA,0));
+           current_asmdata.asmlists[al_globals].concat(tai_symbol.CreateName(hs,AT_DATA,0,voidpointerdef));
 {$endif vtentry}
          end;
       end;
@@ -1045,6 +1053,7 @@ implementation
          pstringmessagetabledef: tdef;
          vmttypesym: ttypesym;
          vmtdef: tdef;
+         sym : TAsmSymbol;
       begin
 {$ifdef WITHDMT}
          dmtlabel:=gendmt;
@@ -1128,9 +1137,12 @@ implementation
             (oo_has_vmt in _class.childof.objectoptions) then
            begin
              tcb.queue_init(parentvmtdef);
+             sym:=current_asmdata.RefAsmSymbol(_class.childof.vmt_mangledname,AT_DATA,true);
              tcb.queue_emit_asmsym(
-               current_asmdata.RefAsmSymbol(_class.childof.vmt_mangledname,AT_DATA),
+               sym,
                tfieldvarsym(_class.childof.vmt_field).vardef);
+             if _class.childof.owner.moduleid<>current_module.moduleid then
+               current_module.add_extern_asmsym(sym);
            end
          else
            tcb.emit_tai(Tai_const.Create_nil_dataptr,parentvmtdef);
@@ -1199,10 +1211,13 @@ implementation
 
          tcb.maybe_end_aggregate(vmtdef);
 
+         sym:=current_asmdata.DefineAsmSymbol(_class.vmt_mangledname,AB_GLOBAL,AT_DATA_FORCEINDIRECT,vmtdef);
+         current_module.add_public_asmsym(sym);
+
          { concatenate the VMT to the asmlist }
          current_asmdata.asmlists[al_globals].concatlist(
            tcb.get_final_asmlist(
-             current_asmdata.DefineAsmSymbol(_class.vmt_mangledname,AB_GLOBAL,AT_DATA),
+             sym,
              vmtdef,sec_rodata,_class.vmt_mangledname,const_align(sizeof(pint))
            )
          );
@@ -1214,19 +1229,9 @@ implementation
            hs:=hs+_class.childof.vmt_mangledname
          else
            hs:=hs+_class.vmt_mangledname;
-         current_asmdata.asmlists[al_globals].concat(tai_symbol.CreateName(hs,AT_DATA,0));
+         current_asmdata.asmlists[al_globals].concat(tai_symbol.CreateName(hs,AT_DATA,0,voidpointerdef));
 {$endif vtentry}
         symtablestack.pop(current_module.localsymtable);
-
-        { write indirect symbol }
-        tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
-        hs:=_class.vmt_mangledname;
-        tcb.emit_tai(Tai_const.Createname(hs,AT_DATA,0),voidpointertype);
-        current_asmdata.AsmLists[al_globals].concatList(
-          tcb.get_final_asmlist(
-            current_asmdata.DefineAsmSymbol(hs,AB_INDIRECT,AT_DATA),
-            voidpointertype,sec_rodata,hs,const_align(sizeof(pint))));
-        tcb.free;
       end;
 
 

@@ -2225,9 +2225,9 @@ implementation
            begin
              if (po_global in pd.procoptions) or
                 (cs_profile in current_settings.moduleswitches) then
-               current_asmdata.DefineAsmSymbol(pd.mangledname,AB_GLOBAL,AT_FUNCTION)
+               current_asmdata.DefineAsmSymbol(pd.mangledname,AB_GLOBAL,AT_FUNCTION,pd)
              else
-               current_asmdata.DefineAsmSymbol(pd.mangledname,AB_LOCAL,AT_FUNCTION);
+               current_asmdata.DefineAsmSymbol(pd.mangledname,AB_LOCAL,AT_FUNCTION,pd);
            end;
 
          current_structdef:=old_current_structdef;
@@ -2238,6 +2238,8 @@ implementation
 
 
     procedure import_external_proc(pd:tprocdef);
+      var
+        name : string;
       begin
         if not (po_external in pd.procoptions) then
           internalerror(2015121101);
@@ -2256,9 +2258,12 @@ implementation
           end
         else
           begin
+            name:=proc_get_importname(pd);
             { add import name to external list for DLL scanning }
             if tf_has_dllscanner in target_info.flags then
-              current_module.dllscannerinputlist.Add(proc_get_importname(pd),pd);
+              current_module.dllscannerinputlist.Add(name,pd);
+            { needed for units that use functions in packages this way }
+            current_module.add_extern_asmsym(name,AB_EXTERNAL,AT_FUNCTION);
           end;
       end;
 

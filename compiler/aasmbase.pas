@@ -54,6 +54,13 @@ interface
            so it must be taken care of it when creating pic
          }
          AT_ADDR,
+         { Label for debug or other non-program information }
+         AT_METADATA,
+         { label for data that must always be accessed indirectly, because it
+           is handled explcitely in the system unit or (e.g. RTTI and threadvar
+           tables) -- never seen in an assembler/assembler writer, always
+           changed to AT_DATA }
+         AT_DATA_FORCEINDIRECT,
          { Thread-local symbol (ELF targets) }
          AT_TLS,
          { GNU indirect function (ELF targets) }

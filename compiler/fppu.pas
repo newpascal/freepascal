@@ -96,6 +96,7 @@ interface
           procedure writeImportSymbols;
           procedure writeResources;
           procedure writeunitimportsyms;
+          procedure writeasmsyms(kind:tunitasmlisttype;list:tfphashobjectlist);
           procedure readsourcefiles;
           procedure readloadunit;
           procedure readlinkcontainer(var p:tlinkcontainer);
@@ -105,6 +106,7 @@ interface
           procedure readResources;
           procedure readwpofile;
           procedure readunitimportsyms;
+          procedure readasmsyms;
 {$IFDEF MACRO_DIFF_HINT}
           procedure writeusedmacro(p:TNamedIndexItem;arg:pointer);
           procedure writeusedmacros;
@@ -296,6 +298,14 @@ var
          end;
         if ((ppufile.header.common.flags and uf_i8086_cs_equals_ds)<>0) xor
             (current_settings.x86memorymodel=mm_tiny) then
+         begin
+           ppufile.free;
+           ppufile:=nil;
+           Message(unit_u_ppu_invalid_memory_model,@queuecomment);
+           exit;
+         end;
+        if ((ppufile.header.common.flags and uf_i8086_ss_equals_ds)<>0) xor
+            (current_settings.x86memorymodel in [mm_tiny,mm_small,mm_medium]) then
          begin
            ppufile.free;
            ppufile:=nil;
@@ -857,6 +867,25 @@ var
         ppufile.writeentry(ibunitimportsyms);
       end;
 
+
+    procedure tppumodule.writeasmsyms(kind:tunitasmlisttype;list:tfphashobjectlist);
+      var
+        i : longint;
+        sym : TAsmSymbol;
+      begin
+        ppufile.putbyte(ord(kind));
+        ppufile.putlongint(list.count);
+        for i:=0 to list.count-1 do
+          begin
+            sym:=TAsmSymbol(list[i]);
+            ppufile.putstring(sym.Name);
+            ppufile.putbyte(ord(sym.bind));
+            ppufile.putbyte(ord(sym.typ));
+          end;
+        ppufile.writeentry(ibasmsymbols);
+      end;
+
+
 {$IFDEF MACRO_DIFF_HINT}
 
 {
@@ -1167,6 +1196,34 @@ var
           end;
       end;
 
+
+    procedure tppumodule.readasmsyms;
+      var
+        c,i : longint;
+        name : TSymStr;
+        bind : TAsmsymbind;
+        typ : TAsmsymtype;
+        list : tfphashobjectlist;
+      begin
+        case tunitasmlisttype(ppufile.getbyte) of
+          ualt_public:
+            list:=publicasmsyms;
+          ualt_extern:
+            list:=externasmsyms;
+          else
+            internalerror(2016060301);
+        end;
+        c:=ppufile.getlongint;
+        for i:=0 to c-1 do
+          begin
+            name:=ppufile.getstring;
+            bind:=TAsmsymbind(ppufile.getbyte);
+            typ:=TAsmsymtype(ppufile.getbyte);
+            TAsmSymbol.Create(list,name,bind,typ);
+          end;
+      end;
+
+
     procedure tppumodule.load_interface;
       var
         b : byte;
@@ -1262,8 +1319,7 @@ var
              ibloadunit :
                readloadunit;
              ibasmsymbols :
-{ TODO: Remove ibasmsymbols}
-               ;
+               readasmsyms;
              ibunitimportsyms:
                readunitimportsyms;
              ibendimplementation :
@@ -1293,6 +1349,8 @@ var
            flags:=flags or uf_i8086_huge_data;
          if current_settings.x86memorymodel=mm_tiny then
            flags:=flags or uf_i8086_cs_equals_ds;
+         if current_settings.x86memorymodel in [mm_tiny,mm_small,mm_medium] then
+           flags:=flags or uf_i8086_ss_equals_ds;
 {$endif i8086}
 {$ifdef cpufpemu}
          if (cs_fp_emulation in current_settings.moduleswitches) then
@@ -1407,6 +1465,12 @@ var
 
          { write implementation uses }
          writeusedunit(false);
+
+         { write all public assembler symbols }
+         writeasmsyms(ualt_public,publicasmsyms);
+
+         { write all external assembler symbols }
+         writeasmsyms(ualt_extern,externasmsyms);
 
          { write all symbols imported from another unit }
          writeunitimportsyms;

@@ -1133,7 +1133,7 @@ implementation
             if not is_objectpascal_helper(def) then
               if (oo_has_vmt in def.objectoptions) then
                 tcb.emit_tai(
-                  Tai_const.Createname(def.vmt_mangledname,AT_DATA,0),
+                  Tai_const.Createname(def.vmt_mangledname,AT_DATA_FORCEINDIRECT,0),
                   cpointerdef.getreusable(def.vmt_def))
               else
                 tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype);
@@ -1351,12 +1351,13 @@ implementation
           in sstrings.inc. }
         procedure enumdef_rtti_ord2stringindex(rttidef: trecorddef; const syms: tfplist);
 
-        var rttilab,rttilabind:Tasmsymbol;
+        var rttilab:Tasmsymbol;
             h,i,o,prev_value:longint;
             mode:(lookup,search); {Modify with care, ordinal value of enum is written.}
             r:single;             {Must be real type because of integer overflow risk.}
             tcb: ttai_typedconstbuilder;
             sym_count: integer;
+            tabledef: tdef;
         begin
 
           {Decide wether a lookup array is size efficient.}
@@ -1393,7 +1394,6 @@ implementation
             end;
           { write rtti data; make sure that the alignment matches the corresponding data structure
             in the code that uses it (if alignment is required). }
-          rttilab:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_o2s',AB_GLOBAL,AT_DATA);
           tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
           { use TConstPtrUInt packrecords to ensure good alignment }
           tcb.begin_anonymous_record('',defaultpacking,reqalign,
@@ -1448,18 +1448,14 @@ implementation
             end;
             tcb.end_anonymous_record;
 
+            tabledef:=tcb.end_anonymous_record;
+            rttilab:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_o2s',AB_GLOBAL,AT_DATA_FORCEINDIRECT,tabledef);
             current_asmdata.asmlists[al_rtti].concatlist(tcb.get_final_asmlist(
-              rttilab,tcb.end_anonymous_record,sec_rodata,
+              rttilab,tabledef,sec_rodata,
               rttilab.name,const_align(sizeof(pint))));
             tcb.free;
 
-            { write indirect symbol }
-            tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
-            rttilabind:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_o2s',AB_INDIRECT,AT_DATA);
-            tcb.emit_tai(Tai_const.Createname(rttilab.name,AT_DATA,0),voidpointertype);
-            current_asmdata.AsmLists[al_rtti].concatList(
-              tcb.get_final_asmlist(rttilabind,voidpointertype,sec_rodata,rttilabind.name,const_align(sizeof(pint))));
-            tcb.free;
+            current_module.add_public_asmsym(rttilab);
         end;
 
 
@@ -1470,12 +1466,11 @@ implementation
 
         var
           tcb: ttai_typedconstbuilder;
-          rttilab,
-          rttilabind : Tasmsymbol;
+          rttilab: Tasmsymbol;
           i:longint;
+          tabledef: tdef;
         begin
           { write rtti data }
-          rttilab:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_s2o',AB_GLOBAL,AT_DATA);
           tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
           { begin of Tstring_to_ord }
           tcb.begin_anonymous_record('',defaultpacking,reqalign,
@@ -1500,17 +1495,14 @@ implementation
               tcb.queue_emit_asmsym(mainrtti,rttidef);
             end;
           tcb.end_anonymous_record;
+          tabledef:=tcb.end_anonymous_record;
+          rttilab:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_s2o',AB_GLOBAL,AT_DATA_FORCEINDIRECT,tabledef);
           current_asmdata.asmlists[al_rtti].concatlist(tcb.get_final_asmlist(
-            rttilab,tcb.end_anonymous_record,sec_rodata,
+            rttilab,tabledef,sec_rodata,
             rttilab.name,const_align(sizeof(pint))));
           tcb.free;
-          { write indirect symbol }
-          tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
-          rttilabind:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_s2o',AB_INDIRECT,AT_DATA);
-          tcb.emit_tai(Tai_const.Createname(rttilab.name,AT_DATA,0),voidpointertype);
-          current_asmdata.AsmLists[al_rtti].concatList(
-            tcb.get_final_asmlist(rttilabind,voidpointertype,sec_rodata,rttilabind.name,const_align(sizeof(pint))));
-          tcb.free;
+
+          current_module.add_public_asmsym(rttilab);
         end;
 
         procedure enumdef_rtti_extrasyms(def:Tenumdef);
@@ -1633,14 +1625,15 @@ implementation
         if (cs_create_pic in current_settings.moduleswitches) and
            assigned(current_procinfo) then
           include(current_procinfo.flags,pi_needs_got);
+        if def.owner.moduleid<>current_module.moduleid then
+          current_module.add_extern_asmsym(result);
       end;
 
 
     procedure TRTTIWriter.write_rtti(def:tdef;rt:trttitype);
       var
         tcb: ttai_typedconstbuilder;
-        rttilab,
-        rttilabind : tasmsymbol;
+        rttilab: tasmsymbol;
         rttidef: tdef;
       begin
         { only write rtti of definitions from the current module }
@@ -1657,25 +1650,21 @@ implementation
         write_child_rtti_data(def,rt);
         { write rtti data }
         tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
-        rttilab:=current_asmdata.DefineAsmSymbol(tstoreddef(def).rtti_mangledname(rt),AB_GLOBAL,AT_DATA);
         tcb.begin_anonymous_record(
-          internaltypeprefixName[itp_rttidef]+rttilab.Name,
+          internaltypeprefixName[itp_rttidef]+tstoreddef(def).rtti_mangledname(rt),
           defaultpacking,reqalign,
           targetinfos[target_info.system]^.alignment.recordalignmin,
           targetinfos[target_info.system]^.alignment.maxCrecordalign
         );
         write_rtti_data(tcb,def,rt);
         rttidef:=tcb.end_anonymous_record;
+        rttilab:=current_asmdata.DefineAsmSymbol(tstoreddef(def).rtti_mangledname(rt),AB_GLOBAL,AT_DATA_FORCEINDIRECT,rttidef);
         current_asmdata.AsmLists[al_rtti].concatList(
           tcb.get_final_asmlist(rttilab,rttidef,sec_rodata,rttilab.name,const_align(sizeof(pint))));
         tcb.free;
-        { write indirect symbol }
-        tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
-        rttilabind:=current_asmdata.DefineAsmSymbol(tstoreddef(def).rtti_mangledname(rt),AB_INDIRECT,AT_DATA);
-        tcb.emit_tai(Tai_const.Createname(rttilab.name,AT_DATA,0),voidpointertype);
-        current_asmdata.AsmLists[al_rtti].concatList(
-          tcb.get_final_asmlist(rttilabind,voidpointertype,sec_rodata,rttilabind.name,const_align(sizeof(pint))));
-        tcb.free;
+
+        current_module.add_public_asmsym(rttilab);
+
         { write additional data }
         write_rtti_extrasyms(def,rt,rttilab);
       end;
