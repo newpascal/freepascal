@@ -244,6 +244,10 @@ implementation
            result:=result+llvmencodetypename(para^.def);
            if para^.valueext<>lve_none then
              result:=result+llvmvalueextension2str[para^.valueext];
+           if para^.byval then
+             result:=result+' byval';
+           if para^.sret then
+             result:=result+' sret';
            case para^.loc of
              LOC_REGISTER,
              LOC_FPUREGISTER,

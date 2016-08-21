@@ -99,6 +99,14 @@ interface
           inlinelocals            : TFPObjectList;
           inlineinitstatement,
           inlinecleanupstatement  : tstatementnode;
+          { checks whether we have to create a temp to store the value of a
+            parameter passed to an inline routine to preserve correctness.
+            On exit, complexpara contains true if the parameter is a complex
+            expression and for which we can try to create a temp (even though
+            it's not strictly necessary) for speed and code size reasons.
+            Returns true if the temp creation has been handled, false otherwise
+          }
+          function maybecreateinlineparatemp(para: tcallparanode; out complexpara: boolean): boolean;
           procedure createinlineparas;
           procedure wrapcomplexinlinepara(para: tcallparanode); virtual;
           function  replaceparaload(var n: tnode; arg: pointer): foreachnoderesult;
@@ -4505,28 +4513,214 @@ implementation
             { statics can only be modified by functions in the same unit }
              ((tloadnode(n).symtable.symtabletype = staticsymtable) and
               (tloadnode(n).symtable = TSymtable(arg))) or
-              { if the addr of the symbol is taken somewhere, it can be also non-local }
-              (tabstractvarsym(tloadnode(n).symtableentry).addr_taken)
-           )) or
+             { if the addr of the symbol is taken somewhere, it can be also non-local }
+             (tabstractvarsym(tloadnode(n).symtableentry).addr_taken)
+            )
+           ) or
            ((n.nodetype = subscriptn) and
             (tsubscriptnode(n).vs.owner.symtabletype = ObjectSymtable)) then
           result := fen_norecurse_true;
       end;
 
 
-    procedure tcallnode.createinlineparas;
+    function tcallnode.maybecreateinlineparatemp(para: tcallparanode; out complexpara: boolean): boolean;
       var
-        para: tcallparanode;
         tempnode: ttempcreatenode;
-        n,
         realtarget: tnode;
         paracomplexity: longint;
         pushconstaddr: boolean;
-        trytotakeaddress : Boolean;
+
+      function needtemp: boolean;
+        begin
+          { We need a temp if the passed value will not be in memory, while
+            the parameter inside the routine must be in memory }
+          if (tparavarsym(para.parasym).varregable in [vr_none,vr_addr]) and
+             not(para.left.expectloc in [LOC_REFERENCE,LOC_CREFERENCE]) then
+            exit(true);
+
+          { We cannot create a formaldef temp and assign something to it }
+          if para.parasym.vardef.typ=formaldef then
+            exit(false);
+
+          { We try to handle complex expressions later by taking their address
+            and storing this address in a temp (which is then dereferenced when
+            the value is used; that doesn't work if we cannot take the address
+            of the expression though, in which case we store the result of the
+            expression in a temp }
+          if (complexpara and not(para.left.expectloc in [LOC_REFERENCE,LOC_CREFERENCE]) or
+             (complexpara and
+              (not valid_for_addr(para.left,false) or
+               (para.left.nodetype=calln) or
+               is_constnode(para.left)))) then
+            exit(true);
+
+          { Normally, we do not need to create a temp for value parameters that
+            are not modified in the inlined function, and neither for const
+            parameters that are passed by value.
+
+            However, if we pass a global variable, an object field, a variable
+            whose address has been taken, or an expression containing a pointer
+            dereference as parameter, this value could be modified in other ways
+            as well (even inside the callee) and in such cases we still create a
+            temp to be on the safe side.
+
+            We *must not* create a temp for global variables passed by
+            reference to a const parameter, because if not inlined then any
+            changes to the original value will also be visible in the callee
+            (although this is technically undefined behaviour, since with
+             "const" the programmer tells the compiler this argument will not
+             change). }
+          if (((para.parasym.varspez=vs_value) and
+               (para.parasym.varstate in [vs_initialised,vs_declared,vs_read])) or
+              ((para.parasym.varspez=vs_const) and
+               not pushconstaddr)) and
+             foreachnodestatic(para.left,@nonlocalvars,pointer(symtableproc)) then
+            exit(true);
+
+          { Value parameters of which we know they are modified by definition
+            have to be copied to a temp; the same goes for cases of "x:=f(x)"
+            where x is passed as value parameter to f(), at least if we
+            optimized invocation by setting the funcretnode to x to avoid an
+            assignment afterwards (since x may be read inside the function after
+            it modified result==x) }
+          if (para.parasym.varspez=vs_value) and
+             (not(para.parasym.varstate in [vs_initialised,vs_declared,vs_read]) or
+              (assigned(aktassignmentnode) and
+               (aktassignmentnode.right=self) and
+               (nf_assign_done_in_right in aktassignmentnode.flags) and
+               actualtargetnode(@aktassignmentnode.left)^.isequal(actualtargetnode(@para.left)^))) then
+            exit(true);
+
+          { the compiler expects that it can take the address of parameters passed by reference in
+            the case of const so we can't replace the node simply by a constant node
+            When playing with this code, ensure that
+            function f(const a,b  : longint) : longint;inline;
+              begin
+                result:=a*b;
+              end;
+
+            [...]
+            ...:=f(10,20));
+            [...]
+
+            is still folded. (FK)
+            }
+          if (para.parasym.varspez=vs_const) and
+             { const para's can get vs_readwritten if their address is taken ->
+               in case they are not passed by reference, to keep the same
+               behaviour as without inlining we have to make a copy in case the
+               originally passed parameter value gets changed inside the callee
+             }
+             (not pushconstaddr and
+              (para.parasym.varstate=vs_readwritten)
+             ) or
+             { call-by-reference const's may need to be passed by reference to
+               function called in the inlined code }
+             (pushconstaddr and
+              not valid_for_addr(para.left,false)) then
+            exit(true);
+
+          result:=false;
+        end;
+
+      begin
+        result:=false;
+        { determine how a parameter is passed to the inlined body
+          There are three options:
+            - insert the node tree of the callparanode directly
+              If a parameter is used only once, this is the best option if we can do so
+            - get the address of the argument, store it in a temp and insert a dereference to this temp
+              If the node tree cannot be inserted directly, taking the address of the argument and using it
+              is the second best option, but even this is not always possible
+            - assign the value of the argument to a newly created temp
+              This is the fall back which works always
+          Notes:
+            - we need to take care that we use the type of the defined parameter and not of the
+              passed parameter, because these can be different in case of a formaldef (PFV)
+        }
+
+        { pre-compute some values }
+        paracomplexity:=node_complexity(para.left);
+        if para.parasym.varspez=vs_const then
+          pushconstaddr:=paramanager.push_addr_param(vs_const,para.parasym.vardef,procdefinition.proccalloption)
+        else
+          pushconstaddr:=false;
+        realtarget:=actualtargetnode(@para.left)^;
+
+        { if the parameter is "complex", try to take the address of the
+          parameter expression, store it in a temp and replace occurrences of
+          the parameter with dereferencings of this temp
+        }
+        complexpara:=
+          { don't create a temp. for function results }
+          not(nf_is_funcret in realtarget.flags) and
+          { this makes only sense if the parameter is reasonably complex,
+            otherwise inserting directly is a better solution }
+          (
+           (paracomplexity>2) or
+           { don't create a temp. for the often seen case that p^ is passed to a var parameter }
+           ((paracomplexity>1) and
+            not((realtarget.nodetype=derefn) and (para.parasym.varspez in [vs_var,vs_out,vs_constref])) and
+            not((realtarget.nodetype=loadn) and tloadnode(realtarget).is_addr_param_load)
+           )
+          );
+
+        { We don't need temps for parameters that are already temps, except if
+          the passed temp could be put in a regvar while the parameter inside
+          the routine cannot be (e.g., because its address is taken in the
+          routine), or if the temp is a const and the parameter gets modified }
+        if (para.left.nodetype=temprefn) and
+           (not(ti_may_be_in_reg in ttemprefnode(para.left).tempinfo^.flags) or
+            not(tparavarsym(para.parasym).varregable in [vr_none,vr_addr])) and
+           (not(ti_const in ttemprefnode(para.left).tempinfo^.flags) or
+            (tparavarsym(para.parasym).varstate in [vs_initialised,vs_declared,vs_read])) then
+          exit;
+
+        { check if we have to create a temp, assign the parameter's
+          contents to that temp and then substitute the parameter
+          with the temp everywhere in the function                  }
+        if needtemp then
+          begin
+            tempnode:=ctempcreatenode.create(para.parasym.vardef,para.parasym.vardef.size,
+              tt_persistent,tparavarsym(para.parasym).is_regvar(false));
+            addstatement(inlineinitstatement,tempnode);
+
+            addstatement(inlinecleanupstatement,ctempdeletenode.create(tempnode));
+
+            addstatement(inlineinitstatement,cassignmentnode.create(ctemprefnode.create(tempnode),
+              para.left));
+
+            para.left := ctemprefnode.create(tempnode);
+            { inherit addr_taken flag }
+            if (tabstractvarsym(para.parasym).addr_taken) then
+              include(tempnode.tempinfo^.flags,ti_addr_taken);
+
+            { inherit const }
+            if tabstractvarsym(para.parasym).varspez=vs_const then
+              begin
+                include(tempnode.tempinfo^.flags,ti_const);
+
+                { apply less strict rules for the temp. to be a register than
+                  ttempcreatenode does
+
+                  this way, dyn. array, ansistrings etc. can be put into registers as well }
+                if tparavarsym(para.parasym).is_regvar(false) then
+                  include(tempnode.tempinfo^.flags,ti_may_be_in_reg);
+              end;
+
+            result:=true;
+          end
+      end;
+
+
+    procedure tcallnode.createinlineparas;
+      var
+        para: tcallparanode;
+        n: tnode;
+        complexpara: boolean;
       begin
         { parameters }
         para := tcallparanode(left);
-        pushconstaddr := false;
         while assigned(para) do
           begin
             if (para.parasym.typ = paravarsym) and
@@ -4544,146 +4738,8 @@ implementation
 
                 firstpass(para.left);
 
-                { determine how a parameter is passed to the inlined body
-                  There are three options:
-                    - insert the node tree of the callparanode directly
-                      If a parameter is used only once, this is the best option if we can do so
-                    - get the address of the argument, store it in a temp and insert a dereference to this temp
-                      If the node tree cannot be inserted directly, taking the address of the argument and using it
-                      is the second best option, but even this is not always possible
-                    - assign the value of the argument to a newly created temp
-                      This is the fall back which works always
-                  Notes:
-                    - we need to take care that we use the type of the defined parameter and not of the
-                      passed parameter, because these can be different in case of a formaldef (PFV)
-                }
-
-                { pre-compute some values }
-                paracomplexity:=node_complexity(para.left);
-                if para.parasym.varspez=vs_const then
-                  pushconstaddr:=paramanager.push_addr_param(vs_const,para.parasym.vardef,procdefinition.proccalloption);
-                realtarget:=actualtargetnode(@para.left)^;
-
-                { if the parameter is "complex", try to take the address
-                  of the parameter expression, store it in a temp and replace
-                  occurrences of the parameter with dereferencings of this
-                  temp
-                }
-                trytotakeaddress:=
-                  { don't create a temp. for function results }
-                  not(nf_is_funcret in realtarget.flags) and
-                  { this makes only sense if the parameter is reasonable complex else inserting directly is a better solution }
-                  (
-                   (paracomplexity>2) or
-                   { don't create a temp. for the often seen case that p^ is passed to a var parameter }
-                   ((paracomplexity>1) and
-                    not((realtarget.nodetype=derefn) and (para.parasym.varspez in [vs_var,vs_out,vs_constref])) and
-                    not((realtarget.nodetype=loadn) and tloadnode(realtarget).is_addr_param_load)
-                   )
-                  );
-
-                { check if we have to create a temp, assign the parameter's
-                  contents to that temp and then substitute the parameter
-                  with the temp everywhere in the function                  }
-                if
-                  ((tparavarsym(para.parasym).varregable in [vr_none,vr_addr]) and
-                   not(para.left.expectloc in [LOC_REFERENCE,LOC_CREFERENCE]))  or
-                  { we can't assign to formaldef temps }
-                  ((para.parasym.vardef.typ<>formaldef) and
-                   (
-                    { can we take the address of the argument? }
-                    (trytotakeaddress and not(para.left.expectloc in [LOC_REFERENCE,LOC_CREFERENCE])) or
-                    (trytotakeaddress and
-                     (not valid_for_addr(para.left,false) or
-                      (para.left.nodetype = calln) or
-                      is_constnode(para.left))) or
-                    { we do not need to create a temp for value parameters }
-                    { which are not modified in the inlined function       }
-                    { const parameters can get vs_readwritten if their     }
-                    { address is taken                                     }
-                    ((((para.parasym.varspez = vs_value) and
-                       (para.parasym.varstate in [vs_initialised,vs_declared,vs_read])) or
-                      { in case of const, this is only necessary if the
-                        variable would be passed by value normally and if it is modified or if
-                        there is such a variable somewhere in an expression }
-                       ((para.parasym.varspez = vs_const) and
-                        (not pushconstaddr))) and
-                     { however, if we pass a global variable, an object field or}
-                     { an expression containing a pointer dereference as        }
-                     { parameter, this value could be modified in other ways as }
-                     { well and in such cases create a temp to be on the safe   }
-                     { side                                                     }
-                     foreachnodestatic(para.left,@nonlocalvars,pointer(symtableproc))) or
-                    { value parameters of which we know they are modified by }
-                    { definition have to be copied to a temp                 }
-                    { the same goes for cases of "x:=f(x)" where x is passed }
-                    { as value parameter to f(), at least if we optimized    }
-                    { invocation by setting the funcretnode to x to avoid    }
-                    { assignment afterwards (since x may be read inside the  }
-                    { function after it modified result==x)                  }
-                    ((para.parasym.varspez = vs_value) and
-                     (not(para.parasym.varstate in [vs_initialised,vs_declared,vs_read]) or
-                      (assigned(aktassignmentnode) and
-                       (aktassignmentnode.right=self) and
-                       (nf_assign_done_in_right in aktassignmentnode.flags) and
-                       actualtargetnode(@aktassignmentnode.left)^.isequal(actualtargetnode(@para.left)^)))) or
-                    { the compiler expects that it can take the address of parameters passed by reference in
-                      the case of const so we can't replace the node simply by a constant node
-                      When playing with this code, ensure that
-                      function f(const a,b  : longint) : longint;inline;
-                        begin
-                          result:=a*b;
-                        end;
-
-                      [...]
-                      ...:=f(10,20));
-                      [...]
-
-                      is still folded. (FK)
-                      }
-                    ((para.parasym.varspez = vs_const) and
-                     { const para's can get vs_readwritten if their address   }
-                     { is taken -> in case they are not passed by reference,  }
-                     { to keep the same behaviour as without inlining we have }
-                     { to make a copy in case the originally passed parameter }
-                     { value gets changed inside the callee                   }
-                     ((not pushconstaddr and
-                       (para.parasym.varstate = vs_readwritten)
-                      ) or
-                      { call-by-reference const's may need to be passed by }
-                      { reference to function called in the inlined code   }
-                       (pushconstaddr and
-                        not valid_for_addr(para.left,false))
-                     )
-                    )
-                   )
-                  ) then
-                  begin
-                    { don't create a new temp unnecessarily, but make sure we
-                      do create a new one if the old one could be a regvar and
-                      the new one cannot be one }
-                    if not(tparavarsym(para.parasym).varspez in [vs_out,vs_var]) and (((para.left.nodetype<>temprefn) or
-                       (((tparavarsym(para.parasym).varregable in [vr_none,vr_addr])) and
-                        (ti_may_be_in_reg in ttemprefnode(para.left).tempinfo^.flags)))) then
-                      begin
-                        tempnode := ctempcreatenode.create(para.parasym.vardef,para.parasym.vardef.size,
-                          tt_persistent,tparavarsym(para.parasym).is_regvar(false));
-                        addstatement(inlineinitstatement,tempnode);
-
-                        if localvartrashing <> -1 then
-                          cnodeutils.maybe_trash_variable(inlineinitstatement,para.parasym,ctemprefnode.create(tempnode));
-
-                        addstatement(inlinecleanupstatement,ctempdeletenode.create(tempnode));
-
-                        addstatement(inlineinitstatement,cassignmentnode.create(ctemprefnode.create(tempnode),
-                            para.left));
-                        para.left := ctemprefnode.create(tempnode);
-                        { inherit addr_taken flag }
-                        if (tabstractvarsym(para.parasym).addr_taken) then
-                          include(tempnode.tempinfo^.flags,ti_addr_taken);
-                      end;
-                  end
-                else if trytotakeaddress then
+                if not maybecreateinlineparatemp(para,complexpara) and
+                   complexpara then
                   wrapcomplexinlinepara(para);
               end;
             para := tcallparanode(para.right);

@@ -2413,6 +2413,7 @@ implementation
     begin
       result.ref:=ref;
       inc(result.ref.offset,bitnumber div 8);
+      result.ref.alignment:=newalignment(result.ref.alignment,bitnumber div 8);
       result.bitindexreg:=NR_NO;
       result.startbit:=bitnumber mod 8;
       result.bitlen:=1;
@@ -3478,7 +3479,7 @@ implementation
       result:=(tf_supports_packages in target_info.flags) and
                 (target_info.system in systems_indirect_var_imports) and
                 (cs_imported_data in current_settings.localswitches) and
-                (t.owner.moduleid<>current_module.moduleid);
+                (findunitsymtable(t.owner).moduleid<>current_module.moduleid);
     end;
 
   procedure thlcgobj.g_rangecheck(list: TAsmList; const l: tlocation; fromdef, todef: tdef);
@@ -4714,7 +4715,7 @@ implementation
              begin
                { initialize fpu regvar by loading from memory }
                reference_reset_symbol(href,
-                 current_asmdata.RefAsmSymbol(tstaticvarsym(p).mangledname), 0,
+                 current_asmdata.RefAsmSymbol(tstaticvarsym(p).mangledname,AT_DATA), 0,
                  var_align(tstaticvarsym(p).vardef.alignment));
                a_loadfpu_ref_reg(TAsmList(arg), tstaticvarsym(p).vardef,
                  tstaticvarsym(p).vardef, href, tstaticvarsym(p).initialloc.register);

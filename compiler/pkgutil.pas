@@ -130,6 +130,17 @@ implementation
     end;
 
 
+  procedure exportname(const s:tsymstr);
+    var
+      hp : texported_item;
+    begin
+      hp:=texported_item.create;
+      hp.name:=stringdup(s);
+      hp.options:=hp.options+[eo_name];
+      exportlib.exportvar(hp);
+    end;
+
+
   procedure exportabstractrecorddef(def:tabstractrecorddef;symtable:tsymtable);
     var
       hp : texported_item;
@@ -144,20 +155,34 @@ implementation
       if def.typ=objectdef then
         begin
           if (oo_has_vmt in tobjectdef(def).objectoptions) then
+            exportname(tobjectdef(def).vmt_mangledname);
+          if is_interface(def) then
             begin
-              hp:=texported_item.create;
-              hp.name:=stringdup(tobjectdef(def).vmt_mangledname);
-              hp.options:=hp.options+[eo_name];
-              exportlib.exportvar(hp);
-            end;
-          if is_class(def) then
-            begin
-              hp:=texported_item.create;
-              hp.name:=stringdup(tobjectdef(def).rtti_mangledname(fullrtti));
-              hp.options:=hp.options+[eo_name];
-              exportlib.exportvar(hp);
+              if assigned(tobjectdef(def).iidguid) then
+                exportname(make_mangledname('IID',def.owner,def.objname^));
+              exportname(make_mangledname('IIDSTR',def.owner,def.objname^));
             end;
         end;
+    end;
+
+
+  procedure export_typedef(def:tdef;symtable:tsymtable;global:boolean);
+    begin
+      if not (global or is_class(def)) or
+          (df_internal in def.defoptions) or
+          { happens with type renaming declarations ("abc = xyz") }
+          (def.owner<>symtable) then
+        exit;
+      if ds_rtti_table_written in def.defstates then
+        exportname(def.rtti_mangledname(fullrtti));
+      if (ds_init_table_written in def.defstates) and
+          def.needs_separate_initrtti then
+        exportname(def.rtti_mangledname(initrtti));
+      case def.typ of
+        recorddef,
+        objectdef:
+          exportabstractrecorddef(tabstractrecorddef(def),symtable);
+      end;
     end;
 
 
@@ -165,9 +190,11 @@ implementation
     var
       i : longint;
       item : TCmdStrListItem;
+      isglobal,
       publiconly : boolean;
     begin
       publiconly:=tsymtable(arg).symtabletype=staticsymtable;
+      isglobal:=tsymtable(arg).symtabletype=globalsymtable;
       case TSym(sym).typ of
         { ignore: }
         unitsym,
@@ -183,11 +210,7 @@ implementation
           end;
         typesym:
           begin
-            case ttypesym(sym).typedef.typ of
-              recorddef,
-              objectdef:
-                exportabstractrecorddef(tabstractrecorddef(ttypesym(sym).typedef),tsymtable(arg));
-            end;
+            export_typedef(ttypesym(sym).typedef,tsymtable(arg),isglobal);
           end;
         procsym:
           begin
@@ -199,15 +222,21 @@ implementation
               exit;
             varexport(tsym(sym).mangledname);
           end;
+        absolutevarsym:
+          ;
         else
           begin
-            writeln('unknown: ',TSym(sym).typ);
+            //writeln('unknown: ',TSym(sym).typ);
+            internalerror(2016080501);
           end;
       end;
     end;
 
 
   procedure export_unit(u: tmodule);
+    var
+      i : longint;
+      sym : tasmsymbol;
     begin
       u.globalsymtable.symlist.ForEachCall(@insert_export,u.globalsymtable);
       { check localsymtable for exports too to get public symbols }
@@ -225,6 +254,14 @@ implementation
           varexport(ctai_typedconstbuilder.get_vectorized_dead_strip_section_symbol_start('RESSTR',u.localsymtable,[]).name);
           varexport(ctai_typedconstbuilder.get_vectorized_dead_strip_section_symbol_end('RESSTR',u.localsymtable,[]).name);
         end;
+
+      if not (target_info.system in systems_indirect_var_imports) then
+        for i:=0 to u.publicasmsyms.count-1 do
+          begin
+            sym:=tasmsymbol(u.publicasmsyms[i]);
+            if sym.bind=AB_INDIRECT then
+              varexport(sym.name);
+          end;
     end;
 
   Function RewritePPU(const PPUFn:String;OutStream:TCStream):Boolean;
