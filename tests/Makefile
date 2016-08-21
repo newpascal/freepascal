@@ -332,253 +332,253 @@ FPCFPMAKE=$(FPC)
 endif
 endif
 ifeq ($(FULL_TARGET),i386-linux)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-go32v2)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-win32)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-os2)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-freebsd)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-beos)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-haiku)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-netbsd)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-solaris)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-qnx)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-netware)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-openbsd)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-wdosx)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-darwin)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-emx)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-watcom)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-netwlibc)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-wince)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-embedded)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-symbian)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-nativent)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-iphonesim)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-android)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i386-aros)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),m68k-linux)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),m68k-freebsd)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),m68k-netbsd)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),m68k-amiga)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),m68k-atari)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),m68k-openbsd)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),m68k-palmos)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),m68k-embedded)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),powerpc-linux)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),powerpc-netbsd)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),powerpc-amiga)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),powerpc-macos)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),powerpc-darwin)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),powerpc-morphos)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),powerpc-embedded)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),powerpc-wii)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),powerpc-aix)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),sparc-linux)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),sparc-netbsd)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),sparc-solaris)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),sparc-embedded)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),x86_64-linux)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),x86_64-freebsd)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),x86_64-netbsd)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),x86_64-solaris)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),x86_64-openbsd)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),x86_64-darwin)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),x86_64-win64)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),x86_64-embedded)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),x86_64-iphonesim)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),x86_64-aros)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),x86_64-dragonfly)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),arm-linux)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),arm-palmos)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),arm-darwin)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),arm-wince)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),arm-gba)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),arm-nds)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),arm-embedded)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),arm-symbian)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),arm-android)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),powerpc64-linux)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),powerpc64-darwin)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),powerpc64-embedded)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),powerpc64-aix)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),avr-embedded)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),armeb-linux)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),armeb-embedded)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),mips-linux)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),mipsel-linux)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),mipsel-embedded)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),mipsel-android)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),jvm-java)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),jvm-android)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i8086-embedded)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i8086-msdos)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),i8086-win16)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),aarch64-linux)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 ifeq ($(FULL_TARGET),aarch64-darwin)
-override TARGET_PROGRAMS+=gparmake
+override TARGET_PROGRAMS+=gparmake createlst
 endif
 override INSTALL_FPCPACKAGE=y
 ifdef REQUIRE_UNITSDIR
@@ -2186,6 +2186,8 @@ export CHUNKSIZE:=100
 endif
 TESTDIRS:=test $(addprefix test/,$(TESTSUBDIRS))
 .PHONY: utils tstunits copyfiles testprep
+$(TEST_OUTPUTDIR):
+	$(MKDIRTREE) $(TEST_OUTPUTDIR)
 utils:
 	$(MAKE) -C utils utils
 utilsdb:
@@ -2204,6 +2206,9 @@ GPARMAKE=./gparmake$(EXEEXT)
 endif
 ifndef PREPUP
 PREPUP=utils/prepup
+endif
+ifndef CREATELST
+CREATELST=./createlst$(EXEEXT)
 endif
 tstunits:
 ifdef inOS2
@@ -2246,7 +2251,7 @@ $(C_OBJECTS) : %.o: %.c
 		$(TEST_CCOMPILER) -c $(TEST_CFLAGS) $< -o $@
 $(CPP_OBJECTS) : %.o: %.cpp
 		$(TEST_CCOMPILER) -c $(TEST_CFLAGS) $< -o $@
-copyfiles: $(TEST_OUTPUTDIR)
+copyfiles:
 	-$(MKDIRTREE) $(TEST_OUTPUTDIR)/test/cg
 	-$(COPY) $(C_OBJECTS) $(TEST_OUTPUTDIR)/test/cg
 	-$(COPY) $(CPP_OBJECTS) $(TEST_OUTPUTDIR)/test/cg
@@ -2255,8 +2260,6 @@ copyfiles: $(TEST_OUTPUTDIR)
 testprep: testprep-stamp.$(TEST_FULL_TARGET)
 testprep-stamp.$(TEST_FULL_TARGET): utils tstunits copyfiles
 	$(ECHOREDIR) $(DATE) > testprep-stamp.$(TEST_FULL_TARGET)
-$(TEST_OUTPUTDIR):
-	$(MKDIRTREE) $@
 ifneq ($(TEST_FPC),ppc386$(EXEEXT))
 ifeq ($(findstring -c$(TEST_FPC),$(DOTESTOPT)),)
 override DOTESTOPT+=-c$(TEST_FPC)
@@ -2411,19 +2414,24 @@ allexectests:  $(TEST_OUTPUTDIR)/log.testlog $(TEST_OUTPUTDIR)/log.tbslog \
 else
 .PHONY: allexectests gparmake_allexectests
 MAKEINC=$(TEST_OUTPUTDIR)/MakeChunks-$(TEST_TARGETSUFFIX).inc
-$(GPARMAKE): $(COMPILER_UNITTARGETDIR) utils/gparmake.pp
+$(GPARMAKE): utils/gparmake.pp $(CREATELST)
+	$(Q)$(MAKE)  $(COMPILER_UNITTARGETDIR)
 	$(FPC) $(FPCOPT) -FE. utils/gparmake.pp $(OPT)
-$(MAKEINC): $(GPARMAKE) $(TEST_OUTPUTDIR)
-	$(MAKE) -s --no-print-directory -f createlst.mak "TESTDIRS=$(TESTDIRS)" > testfilelist.lst
-	$(Q)$(GPARMAKE) $(MAKEINC) test 1 $(CHUNKSIZE) @testfilelist.lst
-	$(MAKE) -s --no-print-directory -f createlst.mak "TESTDIRS=tbs" > tbsfilelist.lst
-	$(Q)$(GPARMAKE) -a $(MAKEINC) tbs 10000 $(CHUNKSIZE) @tbsfilelist.lst
-	$(MAKE) -s --no-print-directory -f createlst.mak "TESTDIRS=tbf" > tbffilelist.lst
-	$(Q)$(GPARMAKE) -a $(MAKEINC) tbf 15000 $(CHUNKSIZE) @tbffilelist.lst
-	$(MAKE) -s --no-print-directory -f createlst.mak "TESTDIRS=webtbs" > webtbsfilelist.lst
-	$(Q)$(GPARMAKE) -a $(MAKEINC) webtbs 20000 $(CHUNKSIZE) @webtbsfilelist.lst
-	$(MAKE) -s --no-print-directory -f createlst.mak "TESTDIRS=webtbf" > webtbffilelist.lst
-	$(Q)$(GPARMAKE) -a $(MAKEINC) webtbf 30000 $(CHUNKSIZE) @webtbffilelist.lst
+$(CREATELST): utils/createlst.pp
+	$(Q)$(MAKE)  $(COMPILER_UNITTARGETDIR)
+	$(FPC) $(FPCOPT) -FE. utils/createlst.pp $(OPT)
+$(MAKEINC): $(GPARMAKE) $(CREATELST)
+	$(Q)$(MAKE) $(TEST_OUTPUTDIR)
+	$(Q)$(CREATELST) filelisttest.lst $(TESTDIRS)
+	$(Q)$(GPARMAKE) $(MAKEINC) test 1 $(CHUNKSIZE) @filelisttest.lst
+	$(Q)$(CREATELST) filelisttbs.lst tbs
+	$(Q)$(GPARMAKE) -a $(MAKEINC) tbs 10000 $(CHUNKSIZE) @filelisttbs.lst
+	$(Q)$(CREATELST) filelisttbf.lst tbf
+	$(Q)$(GPARMAKE) -a $(MAKEINC) tbf 15000 $(CHUNKSIZE) @filelisttbf.lst
+	$(Q)$(CREATELST) filelistwebtbs.lst webtbs
+	$(Q)$(GPARMAKE) -a $(MAKEINC) webtbs 20000 $(CHUNKSIZE) @filelistwebtbs.lst
+	$(Q)$(CREATELST) filelistwebtbf.lst webtbf
+	$(Q)$(GPARMAKE) -a $(MAKEINC) webtbf 30000 $(CHUNKSIZE) @filelistwebtbf.lst
 ifeq (,$(findstring clean,$(firstword $(MAKECMDGOALS))))
 ifneq (,$(findstring all,$(MAKECMDGOALS)))
 ifneq (,$(wildcard $(MAKEINC)))

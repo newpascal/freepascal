@@ -184,6 +184,8 @@ interface
     tllvmcallpara = record
       def: tdef;
       valueext: tllvmvalueextension;
+      byval,
+      sret: boolean;
       case loc: tcgloc of
         LOC_REFERENCE,
         LOC_REGISTER,

@@ -742,12 +742,18 @@ implementation
     procedure TVMTWriter.intf_gen_intf_ref(tcb: ttai_typedconstbuilder; AImplIntf: TImplementedInterface; intfindex: longint; interfaceentrydef, interfaceentrytypedef: tdef);
       var
         pd: tprocdef;
+        siid,
+        siidstr: tsymstr;
       begin
         tcb.maybe_begin_aggregate(interfaceentrydef);
         { GUID (or nil for Corba interfaces) }
+        siid:='';
         if AImplIntf.IntfDef.objecttype in [odt_interfacecom] then
-          tcb.emit_tai(Tai_const.CreateName(
-            make_mangledname('IID',AImplIntf.IntfDef.owner,AImplIntf.IntfDef.objname^),AT_DATA,0),cpointerdef.getreusable(rec_tguid))
+          begin
+            siid:=make_mangledname('IID',AImplIntf.IntfDef.owner,AImplIntf.IntfDef.objname^);
+            tcb.emit_tai(Tai_const.Create_sym_offset(
+              current_asmdata.RefAsmSymbol(siid,AT_DATA,true),0),cpointerdef.getreusable(rec_tguid));
+          end
         else
           tcb.emit_tai(Tai_const.Create_nil_dataptr,cpointerdef.getreusable(rec_tguid));
 
@@ -775,15 +781,24 @@ implementation
         end;
 
         { IIDStr }
+        siidstr:=make_mangledname('IIDSTR',AImplIntf.IntfDef.owner,AImplIntf.IntfDef.objname^);
         tcb.queue_init(cpointerdef.getreusable(cshortstringtype));
         tcb.queue_emit_asmsym(
           current_asmdata.RefAsmSymbol(
-            make_mangledname('IIDSTR',AImplIntf.IntfDef.owner,AImplIntf.IntfDef.objname^),
-            AT_DATA),
+            siidstr,
+            AT_DATA,
+            true),
           cpointerdef.getreusable(carraydef.getreusable(cansichartype,length(AImplIntf.IntfDef.iidstr^)+1)));
         { IType }
         tcb.emit_ord_const(aint(AImplIntf.VtblImplIntf.IType),interfaceentrytypedef);
         tcb.maybe_end_aggregate(interfaceentrydef);
+
+        if findunitsymtable(AImplIntf.IntfDef.owner).moduleid<>findunitsymtable(_Class.owner).moduleid then
+          begin
+            if siid<>'' then
+              current_module.add_extern_asmsym(siid,AB_EXTERNAL,AT_DATA);
+            current_module.add_extern_asmsym(siidstr,AB_EXTERNAL,AT_DATA);
+          end;
       end;
 
 
@@ -902,30 +917,35 @@ implementation
       s : string;
       tcb : ttai_typedconstbuilder;
       def : tdef;
+      sym : tasmsymbol;
     begin
       if assigned(_class.iidguid) then
         begin
           s:=make_mangledname('IID',_class.owner,_class.objname^);
           tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
           tcb.emit_guid_const(_class.iidguid^);
+          sym:=current_asmdata.DefineAsmSymbol(s,AB_GLOBAL,AT_DATA_FORCEINDIRECT,rec_tguid);
           list.concatlist(tcb.get_final_asmlist(
-            current_asmdata.DefineAsmSymbol(s,AB_GLOBAL,AT_DATA,rec_tguid),
+            sym,
             rec_tguid,
             sec_rodata,
             s,
             const_align(sizeof(pint))));
           tcb.free;
+          current_module.add_public_asmsym(sym);
         end;
       s:=make_mangledname('IIDSTR',_class.owner,_class.objname^);
       tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
       def:=tcb.emit_shortstring_const(_class.iidstr^);
+      sym:=current_asmdata.DefineAsmSymbol(s,AB_GLOBAL,AT_DATA_FORCEINDIRECT,def);
       list.concatlist(tcb.get_final_asmlist(
-        current_asmdata.DefineAsmSymbol(s,AB_GLOBAL,AT_DATA,def),
+        sym,
         def,
         sec_rodata,
         s,
         sizeof(pint)));
       tcb.free;
+      current_module.add_public_asmsym(sym);
     end;
 
 
@@ -1014,7 +1034,7 @@ implementation
              begin
                procname:='FPC_EMPTYMETHOD';
                if current_module.globalsymtable<>systemunit then
-                 current_module.add_extern_asmsym(procname,AB_GLOBAL,AT_FUNCTION);
+                 current_module.add_extern_asmsym(procname,AB_EXTERNAL,AT_FUNCTION);
              end
            else if not wpoinfomanager.optimized_name_for_vmt(_class,vmtpd,procname) then
              begin

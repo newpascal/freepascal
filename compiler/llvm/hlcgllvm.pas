@@ -440,6 +440,18 @@ implementation
           begin
             new(callpara);
             callpara^.def:=paraloc^.def;
+            { if the paraloc doesn't contain the value itself, it's a byval
+              parameter }
+            if paraloc^.retvalloc then
+              begin
+                callpara^.sret:=true;
+                callpara^.byval:=false;
+              end
+            else
+              begin
+                callpara^.sret:=false;
+                callpara^.byval:=not paraloc^.llvmvalueloc;
+              end;
             llvmextractvalueextinfo(paras[i]^.def, callpara^.def, callpara^.valueext);
             if paraloc^.llvmloc.loc=LOC_CONSTANT then
               begin
@@ -518,7 +530,7 @@ implementation
       res: tregister;
     begin
       a_call_common(list,pd,paras,forceresdef,res,hlretdef,llvmretdef,callparas);
-      list.concat(taillvm.call_size_name_paras(get_call_pd(pd),res,llvmretdef,current_asmdata.RefAsmSymbol(s),callparas));
+      list.concat(taillvm.call_size_name_paras(get_call_pd(pd),res,llvmretdef,current_asmdata.RefAsmSymbol(s,AT_FUNCTION),callparas));
       result:=get_call_result_cgpara(pd,forceresdef);
       set_call_function_result(list,pd,llvmretdef,hlretdef,res,result);
     end;
@@ -1124,7 +1136,7 @@ implementation
       a_loadaddr_ref_cgpara(list,size,dest,destpara);
       a_loadaddr_ref_cgpara(list,size,source,sourcepara);
       a_load_const_cgpara(list,u64inttype,size.size,sizepara);
-      maxalign:=newalignment(source.alignment,dest.alignment);
+      maxalign:=newalignment(max(source.alignment,dest.alignment),min(source.alignment,dest.alignment));
       a_load_const_cgpara(list,u32inttype,maxalign,alignpara);
       { we don't know anything about volatility here, should become an extra
         parameter to g_concatcopy }
@@ -1157,8 +1169,12 @@ implementation
          (since that's their storage size and internally they also are int64).
          Solve this by changing the type to s80real once they are loaded into
          a register. }
-       fromcompcurr:=tfloatdef(fromsize).floattype in [s64comp,s64currency];
-       tocompcurr:=tfloatdef(tosize).floattype in [s64comp,s64currency];
+       fromcompcurr:=
+         (fromsize.typ=floatdef) and
+         (tfloatdef(fromsize).floattype in [s64comp,s64currency]);
+       tocompcurr:=
+         (tosize.typ=floatdef) and
+         (tfloatdef(tosize).floattype in [s64comp,s64currency]);
        if tocompcurr then
          tosize:=s80floattype;
        { don't generate different code for loading e.g. extended into cextended,
@@ -1194,8 +1210,12 @@ implementation
        tocompcurr: boolean;
      begin
        { see comment in a_loadfpu_ref_reg }
-       fromcompcurr:=tfloatdef(fromsize).floattype in [s64comp,s64currency];
-       tocompcurr:=tfloatdef(tosize).floattype in [s64comp,s64currency];
+       fromcompcurr:=
+         (fromsize.typ=floatdef) and
+         (tfloatdef(fromsize).floattype in [s64comp,s64currency]);
+       tocompcurr:=
+         (tosize.typ=floatdef) and
+         (tfloatdef(tosize).floattype in [s64comp,s64currency]);
        if fromcompcurr then
          fromsize:=s80floattype;
        href:=make_simple_ref(list,ref,tosize);
@@ -1408,6 +1428,7 @@ implementation
       subscriptdef,
       currentstructdef,
       llvmfielddef: tdef;
+      llvmfield: tllvmshadowsymtableentry;
       newbase: tregister;
       implicitpointer: boolean;
     begin
@@ -1438,29 +1459,28 @@ implementation
           { go to the parent }
           currentstructdef:=parentdef;
         end;
-      { get the type of the corresponding field in the llvm shadow
-        definition }
-      llvmfielddef:=tabstractrecordsymtable(tabstractrecorddef(currentstructdef).symtable).llvmst[field].def;
+      { get the corresponding field in the llvm shadow symtable }
+      llvmfield:=tabstractrecordsymtable(tabstractrecorddef(currentstructdef).symtable).llvmst[field];
       if implicitpointer then
         subscriptdef:=currentstructdef
       else
         subscriptdef:=cpointerdef.getreusable(currentstructdef);
       { load the address of that shadow field }
-      newbase:=getaddressregister(list,cpointerdef.getreusable(llvmfielddef));
+      newbase:=getaddressregister(list,cpointerdef.getreusable(llvmfield.def));
       recref:=make_simple_ref(list,recref,recdef);
       list.concat(taillvm.getelementptr_reg_size_ref_size_const(newbase,subscriptdef,recref,s32inttype,field.llvmfieldnr,true));
-      reference_reset_base(recref,subscriptdef,newbase,field.offsetfromllvmfield,newalignment(recref.alignment,field.fieldoffset+field.offsetfromllvmfield));
+      reference_reset_base(recref,subscriptdef,newbase,field.offsetfromllvmfield,newalignment(recref.alignment,llvmfield.fieldoffset+field.offsetfromllvmfield));
       { in case of an 80 bits extended type, typecast from an array of 10
         bytes (used because otherwise llvm will allocate the ABI-defined
         size for extended, which is usually larger) into an extended }
-      if (llvmfielddef.typ=floatdef) and
-         (tfloatdef(llvmfielddef).floattype=s80real) then
+      if (llvmfield.def.typ=floatdef) and
+         (tfloatdef(llvmfield.def).floattype=s80real) then
         g_ptrtypecast_ref(list,cpointerdef.getreusable(carraydef.getreusable(u8inttype,10)),cpointerdef.getreusable(s80floattype),recref);
       { if it doesn't match the requested field exactly (variant record),
         adjust the type of the pointer }
       if (field.offsetfromllvmfield<>0) or
-         (llvmfielddef<>field.vardef) then
-        g_ptrtypecast_ref(list,cpointerdef.getreusable(llvmfielddef),cpointerdef.getreusable(field.vardef),recref);
+         (llvmfield.def<>field.vardef) then
+        g_ptrtypecast_ref(list,cpointerdef.getreusable(llvmfield.def),cpointerdef.getreusable(field.vardef),recref);
     end;
 
 
@@ -1790,6 +1810,8 @@ implementation
       tmpref: treference;
       pointedsize: asizeint;
     begin
+      if ref.alignment=0 then
+        internalerror(2016072203);
       { already simple? }
       if (not assigned(ref.symbol) or
           (ref.base=NR_NO)) and

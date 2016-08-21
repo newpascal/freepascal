@@ -134,20 +134,25 @@ implementation
       hp           : tmodule;
       linkcygwin : boolean;
     begin
-      hp:=tmodule(loaded_units.first);
-      while assigned(hp) do
-       begin
-         linkcygwin := hp.linkothersharedlibs.find('cygwin') or hp.linkotherstaticlibs.find('cygwin');
-         if linkcygwin then
-           break;
-         hp:=tmodule(hp.next);
-       end;
-      if cs_profile in current_settings.moduleswitches then
-        linker.sysinitunit:='sysinitgprof'
-      else if linkcygwin or (Linker.SharedLibFiles.Find('cygwin')<>nil) or (Linker.StaticLibFiles.Find('cygwin')<>nil) then
-        linker.sysinitunit:='sysinitcyg'
-      else
-        linker.sysinitunit:='sysinitpas';
+      if target_info.system=system_i386_win32 then
+        begin
+          hp:=tmodule(loaded_units.first);
+          while assigned(hp) do
+           begin
+             linkcygwin := hp.linkothersharedlibs.find('cygwin') or hp.linkotherstaticlibs.find('cygwin');
+             if linkcygwin then
+               break;
+             hp:=tmodule(hp.next);
+           end;
+          if cs_profile in current_settings.moduleswitches then
+            linker.sysinitunit:='sysinitgprof'
+          else if linkcygwin or (Linker.SharedLibFiles.Find('cygwin')<>nil) or (Linker.StaticLibFiles.Find('cygwin')<>nil) then
+            linker.sysinitunit:='sysinitcyg'
+          else
+            linker.sysinitunit:='sysinitpas';
+        end
+      else if target_info.system=system_x86_64_win64 then
+        linker.sysinitunit:='sysinit';
     end;
 
 
@@ -878,14 +883,14 @@ implementation
               if assigned(hp.sym) and not (eo_no_sym_name in hp.options) then
                 case hp.sym.typ of
                   staticvarsym :
-                    asmsym:=current_asmdata.RefAsmSymbol(tstaticvarsym(hp.sym).mangledname);
+                    asmsym:=current_asmdata.RefAsmSymbol(tstaticvarsym(hp.sym).mangledname,AT_DATA);
                   procsym :
-                    asmsym:=current_asmdata.RefAsmSymbol(tprocdef(tprocsym(hp.sym).ProcdefList[0]).mangledname)
+                    asmsym:=current_asmdata.RefAsmSymbol(tprocdef(tprocsym(hp.sym).ProcdefList[0]).mangledname,AT_FUNCTION)
                   else
                     internalerror(200709272);
                 end
               else
-                asmsym:=current_asmdata.RefAsmSymbol(hp.name^);
+                asmsym:=current_asmdata.RefAsmSymbol(hp.name^,AT_DATA);
               address_table.concat(Tai_const.Create_rva_sym(asmsym));
               inc(current_index);
               hp:=texported_item(hp.next);
@@ -1083,8 +1088,7 @@ implementation
 
     procedure TInternalLinkerWin.InitSysInitUnitName;
       begin
-        if target_info.system=system_i386_win32 then
-          GlobalInitSysInitUnitName(self);
+        GlobalInitSysInitUnitName(self)
       end;
 
     procedure TInternalLinkerWin.ConcatEntryName;
@@ -1767,8 +1771,7 @@ implementation
 
     procedure TExternalLinkerWin.InitSysInitUnitName;
       begin
-        if target_info.system=system_i386_win32 then
-          GlobalInitSysInitUnitName(self);
+        GlobalInitSysInitUnitName(self);
       end;
 
 

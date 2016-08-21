@@ -80,6 +80,9 @@ procedure UnhookSignal(RtlSigNum: Integer; OnlyIfHooked: Boolean = True);
 implementation
 
 Uses
+{$ifdef android}
+  dl,
+{$endif android}
   {$ifdef FPC_USE_LIBC}initc{$ELSE}Syscall{$ENDIF}, Baseunix, unixutil;
 
 type
@@ -1424,9 +1427,53 @@ end;
     Application config files
   ---------------------------------------------------------------------}
 
+{$ifdef android}
+
+var
+  _HomeDir: string;
 
 Function GetHomeDir : String;
+var
+  h: longint;
+  i: longint;
+begin
+  Result:=_HomeDir;
+  if Result <> '' then
+    exit;
+  if IsJniLibrary then
+    begin
+      // For shared library get the package name of a host Java application
+      h:=FileOpen('/proc/self/cmdline', fmOpenRead or fmShareDenyNone);
+      if h >= 0 then
+        begin
+          SetLength(Result, MAX_PATH);
+          SetLength(Result, FileRead(h, Result[1], Length(Result)));
+          SetLength(Result, strlen(PChar(Result)));
+          FileClose(h);
+          Result:='/data/data/' + Result;
+          IsJniLibrary:=DirectoryExists(Result);
+          if IsJniLibrary then
+            begin
+              Result:=Result + '/files/';
+              ForceDirectories(Result);
+            end
+          else
+            Result:='';  // No package
+        end;
+    end;
+  if Result = '' then
+    Result:='/data/local/tmp/';
+  _HomeDir:=Result;
+end;
 
+Function XdgConfigHome : String;
+begin
+  Result:=GetHomeDir;
+end;
+
+{$else}
+
+Function GetHomeDir : String;
 begin
   Result:=GetEnvironmentVariable('HOME');
   If (Result<>'') then
@@ -1445,6 +1492,8 @@ begin
     Result:=IncludeTrailingPathDelimiter(Result);
 end;
 
+{$endif android}
+
 Function GetAppConfigDir(Global : Boolean) : String;
 
 begin
@@ -1452,6 +1501,10 @@ begin
     Result:=IncludeTrailingPathDelimiter(SysConfigDir)
   else
     Result:=IncludeTrailingPathDelimiter(XdgConfigHome);
+{$ifdef android}
+  if IsJniLibrary then
+    exit;
+{$endif android}
   if VendorName<>'' then
     Result:=IncludeTrailingPathDelimiter(Result+VendorName);
   Result:=IncludeTrailingPathDelimiter(Result+ApplicationName);
@@ -1464,6 +1517,13 @@ begin
     Result:=IncludeTrailingPathDelimiter(SysConfigDir)
   else
     Result:=IncludeTrailingPathDelimiter(XdgConfigHome);
+{$ifdef android}
+  if IsJniLibrary then
+    begin
+      Result:=Result+'config'+ConfigExtension;
+      exit;
+    end;
+{$endif android}
   if SubDir then
     begin
       if VendorName<>'' then
@@ -1486,20 +1546,18 @@ begin
     Result:=OnGetTempDir(Global)
   else
     begin
-    Result:=GetEnvironmentVariable('TEMP');
-    If (Result='') Then
-      Result:=GetEnvironmentVariable('TMP');
-    If (Result='') Then
-      Result:=GetEnvironmentVariable('TMPDIR');
-    if (Result='') then
-      begin
-      // fallback.
-      {$ifdef android}
-        Result:='/data/local/tmp/';
-      {$else}
-        Result:='/tmp/';
-      {$endif android}
-      end;
+{$ifdef android}
+      Result:=GetHomeDir + 'tmp';
+      ForceDirectories(Result);
+{$else}
+      Result:=GetEnvironmentVariable('TEMP');
+      If (Result='') Then
+        Result:=GetEnvironmentVariable('TMP');
+      If (Result='') Then
+        Result:=GetEnvironmentVariable('TMPDIR');
+      if (Result='') then
+        Result:='/tmp/'; // fallback.
+{$endif android}
     end;
   if (Result<>'') then
     Result:=IncludeTrailingPathDelimiter(Result);
@@ -1517,7 +1575,11 @@ Function GetUserDir : String;
 begin
   If (TheUserDir='') then
     begin
-    TheUserDir:=GetEnvironmentVariable('HOME'); 
+{$ifdef android}
+    TheUserDir:=GetHomeDir;
+{$else}
+    TheUserDir:=GetEnvironmentVariable('HOME');
+{$endif android}
     if (TheUserDir<>'') then
       TheUserDir:=IncludeTrailingPathDelimiter(TheUserDir)
     else
@@ -1539,6 +1601,26 @@ begin
  Result := -Tzseconds div 60; 
 end;
 
+{$ifdef android}
+
+procedure InitAndroid;
+var
+  dlinfo: dl_info;
+  s: string;
+begin
+  if IsJniLibrary then
+    begin
+      FillChar(dlinfo, sizeof(dlinfo), 0);
+      dladdr(@InitAndroid, @dlinfo);
+      s:=dlinfo.dli_fname;
+      if s <> '' then
+        SetDefaultSysLogTag(ExtractFileName(s));
+    end;
+end;
+
+{$endif android}
+
+
 {****************************************************************************
                               Initialization code
 ****************************************************************************}
@@ -1548,7 +1630,10 @@ Initialization
   InitInternational;    { Initialize internationalization settings }
   SysConfigDir:='/etc'; { Initialize system config dir }
   OnBeep:=@SysBeep;
-  
+{$ifdef android}
+  InitAndroid;
+{$endif android}
+
 Finalization
   FreeDriveStr;
   DoneExceptions;
