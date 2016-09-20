@@ -66,7 +66,8 @@ artifacts:
     name: fpcsrc
 
 deploy:
-  release: fpc4np-v$(appveyor_build_version)
+  tag: fpc4np-v$(appveyor_build_version)
+  release: 'FreePascal for NewPascal v$(appveyor_build_version)'
   description: 'Release of FreePascal compiler for NewPascal'
   provider: GitHub
   auth_token:
