@@ -699,10 +699,13 @@ type
     destructor Destroy; override;
     procedure Execute; override;
     procedure ExecuteScript;
+    Property Aborted;
+    Property Line;
   published
     Property DataBase : TDatabase Read FDatabase Write SetDatabase;
     Property Transaction : TDBTransaction Read FTransaction Write SetTransaction;
     property OnDirective: TSQLScriptDirectiveEvent read FOnDirective write FOnDirective;
+    Property AutoCommit;
     Property UseDollarString;
     Property DollarStrings;
     property Directives;
@@ -1425,13 +1428,7 @@ begin
   end
   else
     ACodePage := 0;
-  Result := AFieldDefs.Add(AFieldDefs.MakeNameUnique(AName), ADataType, ASize, ARequired, AFieldNo, ACodePage);
-  if AReadOnly then
-    Result.Attributes := Result.Attributes + [faReadOnly];
-  case ADataType of
-    ftBCD, ftFmtBCD:
-      Result.Precision := APrecision;
-  end;
+  Result := AFieldDefs.Add(AName, ADataType, ASize, APrecision, ARequired, AReadOnly, AFieldNo, ACodePage);
 end;
 
 procedure TSQLConnection.GetTableNames(List: TStrings; SystemTables: Boolean);

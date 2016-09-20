@@ -695,6 +695,8 @@ begin
   AssertNotNull('have right expr', B.Right);
   AssertEquals('argument right expr type', TPrimitiveExpr, B.right.ClassType);
   AssertEquals('argument right expr value', '2', TPrimitiveExpr(B.right).Value);
+  TAssert.AssertSame('B.left.parent=B',B,B.left.Parent);
+  TAssert.AssertSame('B.right.parent=B',B,B.right.Parent);
 end;
 
 procedure TTestProcedureTypeParser.DoTestProcedureOneArgDefaultSet(
@@ -1189,13 +1191,12 @@ begin
   if HaveVariant then
     begin
     AssertNotNull('Have variants',TheRecord.Variants);
-    AssertNotNull('Have variant type',TheRecord.VariantType);
+    AssertNotNull('Have variant type',TheRecord.VariantEl);
     end
   else
     begin
     AssertNull('No variants',TheRecord.Variants);
-    AssertNull('No variant type',TheRecord.VariantType);
-    AssertEquals('No variant name','',TheRecord.VariantName);
+    AssertNull('No variant element',TheRecord.VariantEl);
     end;
   if AddComment then
     AssertComment;
@@ -1203,13 +1204,22 @@ end;
 
 procedure TTestRecordTypeParser.AssertVariantSelector(AName,AType : string);
 
+var
+  V: TPasVariable;
 begin
-  if (AType='') then
-    AType:='Integer';
-  AssertEquals('Have variant selector storage name',AName,TheRecord.VariantName);
-  AssertNotNull('Have variant selector type',TheRecord.VariantType);
-  AssertEquals('Have variant selector type',TPasUnresolvedTypeRef,TheRecord.VariantType.ClassType);
-  AssertEquals('Have variant selector type name',AType,TheRecord.VariantType.Name);
+  AssertNotNull('Have variant element',TheRecord.VariantEl);
+  if AName<>'' then
+    begin
+    AssertEquals('Have variant variable',TPasVariable,TheRecord.VariantEl.ClassType);
+    V:=TPasVariable(TheRecord.VariantEl);
+    AssertEquals('Have variant variable name',AName,V.Name);
+    AssertNotNull('Have variant var type',V.VarType);
+    AssertEquals('Have variant selector type',TPasUnresolvedTypeRef,V.VarType.ClassType);
+    AssertEquals('Have variant selector type name',lowercase(AType),lowercase(V.VarType.Name));
+    end else begin
+    AssertEquals('Have variant selector type',TPasUnresolvedTypeRef,TheRecord.VariantEl.ClassType);
+    AssertEquals('Have variant selector type name',lowercase(AType),lowercase(TheRecord.VariantEl.Name));
+    end;
 end;
 
 procedure TTestRecordTypeParser.AssertConst1(Hints: TPasMemberHints);
@@ -1314,7 +1324,7 @@ procedure TTestRecordTypeParser.DoTestVariantNoStorage(const AHint: string);
 begin
   TestFields(['x : integer;','case integer of','0 : (y : integer;)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('','');
+  AssertVariantSelector('','integer');
   AssertVariant1([]);
 end;
 
@@ -1323,7 +1333,7 @@ procedure TTestRecordTypeParser.DoTestDeprecatedVariantNoStorage(
 begin
   TestFields(['x : integer;','case integer of','0 : (y : integer deprecated;)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('','');
+  AssertVariantSelector('','integer');
   AssertVariant1([hDeprecated]);
 end;
 
@@ -1332,7 +1342,7 @@ procedure TTestRecordTypeParser.DoTestDeprecatedVariantStorage(
 begin
   TestFields(['x : integer;','case s : integer of','0 : (y : integer deprecated;)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('s','');
+  AssertVariantSelector('s','integer');
   AssertVariant1([hDeprecated]);
 end;
 
@@ -1340,7 +1350,7 @@ procedure TTestRecordTypeParser.DoTestVariantStorage(const AHint: string);
 begin
   TestFields(['x : integer;','case s : integer of','0 : (y : integer;)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('s','');
+  AssertVariantSelector('s','integer');
   AssertVariant1([]);
 end;
 
@@ -1348,7 +1358,7 @@ procedure TTestRecordTypeParser.DoTestTwoVariantsNoStorage(const AHint: string);
 begin
   TestFields(['x : integer;','case integer of','0 : (y : integer;);','1 : (z : integer;)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('','');
+  AssertVariantSelector('','integer');
   AssertVariant1([]);
   AssertVariant2([]);
 end;
@@ -1357,7 +1367,7 @@ procedure TTestRecordTypeParser.DoTestTwoVariantsStorage(const AHint: string);
 begin
   TestFields(['x : integer;','case s : integer of','0 : (y : integer;);','1 : (z : integer;)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('s','');
+  AssertVariantSelector('s','integer');
   AssertVariant1([]);
   AssertVariant2([]);
 end;
@@ -1367,7 +1377,7 @@ procedure TTestRecordTypeParser.DoTestTwoVariantsFirstDeprecatedStorage(
 begin
   TestFields(['x : integer;','case s : integer of','0 : (y : integer deprecated;);','1 : (z : integer;)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('s','');
+  AssertVariantSelector('s','integer');
   AssertVariant1([hdeprecated]);
   AssertVariant2([]);
 end;
@@ -1377,7 +1387,7 @@ procedure TTestRecordTypeParser.DoTestTwoVariantsSecondDeprecatedStorage(
 begin
   TestFields(['x : integer;','case s : integer of','0 : (y : integer ;);','1 : (z : integer deprecated;)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('s','');
+  AssertVariantSelector('s','integer');
   AssertVariant1([]);
   AssertVariant2([hdeprecated]);
 end;
@@ -1386,7 +1396,7 @@ procedure TTestRecordTypeParser.DoTestVariantTwoLabels(const AHint: string);
 begin
   TestFields(['x : integer;','case integer of','0,1 : (y : integer)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('','');
+  AssertVariantSelector('','integer');
   AssertVariant1([],['0','1']);
 end;
 
@@ -1394,7 +1404,7 @@ procedure TTestRecordTypeParser.DoTestTwoVariantsTwoLabels(const AHint: string);
 begin
   TestFields(['x : integer;','case integer of','0,1 : (y : integer);','2,3 : (z : integer);'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('','');
+  AssertVariantSelector('','integer');
   AssertVariant1([],['0','1']);
   AssertVariant2([],['2','3']);
 end;
@@ -1403,7 +1413,7 @@ procedure TTestRecordTypeParser.DoTestVariantNestedRecord(const AHint: string);
 begin
   TestFields(['x : integer;','case integer of','0 : ( y : record','  z : integer;','end)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('','');
+  AssertVariantSelector('','integer');
   AssertRecordVariant(0,[],['0']);
 end;
 
@@ -1411,7 +1421,7 @@ procedure TTestRecordTypeParser.DoTestVariantNestedVariant(const AHint: string);
 begin
   TestFields(['x : integer;','case integer of','0 : ( y : record','  z : integer;','  case byte of ','    1 : (i : integer);','    2 : ( j :  byte)', 'end)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('','');
+  AssertVariantSelector('','integer');
   AssertRecordVariant(0,[],['0']);
   AssertRecordVariantVariant(0,'i','Integer',[],['1']);
   AssertRecordVariantVariant(1,'j','Byte',[],['2'])
@@ -1422,7 +1432,7 @@ procedure TTestRecordTypeParser.DoTestVariantNestedVariantFirstDeprecated(
 begin
   TestFields(['x : integer;','case integer of','0 : ( y : record','  z : integer;','  case byte of ','    1 : (i : integer deprecated);','    2 : ( j :  byte)', 'end)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('','');
+  AssertVariantSelector('','integer');
   AssertRecordVariant(0,[],['0']);
   AssertRecordVariantVariant(0,'i','Integer',[hDeprecated],['1']);
   AssertRecordVariantVariant(1,'j','Byte',[],['2'])
@@ -1433,7 +1443,7 @@ procedure TTestRecordTypeParser.DoTestVariantNestedVariantSecondDeprecated(
 begin
   TestFields(['x : integer;','case integer of','0 : ( y : record','  z : integer;','  case byte of ','    1 : (i : integer );','    2 : ( j :  byte deprecated)', 'end)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('','');
+  AssertVariantSelector('','integer');
   AssertRecordVariant(0,[],['0']);
   AssertRecordVariantVariant(0,'i','Integer',[],['1']);
   AssertRecordVariantVariant(1,'j','Byte',[hDeprecated],['2'])
@@ -1444,7 +1454,7 @@ procedure TTestRecordTypeParser.DoTestVariantNestedVariantBothDeprecated(const A
 begin
   TestFields(['x : integer;','case integer of','0 : ( y : record','  z : integer;','  case byte of ','    1 : (i : integer deprecated );','    2 : ( j :  byte deprecated)', 'end)'],AHint,True);
   AssertField1([]);
-  AssertVariantSelector('','');
+  AssertVariantSelector('','integer');
   AssertRecordVariant(0,[],['0']);
   AssertRecordVariantVariant(0,'i','Integer',[hdeprecated],['1']);
   AssertRecordVariantVariant(1,'j','Byte',[hDeprecated],['2'])
@@ -1744,6 +1754,7 @@ procedure TTestRecordTypeParser.TestTwoFieldPrivateNoDelphi;
 Var
   EC : TClass;
 begin
+  EC:=nil;
   try
     TestFields(['private','x : integer'],'',False);
     Fail('Need po_Delphi for visibility specifier');
@@ -1759,16 +1770,22 @@ end;
 procedure TTestRecordTypeParser.TestTwoFieldProtected;
 Var
   B : Boolean;
+  EName: String;
 begin
+  B:=false;
+  EName:='';
   try
     TestFields(['protected','x : integer'],'',False);
     Fail('Protected not allowed as record visibility specifier')
   except
     on E : Exception do
+      begin
+      EName:=E.ClassName;
       B:=E is EParserError;
+      end;
   end;
   If not B then
-    Fail('Wrong exception class.');
+    Fail('Wrong exception class "'+EName+'".');
 end;
 
 procedure TTestRecordTypeParser.TestTwoFieldPrivate;

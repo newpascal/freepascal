@@ -365,7 +365,15 @@ implementation
 
                { process methodpointer/framepointer }
                if assigned(left) then
-                 typecheckpass(left);
+                 begin
+                   typecheckpass(left);
+                   if (po_classmethod in fprocdef.procoptions) and
+                      is_class(left.resultdef) then
+                     begin
+                       left:=cloadvmtaddrnode.create(left);
+                       typecheckpass(left);
+                     end
+                 end;
              end;
            labelsym:
              begin
@@ -828,6 +836,7 @@ implementation
         { call helpers for variant, they can contain non ref. counted types like
           vararrays which must be really copied }
         else if (left.resultdef.typ=variantdef) and
+            not(is_const(left)) and
             not(target_info.system in systems_garbage_collected_managed_types)  then
          begin
            { remove property flag to avoid errors, see comments for }

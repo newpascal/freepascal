@@ -719,11 +719,12 @@ implementation
       var
         oldlocalswitches: tlocalswitches;
         srsym: tsym;
-        afterconstructionblock,
+        constructionblock,
         exceptblock,
         newblock: tblocknode;
         newstatement: tstatementnode;
         pd: tprocdef;
+        constructionsuccessful: tlocalvarsym;
       begin
         if assigned(procdef.struct) and
            (procdef.proctypeoption=potype_constructor) then
@@ -737,46 +738,62 @@ implementation
             current_settings.localswitches:=oldlocalswitches-[cs_check_object,cs_check_range];
 
             { call AfterConstruction for classes }
+            constructionsuccessful:=nil;
             if is_class(procdef.struct) then
               begin
+                constructionsuccessful:=clocalvarsym.create(internaltypeprefixName[itp_vmt_afterconstruction_local],vs_value,ptrsinttype,[],false);
+                procdef.localst.insert(constructionsuccessful,false);
                 srsym:=search_struct_member(procdef.struct,'AFTERCONSTRUCTION');
-                if assigned(srsym) and
-                   (srsym.typ=procsym) then
-                  begin
-                    current_filepos:=exitpos;
-                    afterconstructionblock:=internalstatements(newstatement);
-                    { first execute all constructor code. If no exception
-                      occurred then we will execute afterconstruction,
-                      otherwise we won't (the exception will jump over us) }
-                    addstatement(newstatement,tocode);
-                    { if implicit finally node wasn't created, then exit label and
-                      finalization code must be handled here and placed before
-                      afterconstruction }
-                    if not ((pi_needs_implicit_finally in flags) and
-                      (cs_implicit_exceptions in current_settings.moduleswitches)) then
-                      begin
-                        include(tocode.flags,nf_block_with_exit);
-                        addstatement(newstatement,final_asmnode);
-                        cnodeutils.procdef_block_add_implicit_finalize_nodes(procdef,newstatement);
-                        final_used:=true;
-                      end;
-
-                    { Self can be nil when fail is called }
-                    { if self<>nil and vmt<>nil then afterconstruction }
-                    addstatement(newstatement,cifnode.create(
-                      caddnode.create(andn,
-                        caddnode.create(unequaln,
-                          load_self_node,
-                          cnilnode.create),
-                        caddnode.create(unequaln,
-                          load_vmt_pointer_node,
-                          cnilnode.create)),
-                        ccallnode.create(nil,tprocsym(srsym),srsym.owner,load_self_node,[],nil),
-                        nil));
-                    tocode:=afterconstructionblock;
-                  end
-                else
+                if not assigned(srsym) or
+                   (srsym.typ<>procsym) then
                   internalerror(200305106);
+
+                current_filepos:=entrypos;
+                constructionblock:=internalstatements(newstatement);
+                { initialise constructionsuccessful with -1, indicating that
+                  the construction was not successful and hence
+                  beforedestruction should not be called if a destructor is
+                  called from the constructor }
+                addstatement(newstatement,cassignmentnode.create(
+                  cloadnode.create(constructionsuccessful,procdef.localst),
+                  genintconstnode(-1))
+                );
+                { first execute all constructor code. If no exception
+                  occurred then we will execute afterconstruction,
+                  otherwise we won't (the exception will jump over us) }
+                addstatement(newstatement,tocode);
+                current_filepos:=exitpos;
+                { if implicit finally node wasn't created, then exit label and
+                  finalization code must be handled here and placed before
+                  afterconstruction }
+                if not ((pi_needs_implicit_finally in flags) and
+                  (cs_implicit_exceptions in current_settings.moduleswitches)) then
+                  begin
+                    include(tocode.flags,nf_block_with_exit);
+                    addstatement(newstatement,final_asmnode);
+                    cnodeutils.procdef_block_add_implicit_finalize_nodes(procdef,newstatement);
+                    final_used:=true;
+                  end;
+
+                { construction successful -> beforedestruction should be called
+                  if an exception happens now }
+                addstatement(newstatement,cassignmentnode.create(
+                  cloadnode.create(constructionsuccessful,procdef.localst),
+                  genintconstnode(1))
+                );
+                { Self can be nil when fail is called }
+                { if self<>nil and vmt<>nil then afterconstruction }
+                addstatement(newstatement,cifnode.create(
+                  caddnode.create(andn,
+                    caddnode.create(unequaln,
+                      load_self_node,
+                      cnilnode.create),
+                    caddnode.create(unequaln,
+                      load_vmt_pointer_node,
+                      cnilnode.create)),
+                    ccallnode.create(nil,tprocsym(srsym),srsym.owner,load_self_node,[],nil),
+                    nil));
+                tocode:=constructionblock;
               end;
 
             if withexceptblock and (procdef.struct.typ=objectdef) then
@@ -872,6 +889,7 @@ implementation
         { Generate procedure by combining init+body+final,
           depending on the implicit finally we need to add
           an try...finally...end wrapper }
+        current_filepos:=entrypos;
         newblock:=internalstatements(newstatement);
         { initialization is common for all cases }
         addstatement(newstatement,loadpara_asmnode);
@@ -925,7 +943,9 @@ implementation
               have managed variables/temps }
             maybe_add_constructor_wrapper(code,
               cs_implicit_exceptions in current_settings.moduleswitches);
+            current_filepos:=entrypos;
             addstatement(newstatement,code);
+            current_filepos:=exitpos;
             if assigned(nestedexitlabel) then
               addstatement(newstatement,clabelnode.create(cnothingnode.create,nestedexitlabel));
             addstatement(newstatement,exitlabel_asmnode);
@@ -938,7 +958,10 @@ implementation
               end;
           end;
         if not final_used then
-          cnodeutils.procdef_block_add_implicit_finalize_nodes(procdef,newstatement);
+          begin
+            current_filepos:=exitpos;
+            cnodeutils.procdef_block_add_implicit_finalize_nodes(procdef,newstatement);
+          end;
         do_firstpass(newblock);
         code:=newblock;
         current_filepos:=oldfilepos;

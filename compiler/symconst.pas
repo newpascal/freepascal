@@ -134,11 +134,11 @@ const
     after the hidden result parameter }
   paranr_objc_self = 5;
   paranr_objc_cmd = 6;
-  { Required to support variations of syscalls on MorphOS }
-  paranr_syscall_basesysv    = 9;
-  paranr_syscall_sysvbase    = high(word)-5;
-  paranr_syscall_r12base     = high(word)-4;
-  paranr_syscall_legacy      = high(word)-3;
+
+  { Required to support variations of syscalls on Amiga-likes }
+  paranr_syscall_lib_first   = 9;             { for basesysv on MorphOS/ppc and AmigaOS4/ppc }
+  paranr_syscall_lib_last    = high(word)-3;  { everything else }
+
   paranr_result_leftright    = high(word)-2;
   paranr_parentfp_delphi_cc  = high(word)-1;
 
@@ -338,13 +338,16 @@ type
     po_has_public_name,
     po_forward,
     po_global,
-    { The different kind of syscalls on MorphOS }
+    { The different kind of syscalls on AmigaOS and MorphOS, m68k and PPC }
     po_syscall_legacy,
     po_syscall_sysv,
     po_syscall_basesysv,
     po_syscall_sysvbase,
     po_syscall_r12base,
-    { Used to record the fact that a symbol is asociated to this syscall }
+    { The different kind of syscalls on AROS, i386/x86_64 }
+    po_syscall_stackbase,
+    po_syscall_eaxbase,
+    { Used to record the fact that a symbol is associated to this syscall }
     po_syscall_has_libsym,
     { Procedure can be inlined }
     po_inline,
@@ -687,6 +690,7 @@ type
     itp_vmt_intern_msgint_table,
     itp_vmt_intern_tmethodnamerec,
     itp_vmt_intern_tmethodnametable,
+    itp_vmt_afterconstruction_local,
     itp_rttidef,
     itp_rtti_header,
     itp_rtti_prop,
@@ -697,13 +701,16 @@ type
     itp_rtti_normal_array,
     itp_rtti_dyn_array,
     itp_rtti_proc_param,
+    itp_rtti_enum_size_start_rec,
+    itp_rtti_enum_min_max_rec,
+    itp_rtti_enum_basetype_array_rec,
     itp_threadvar_record,
     itp_objc_method_list,
     itp_objc_proto_list,
     itp_objc_cat_methods,
     itb_objc_nf_ivars,
     itb_objc_nf_category,
-    itb_obcj_nf_class_ro_part,
+    itb_objc_nf_class_ro_part,
     itb_objc_nf_meta_class,
     itb_objc_nf_class,
     itb_objc_fr_protocol_ext,
@@ -824,6 +831,7 @@ inherited_objectoptions : tobjectoptions = [oo_has_virtual,oo_has_private,oo_has
        '$vmt_intern_msgint_table$',
        '$vmt_intern_tmethodnamerec$',
        '$vmt_intern_tmethodnametable$',
+       '$vmt_afterconstruction_local',
        '$rttidef$',
        '$rtti_header$',
        '$rtti_prop$',
@@ -834,13 +842,16 @@ inherited_objectoptions : tobjectoptions = [oo_has_virtual,oo_has_private,oo_has
        '$rtti_normal_array$',
        '$rtti_dyn_array$',
        '$rtti_proc_param$',
+       '$rtti_enum_size_start_rec$',
+       '$rtti_enum_min_max_rec$',
+       '$rtti_enum_basetype_array_rec$',
        '$threadvar_record$',
        '$objc_method_list$',
        '$objc_proto_list$',
        '$objc_cat_methods$',
        '$objc_nf_ivars$',
        '$objc_nf_category$',
-       '$obcj_nf_class_ro_part$',
+       '$objc_nf_class_ro_part$',
        '$objc_nf_meta_class$',
        '$objc_nf_class$',
        '$objc_fr_protocol_ext$',

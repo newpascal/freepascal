@@ -39,6 +39,7 @@ uses
     procedure generate_specialization(var tt:tdef;parse_class_parent:boolean;_prettyname:string;parsedtype:tdef;symname:string;parsedpos:tfileposinfo);inline;
     procedure generate_specialization(var tt:tdef;parse_class_parent:boolean;_prettyname:string);inline;
     function generate_specialization_phase1(out context:tspecializationcontext;genericdef:tdef):tdef;inline;
+    function generate_specialization_phase1(out context:tspecializationcontext;genericdef:tdef;symname:string):tdef;inline;
     function generate_specialization_phase1(out context:tspecializationcontext;genericdef:tdef;parsedtype:tdef;symname:string;parsedpos:tfileposinfo):tdef;
     function generate_specialization_phase2(context:tspecializationcontext;genericdef:tstoreddef;parse_class_parent:boolean;_prettyname:ansistring):tdef;
     function check_generic_constraints(genericdef:tstoreddef;paradeflist:tfpobjectlist;poslist:tfplist):boolean;
@@ -345,30 +346,37 @@ uses
                     parampos^:=tmpparampos;
                     poslist.add(parampos);
                   end;
-                genericdeflist.Add(typeparam.resultdef);
-                if not assigned(typeparam.resultdef.typesym) then
-                  message(type_e_generics_cannot_reference_itself)
+                if typeparam.resultdef.typ<>errordef then
+                  begin
+                    if not assigned(typeparam.resultdef.typesym) then
+                      message(type_e_generics_cannot_reference_itself)
+                    else if (typeparam.resultdef.typ<>errordef) then
+                      begin
+                        genericdeflist.Add(typeparam.resultdef);
+                        { we use the full name of the type to uniquely identify it }
+                        if (symtablestack.top.symtabletype=parasymtable) and
+                            (symtablestack.top.defowner.typ=procdef) and
+                            (typeparam.resultdef.owner=symtablestack.top) then
+                          begin
+                            { special handling for specializations inside generic function declarations }
+                            namepart:=tdef(symtablestack.top.defowner).unique_id_str;
+                            namepart:='genproc'+namepart+'_'+tdef(symtablestack.top.defowner).fullownerhierarchyname+'_'+tprocdef(symtablestack.top.defowner).procsym.realname+'_'+typeparam.resultdef.typename;
+                            prettynamepart:=tdef(symtablestack.top.defowner).fullownerhierarchyname+tprocdef(symtablestack.top.defowner).procsym.prettyname;
+                          end
+                        else
+                          begin
+                            namepart:=typeparam.resultdef.fulltypename;
+                            prettynamepart:=typeparam.resultdef.fullownerhierarchyname;
+                          end;
+                        specializename:=specializename+'$'+namepart;
+                        if not first then
+                          prettyname:=prettyname+',';
+                        prettyname:=prettyname+prettynamepart+typeparam.resultdef.typesym.prettyname;
+                      end;
+                  end
                 else
                   begin
-                    { we use the full name of the type to uniquely identify it }
-                    if (symtablestack.top.symtabletype=parasymtable) and
-                        (symtablestack.top.defowner.typ=procdef) and
-                        (typeparam.resultdef.owner=symtablestack.top) then
-                      begin
-                        { special handling for specializations inside generic function declarations }
-                        namepart:=tdef(symtablestack.top.defowner).unique_id_str;
-                        namepart:='genproc'+namepart+'_'+tdef(symtablestack.top.defowner).fullownerhierarchyname+'_'+tprocdef(symtablestack.top.defowner).procsym.realname+'_'+typeparam.resultdef.typename;
-                        prettynamepart:=tdef(symtablestack.top.defowner).fullownerhierarchyname+tprocdef(symtablestack.top.defowner).procsym.prettyname;
-                      end
-                    else
-                      begin
-                        namepart:=typeparam.resultdef.fulltypename;
-                        prettynamepart:=typeparam.resultdef.fullownerhierarchyname;
-                      end;
-                    specializename:=specializename+'$'+namepart;
-                    if not first then
-                      prettyname:=prettyname+',';
-                    prettyname:=prettyname+prettynamepart+typeparam.resultdef.typesym.prettyname;
+                    result:=false;
                   end;
               end
             else
@@ -408,6 +416,17 @@ uses
 {$warn 5036 off}
       begin
         result:=generate_specialization_phase1(context,genericdef,nil,'',dummypos);
+      end;
+{$pop}
+
+
+    function generate_specialization_phase1(out context:tspecializationcontext;genericdef:tdef;symname:string):tdef;
+      var
+        dummypos : tfileposinfo;
+{$push}
+{$warn 5036 off}
+      begin
+        result:=generate_specialization_phase1(context,genericdef,nil,symname,dummypos);
       end;
 {$pop}
 
@@ -702,6 +721,7 @@ uses
         i,
         replaydepth : longint;
         item : tobject;
+        allequal,
         hintsprocessed : boolean;
         pd : tprocdef;
         pdflags : tpdflags;
@@ -765,7 +785,11 @@ uses
                   result:=def;
                   break;
                 end;
-              def:=tstoreddef(def.owner.defowner);
+              if assigned(def.owner) then
+                def:=tstoreddef(def.owner.defowner)
+              else
+                { this can happen when specializing a generic function }
+                def:=nil;
             until not assigned(def) or not (df_specialization in def.defoptions);
           end;
 
@@ -778,10 +802,33 @@ uses
             def:=current_genericdef;
             while assigned(def) and (def.typ in [recorddef,objectdef]) do
               begin
-                if def=genericdef then
+                if (df_generic in def.defoptions) and (def=genericdef) then
                   begin
                     result:=def;
                     break;
+                  end;
+                { the following happens when a routine with its parent struct
+                  as parameter is specialized as a parameter or result of a
+                  generic function }
+                if (df_specialization in def.defoptions) and (tstoreddef(def).genericdef=genericdef) then
+                  begin
+                    if tstoreddef(def).genericparas.count=generictypelist.count then
+                      begin
+                        allequal:=true;
+                        for i:=0 to generictypelist.count-1 do
+                          begin
+                            if not equal_defs(ttypesym(generictypelist[i]).typedef,ttypesym(tstoreddef(def).genericparas[i]).typedef) then
+                              begin
+                                allequal:=false;
+                                break;
+                              end;
+                          end;
+                        if allequal then
+                          begin
+                            result:=def;
+                            break;
+                          end;
+                      end;
                   end;
                 def:=tstoreddef(def.owner.defowner);
               end;
@@ -880,7 +927,6 @@ uses
 
                 { First a new sym so we can reuse this specialization and
                   references to this specialization can be handled }
-                srsym:=ctypesym.create(finalspecializename,generrordef,true);
                 if genericdef.typ=procdef then
                   srsym:=cprocsym.create(finalspecializename)
                 else

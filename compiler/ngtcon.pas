@@ -511,7 +511,7 @@ function get_next_varsym(def: tabstractrecorddef; const SymList:TFPHashObjectLis
               begin
                 current_asmdata.ResStrInits.Concat(
                   TTCInitItem.Create(tcsym,curoffset,
-                  current_asmdata.RefAsmSymbol(make_mangledname('RESSTR',hsym.owner,hsym.name),AT_DATA))
+                  current_asmdata.RefAsmSymbol(make_mangledname('RESSTR',hsym.owner,hsym.name),AT_DATA),charpointertype)
                 );
                 Include(tcsym.varoptions,vo_force_finalize);
               end;
@@ -583,7 +583,7 @@ function get_next_varsym(def: tabstractrecorddef; const SymList:TFPHashObjectLis
                            if ll.ofs<>0 then
                              internalerror(2012051704);
                            current_asmdata.WideInits.Concat(
-                              TTCInitItem.Create(tcsym,curoffset,ll.lab)
+                              TTCInitItem.Create(tcsym,curoffset,ll.lab,widecharpointertype)
                            );
                            ll.lab:=nil;
                            ll.ofs:=0;
@@ -992,6 +992,7 @@ function get_next_varsym(def: tabstractrecorddef; const SymList:TFPHashObjectLis
          Psetbytes = ^setbytes;
       var
         i: longint;
+        setval: cardinal;
       begin
         if node.nodetype=setconstn then
           begin
@@ -1007,17 +1008,55 @@ function get_next_varsym(def: tabstractrecorddef; const SymList:TFPHashObjectLis
                 ftcb.maybe_begin_aggregate(def);
                 tsetconstnode(node).adjustforsetbase;
                 { this writing is endian-dependant   }
-                if source_info.endian = target_info.endian then
+                if not is_smallset(def) then
                   begin
-                    for i:=0 to node.resultdef.size-1 do
-                      ftcb.emit_tai(tai_const.create_8bit(Psetbytes(tsetconstnode(node).value_set)^[i]),u8inttype);
+                    if source_info.endian=target_info.endian then
+                      begin
+                        for i:=0 to node.resultdef.size-1 do
+                          ftcb.emit_tai(tai_const.create_8bit(Psetbytes(tsetconstnode(node).value_set)^[i]),u8inttype);
+                      end
+                    else
+                      begin
+                        for i:=0 to node.resultdef.size-1 do
+                          ftcb.emit_tai(tai_const.create_8bit(reverse_byte(Psetbytes(tsetconstnode(node).value_set)^[i])),u8inttype);
+                      end;
                   end
                 else
                   begin
-                    for i:=0 to node.resultdef.size-1 do
-                      ftcb.emit_tai(tai_const.create_8bit(reverse_byte(Psetbytes(tsetconstnode(node).value_set)^[i])),u8inttype);
+                    { emit the set as a single constant (would be nicer if we
+                      could automatically merge the bytes inside the
+                      typed const builder, but it's not easy :/ ) }
+                    setval:=0;
+                    if source_info.endian=target_info.endian then
+                      begin
+                        for i:=0 to node.resultdef.size-1 do
+                          setval:=setval or (Psetbytes(tsetconstnode(node).value_set)^[i] shl (i*8));
+                      end
+                    else
+                      begin
+                        for i:=0 to node.resultdef.size-1 do
+                          setval:=setval or (reverse_byte(Psetbytes(tsetconstnode(node).value_set)^[i]) shl (i*8));
+                      end;
+                    case def.size of
+                      1:
+                        ftcb.emit_tai(tai_const.create_8bit(setval),def);
+                      2:
+                        begin
+                          if target_info.endian=endian_big then
+                            setval:=swapendian(word(setval));
+                          ftcb.emit_tai(tai_const.create_16bit(setval),def);
+                        end;
+                      4:
+                        begin
+                          if target_info.endian=endian_big then
+                            setval:=swapendian(cardinal(setval));
+                          ftcb.emit_tai(tai_const.create_32bit(setval),def);
+                        end;
+                      else
+                        internalerror(2015112207);
+                    end;
                   end;
-                  ftcb.maybe_end_aggregate(def);
+                ftcb.maybe_end_aggregate(def);
               end;
           end
         else

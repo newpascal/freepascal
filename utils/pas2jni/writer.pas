@@ -1437,7 +1437,7 @@ begin
   Fjs.IncI;
   Fjs.WriteLn(Format('{ mSignature = "%s"; }', [GetProcSignature(d)]));
   Fjs.WriteLn(Format('protected %s(long objptr, boolean cleanup) { _pasobj=objptr; }', [d.Name]));
-  Fjs.WriteLn(Format('public %s(Object Obj, String MethodName) { mObject=Obj; mName=MethodName; }', [d.Name]));
+  Fjs.WriteLn(Format('@Deprecated public %s(Object Obj, String MethodName) { mObject=Obj; mName=MethodName; }', [d.Name]));
   Fjs.WriteLn(Format('public %s() { mObject=this; mName="Execute"; }', [d.Name]));
   Fjs.WriteLn(Format('protected %s throws NoSuchMethodException { throw new NoSuchMethodException(); }', [GetJavaProcDeclaration(d, 'Execute')]));
   Fjs.DecI;

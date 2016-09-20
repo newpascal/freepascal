@@ -346,6 +346,7 @@ endif
 FPMAKE_BIN_CLEAN=$(wildcard ./fpmake$(SRCEXEEXT))
 LOCALFPMAKE=./fpmake$(SRCEXEEXT)
 override NOCPUDEF=1
+GDBMI_DEFAULT_OS_LIST=aix darwin freebsd haiku linux netbsd openbsd solaris win32 win64
 override INSTALL_FPCPACKAGE=y
 override INSTALL_FPCSUBDIR=ide
 ifdef REQUIRE_UNITSDIR
@@ -2286,15 +2287,26 @@ FPMAKE_OPT+=$(FPC_TARGETOPT)
 FPMAKE_OPT+=$(addprefix -o ,$(FPCOPT))
 FPMAKE_OPT+=--compiler=$(FPC)
 FPMAKE_OPT+=-bu
+ifdef NOGDB
+FPMAKE_OPT+=--NoGDB=1
+else
+ifndef NOGDBMI
+ifneq ($(findstring $(OS_TARGET),$(GDBMI_DEFAULT_OS_LIST)),)
+GDBMI=1
+endif
+endif # NOGDBMI
+ifdef GDBMI
+FPMAKE_OPT+=--GDBMI=1
+ifeq ($(findstring $(OS_TARGET),aix beos darwin haiku solaris),)
+GDBMI_IS_STATIC=1
+endif
+endif
+endif # NOGDB
+ifndef GDBMI_IS_STATIC
 ifndef BUILDFULLNATIVE
 FPMAKE_OPT+=-sp
 endif
-ifdef NOGDB
-FPMAKE_OPT+=--NoGDB=1
-endif
-ifdef GDBMI
-FPMAKE_OPT+=--GDBMI=1
-endif
+endif # GDBMI_IS_STATIC
 ifdef PPC_TARGET
 FPMAKE_OPT+=--CompilerTarget=$(PPC_TARGET)
 endif

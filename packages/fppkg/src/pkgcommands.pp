@@ -16,6 +16,7 @@ uses
   pkgoptions,
   pkgdownload,
   pkgrepos,
+  pkgFppkg,
   fpxmlrep,
   fprepos;
 
@@ -145,7 +146,7 @@ var
 begin
   if PackageName='' then
     Error(SErrNoPackageSpecified);
-  P:=AvailableRepository.PackageByName(PackageName);
+  P:=GFPpkg.PackageByName(PackageName, pkgpkAvailable);
 
   log(llProgres,SLogPackageInfoName,[P.Name]);
   S := P.Email;
@@ -182,7 +183,6 @@ end;
 procedure TCommandUnInstall.Execute;
 var
   AvailP: TFPPackage;
-  APackage: TFPPackage;
 begin
   if PackageName<>'' then
     begin
@@ -192,22 +192,11 @@ begin
         end
       else if (PackageName<>CurrentDirPackageName) then
         begin
-          AvailP:=AvailableRepository.FindPackage(PackageName);
-          if not assigned(AvailP) then
+          AvailP:=GFPpkg.FindPackage(PackageName, pkgpkAvailable);
+          if Assigned(AvailP) then
             begin
-              APackage := InstalledRepository.FindPackage(PackageName);
-              if assigned(APackage) and (APackage.SourcePath<>'') then
-                begin
-                  AvailP := AvailableRepository.AddPackage(PackageName);
-                  AvailP.Assign(APackage);
-                  // The package won't be recompiled, but should be handled as such.
-                  AvailP.RecompileBroken:=true;
-                end
-              else
-                begin
-                  // The package is not available locally, download and unzip it.
-                  ExecuteAction(PackageName,'unzip');
-                end;
+              if AvailP.PackagesStructure.UnzipBeforeUse then
+                ExecuteAction(PackageName,'unzip');
             end;
         end;
     end;
@@ -218,9 +207,9 @@ end;
 
 procedure TCommandListSettings.Execute;
 begin
-  GlobalOptions.LogValues(llProgres);
-  CompilerOptions.LogValues(llProgres,'');
-  FPMakeCompilerOptions.LogValues(llProgres,'fpmake-building ');
+  GFPpkg.Options.LogValues(llProgres);
+  GFPpkg.CompilerOptions.LogValues(llProgres,'');
+  GFPpkg.FPMakeCompilerOptions.LogValues(llProgres,'fpmake-building ');
 end;
 
 
@@ -240,27 +229,27 @@ var
 begin
   // Download and load mirrors.xml
   // This can be skipped when a custom RemoteRepository is configured
-  if (GlobalOptions.GlobalSection.RemoteMirrorsURL<>'') and
-     (GlobalOptions.GlobalSection.RemoteRepository='auto') then
+  if (GFPpkg.Options.GlobalSection.RemoteMirrorsURL<>'') and
+     (GFPpkg.Options.GlobalSection.RemoteRepository='auto') then
     begin
-      Log(llCommands,SLogDownloading,[GlobalOptions.GlobalSection.RemoteMirrorsURL,GlobalOptions.GlobalSection.LocalMirrorsFile]);
-      DownloadFile(GlobalOptions.GlobalSection.RemoteMirrorsURL,GlobalOptions.GlobalSection.LocalMirrorsFile);
+      Log(llCommands,SLogDownloading,[GFPpkg.Options.GlobalSection.RemoteMirrorsURL,GFPpkg.Options.GlobalSection.LocalMirrorsFile]);
+      DownloadFile(GFPpkg.Options.GlobalSection.RemoteMirrorsURL,GFPpkg.Options.GlobalSection.LocalMirrorsFile);
       LoadLocalAvailableMirrors;
     end;
   // Download packages.xml
   PackagesURL:=GetRemoteRepositoryURL(PackagesFileName);
-  Log(llCommands,SLogDownloading,[PackagesURL,GlobalOptions.GlobalSection.LocalPackagesFile]);
-  DownloadFile(PackagesURL,GlobalOptions.GlobalSection.LocalPackagesFile);
+  Log(llCommands,SLogDownloading,[PackagesURL,GFPpkg.Options.GlobalSection.LocalPackagesFile]);
+  DownloadFile(PackagesURL,GFPpkg.Options.GlobalSection.LocalPackagesFile);
   // Read the repository again
-  LoadLocalAvailableRepository;
+  GFPpkg.ScanAvailablePackages;
   // no need to log errors again
-  FindInstalledPackages(CompilerOptions,False);
+  FindInstalledPackages(GFPpkg.CompilerOptions,False);
 end;
 
 
 procedure TCommandListPackages.Execute;
 begin
-  ListPackages(GlobalOptions.CommandLineSection.ShowLocation);
+  ListPackages(GFPpkg.Options.CommandLineSection.ShowLocation);
 end;
 
 
@@ -277,7 +266,7 @@ var
 begin
   if PackageName='' then
     Error(SErrNoPackageSpecified);
-  P:=AvailableRepository.PackageByName(PackageName);
+  P:=GFPpkg.PackageByName(PackageName, pkgpkAvailable);
   if not FileExists(PackageLocalArchive(P)) then
     ExecuteAction(PackageName,'downloadpackage');
 end;
@@ -291,7 +280,7 @@ Var
 begin
   if PackageName='' then
     Error(SErrNoPackageSpecified);
-  P:=AvailableRepository.PackageByName(PackageName);
+  P:=GFPpkg.PackageByName(PackageName, pkgpkAvailable);
   BuildDir:=PackageBuildPath(P);
   ArchiveFile:=PackageLocalArchive(P);
   if not FileExists(ArchiveFile) then
@@ -359,13 +348,13 @@ begin
           end
       else
         begin
+          P:=GFPpkg.FindPackage(PackageName, pkgpkAvailable);
+          if Assigned(P) then
+            begin
+              if P.PackagesStructure.UnzipBeforeUse then
+                ExecuteAction(PackageName,'unzip');
+            end;
           ExecuteAction(PackageName,'installdependencies');
-          // Check if the package is not installed but being recompiled because of changed
-          // dependencies while the original source is still available.
-          P := AvailableRepository.FindPackage(PackageName);
-          if not (assigned(P) and P.RecompileBroken and (P.SourcePath<>'')) then
-            // The package is not available locally, download and unzip it.
-            ExecuteAction(PackageName,'unzip');
         end;
     end;
   ExecuteAction(PackageName,'fpmakebuild');
@@ -377,57 +366,29 @@ procedure TCommandInstall.Execute;
 var
   S : String;
   P   : TFPPackage;
-
-  function GetUnitConfigFilename: string;
-  begin
-    if P.RecompileBroken then
-      begin
-        // If the package is recompiled, the installation-location is dependent on where
-        // the package was installed originally.
-        if P.InstalledLocally then
-          Result:=CompilerOptions.LocalUnitDir
-        else
-          Result:=CompilerOptions.GlobalUnitDir;
-        // Setting RecompileBroken to false is in a strict sense not needed. But it is better
-        // to clean this temporary flag, to avoid problems with changes in the future
-        P.RecompileBroken := false;
-        AvailableRepository.FindPackage(P.Name).RecompileBroken:=false;
-      end
-    else
-      begin
-        if (IsSuperUser or GlobalOptions.CommandLineSection.InstallGlobal) then
-          Result:=CompilerOptions.GlobalUnitDir
-        else
-          Result:=CompilerOptions.LocalUnitDir;
-      end;
-    Result:=IncludeTrailingPathDelimiter(Result)+S+PathDelim+UnitConfigFileName;
-  end;
+  InstallRepo: TFPRepository;
 
   function GetFpmFilename: string;
+  var
+    ConfFile: string;
   begin
-    if P.RecompileBroken then
+    Result := '';
+    if Assigned(InstallRepo.DefaultPackagesStructure) then
       begin
-        // If the package is recompiled, the installation-location is dependent on where
-        // the package was installed originally.
-        if P.InstalledLocally then
-          Result:=CompilerOptions.LocalInstallDir
+        Result := InstallRepo.DefaultPackagesStructure.GetBaseInstallDir;
+        ConfFile := IncludeTrailingPathDelimiter(Result)+'fpmkinst'+PathDelim+GFPpkg.CompilerOptions.CompilerTarget+PathDelim+s+FpmkExt;
+        if not FileExistsLog(ConfFile) then
+          begin
+            // If there is no fpm-file, search for an (obsolete, pre-2.7.x)
+            // fpunits.cfg-file
+            ConfFile := IncludeTrailingPathDelimiter(Result)+S+PathDelim+UnitConfigFileName;
+            if FileExistsLog(ConfFile) then
+              Result := ConfFile;
+          end
         else
-          Result:=CompilerOptions.GlobalInstallDir;
-        // Setting RecompileBroken to false is in a strict sense not needed. But it is better
-        // to clean this temporary flag, to avoid problems with changes in the future
-        P.RecompileBroken := false;
-        AvailableRepository.FindPackage(P.Name).RecompileBroken:=false;
-      end
-    else
-      begin
-        if (IsSuperUser or GlobalOptions.CommandLineSection.InstallGlobal) then
-          Result:=CompilerOptions.GlobalInstallDir
-        else
-          Result:=CompilerOptions.LocalInstallDir;
+          Result := ConfFile;
       end;
-    Result:=IncludeTrailingPathDelimiter(Result)+'fpmkinst'+PathDelim+CompilerOptions.CompilerTarget+PathDelim+s+FpmkExt;
   end;
-
 
 var
   UFN : String;
@@ -448,19 +409,24 @@ begin
         end
       else
         S:=PackageName;
-      P:=InstalledRepository.FindPackage(S);
-      if not assigned(P) then
-        P:=InstalledRepository.AddPackage(S);
 
-      UFN:=GetFpmFilename;
-      // If there is no fpm-file, search for an (obsolete, pre-2.7.x)
-      // fpunits.cfg-file
-      if not FileExists(ufn) then
-        UFN:=GetUnitConfigFilename;
-
-      P.LoadUnitConfigFromFile(UFN);
-      if P.IsFPMakeAddIn then
-        AddFPMakeAddIn(P);
+      InstallRepo := GFPpkg.RepositoryByName(GFPpkg.Options.CommandLineSection.InstallRepository);
+      if Assigned(InstallRepo) then
+        begin
+          P := InstallRepo.PackageByName(S);
+          if not Assigned(P) then
+            P := InstallRepo.AddPackage(S);
+          if Assigned(P) then
+            begin
+              UFN:=GetFpmFilename;
+              if UFN<>'' then
+                begin
+                  P.LoadUnitConfigFromFile(UFN);
+                  if P.IsFPMakeAddIn then
+                    AddFPMakeAddIn(P);
+                end;
+            end;
+        end;
     end
   else
     ExecuteAction(PackageName,'fpmakeinstall');
@@ -480,6 +446,15 @@ end;
 
 
 procedure TCommandInstallDependencies.Execute;
+
+  function PackageVersionStr(APackage: TFPPackage): string;
+  begin
+    if Assigned(APackage) then
+      Result := APackage.Version.AsString
+    else
+      Result := 'N/A';
+  end;
+
 var
   i : Integer;
   MissingDependency,
@@ -520,7 +495,7 @@ begin
         end;
     end
   else
-    P:=AvailableRepository.PackageByName(PackageName);
+    P:=GFPpkg.PackageByName(PackageName, pkgpkBoth);
 
   MissingDependency:=nil;
   while assigned(P) do
@@ -530,17 +505,18 @@ begin
       for i:=0 to P.Dependencies.Count-1 do
         begin
           D:=P.Dependencies[i];
-          if not ((CompilerOptions.CompilerOS in D.OSes) and (CompilerOptions.CompilerCPU in D.CPUs)) then
-            Log(llDebug,SDbgPackageDependencyOtherTarget,[D.PackageName,MakeTargetString(CompilerOptions.CompilerCPU,CompilerOptions.CompilerOS)])
+          if not ((GFPpkg.CompilerOptions.CompilerOS in D.OSes) and (GFPpkg.CompilerOptions.CompilerCPU in D.CPUs)) then
+            Log(llDebug,SDbgPackageDependencyOtherTarget,[D.PackageName,MakeTargetString(GFPpkg.CompilerOptions.CompilerCPU,GFPpkg.CompilerOptions.CompilerOS)])
           // Skip dependencies that are available within the fpmake-file itself
           else if not (assigned(ManifestPackages) and assigned(ManifestPackages.FindPackage(D.PackageName))) then
             begin
-              InstalledP:=InstalledRepository.FindPackage(D.PackageName);
+              AvailP := nil;
+              InstalledP:=GFPpkg.FindPackage(D.PackageName, pkgpkInstalled);
               // Need installation?
               if not assigned(InstalledP) or
                  (InstalledP.Version.CompareVersion(D.MinVersion)<0) then
                 begin
-                  AvailP:=AvailableRepository.FindPackage(D.PackageName);
+                  AvailP:=GFPpkg.FindPackage(D.PackageName, pkgpkAvailable);
                   if not assigned(AvailP) or
                      (AvailP.Version.CompareVersion(D.MinVersion)<0) then
                     begin
@@ -564,8 +540,8 @@ begin
                     status:='OK';
                 end;
               Log(llInfo,SLogPackageDependency,
-                  [D.PackageName,D.MinVersion.AsString,PackageInstalledVersionStr(D.PackageName),
-                   PackageAvailableVersionStr(D.PackageName),status])
+                  [D.PackageName,D.MinVersion.AsString,PackageVersionStr(InstalledP),
+                   PackageVersionStr(AvailP),status])
             end
         end;
       if assigned(ManifestPackages) and (PackNr<ManifestPackages.Count-1)  then

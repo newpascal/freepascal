@@ -847,7 +847,8 @@ begin
   while not eof(t) do
    begin
      readln(t,s);
-     if pos('Fatal: Internal error ',s)>0 then
+     if (pos('Fatal: Internal error ',s)>0) or
+        (pos('Error: Compilation raised exception internally',s)>0) then
       begin
         ExitWithInternalError:=true;
         break;

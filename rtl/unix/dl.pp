@@ -31,9 +31,10 @@ const
   {$define ELF} // ELF symbol versioning.
 {$endif}
 
-{$if defined(linux) and defined(cpuarm)}
-{ arm-linux seems to require this }
-{$linklib c}
+{$if defined(linux)}
+    { if libc is not linked explicitly, FPC might chose the wrong startup code, as
+      libdl depends on libc on linux, this does not hurt }
+    {$linklib c}
 {$endif}
 
 {$ifdef aix}
