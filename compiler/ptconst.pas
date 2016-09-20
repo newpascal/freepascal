@@ -50,7 +50,6 @@ implementation
         datalist     : tasmlist;
         restree,
         previnit     : tnode;
-        symind       : tasmsymbol;
       begin
         { mark the staticvarsym as typedconst }
         include(sym.varoptions,vo_is_typed_const);
@@ -93,7 +92,7 @@ implementation
            (
             (
              (token = _ID) and
-             (idtoken in [_EXPORT,_EXTERNAL,_WEAKEXTERNAL,_PUBLIC,_CVAR]) and
+             ((idtoken in [_EXPORT,_EXTERNAL,_PUBLIC,_CVAR]) or (idtoken = _WEAKEXTERNAL)) and
              (m_cvar_support in current_settings.modeswitches)
             ) or
             (

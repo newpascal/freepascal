@@ -18,6 +18,7 @@ uses
   // Package Handler components
   pkghandler,pkgmkconv, pkgdownload,
   pkgfpmake, pkgcommands,
+  pkgPackagesStructure,
   fpmkunit
   // Downloaders
 {$if (defined(unix) and not defined(android)) or defined(windows)}
@@ -73,15 +74,15 @@ begin
     cfgfile:=GetOptionValue('C','config-file')
   else
     cfgfile:='';
-  pkgoptions.LoadGlobalDefaults(cfgfile);
+  GFPpkg.InitializeGlobalOptions(CfgFile);
 end;
 
 
 procedure TMakeTool.MaybeCreateLocalDirs;
 begin
-  ForceDirectories(GlobalOptions.GlobalSection.BuildDir);
-  ForceDirectories(GlobalOptions.GlobalSection.ArchivesDir);
-  ForceDirectories(GlobalOptions.GlobalSection.CompilerConfigDir);
+  ForceDirectories(GFPpkg.Options.GlobalSection.BuildDir);
+  ForceDirectories(GFPpkg.Options.GlobalSection.ArchivesDir);
+  ForceDirectories(GFPpkg.Options.GlobalSection.CompilerConfigDir);
 end;
 
 
@@ -94,15 +95,15 @@ begin
   Writeln('  -h --help          This help');
   Writeln('  -v --verbose       Show more information');
   Writeln('  -d --debug         Show debugging information');
-  Writeln('  -g --global        Force installation to global (system-wide) directory');
   Writeln('  -f --force         Force installation also if the package is already installed');
   Writeln('  -r --recovery      Recovery mode, use always internal fpmkunit');
   Writeln('  -b --broken        Do not stop on broken packages');
-  Writeln('  -l --showlocation  Show if the packages are installed globally or locally');
+  Writeln('  -l --showlocation  Show in which repository the the packages are installed');
   Writeln('  -o --options=value Pass extra options to the compiler');
   Writeln('  -n                 Do not read the default configuration files');
   Writeln('  -p --prefix=value  Specify the prefix');
   Writeln('  -s --skipbroken    Skip the rebuild of depending packages after installation');
+  Writeln('  -i --installlocation Specify the repository to install packages into');
   Writeln('  --compiler=value   Specify the compiler-executable');
   Writeln('  --cpu=value        Specify the target cpu to compile for');
   Writeln('  --os=value         Specify the target operating system to compile for');
@@ -210,45 +211,45 @@ begin
           OptionArg(I);
         end
       else if CheckOption(I,'c','config') then
-        GlobalOptions.CommandLineSection.CompilerConfig:=OptionArg(I)
+        GFPpkg.Options.CommandLineSection.CompilerConfig:=OptionArg(I)
       else if CheckOption(I,'v','verbose') then
         LogLevels:=AllLogLevels
       else if CheckOption(I,'d','debug') then
         LogLevels:=AllLogLevels+[llDebug]
-      else if CheckOption(I,'g','global') then
-        GlobalOptions.CommandLineSection.InstallGlobal:=true
+      else if CheckOption(I,'i','installrepository') then
+        GFPpkg.Options.CommandLineSection.InstallRepository:=OptionArg(I)
       else if CheckOption(I,'r','recovery') then
-        GlobalOptions.CommandLineSection.RecoveryMode:=true
+        GFPpkg.Options.CommandLineSection.RecoveryMode:=true
       else if CheckOption(I,'n','') then
-        GlobalOptions.CommandLineSection.SkipConfigurationFiles:=true
+        GFPpkg.Options.CommandLineSection.SkipConfigurationFiles:=true
       else if CheckOption(I,'b','broken') then
-        GlobalOptions.CommandLineSection.AllowBroken:=true
+        GFPpkg.Options.CommandLineSection.AllowBroken:=true
       else if CheckOption(I,'l','showlocation') then
-        GlobalOptions.CommandLineSection.ShowLocation:=true
+        GFPpkg.Options.CommandLineSection.ShowLocation:=true
       else if CheckOption(I,'s','skipbroken') then
-        GlobalOptions.CommandLineSection.SkipFixBrokenAfterInstall:=true
+        GFPpkg.Options.CommandLineSection.SkipFixBrokenAfterInstall:=true
       else if CheckOption(I,'o','options') and FirstPass then
         begin
           OptString := OptionArg(I);
           while OptString <> '' do
-            CompilerOptions.Options.Add(SplitSpaces(OptString));
+            GFPpkg.CompilerOptions.Options.Add(SplitSpaces(OptString));
         end
       else if CheckOption(I,'p','prefix') then
         begin
-          CompilerOptions.GlobalPrefix := OptionArg(I);
-          CompilerOptions.LocalPrefix := OptionArg(I);
-          FPMakeCompilerOptions.GlobalPrefix := OptionArg(I);
-          FPMakeCompilerOptions.LocalPrefix := OptionArg(I);
+          GFPpkg.CompilerOptions.GlobalPrefix := OptionArg(I);
+          GFPpkg.CompilerOptions.LocalPrefix := OptionArg(I);
+          GFPpkg.FPMakeCompilerOptions.GlobalPrefix := OptionArg(I);
+          GFPpkg.FPMakeCompilerOptions.LocalPrefix := OptionArg(I);
         end
       else if CheckOption(I,'','compiler') then
         begin
-          CompilerOptions.Compiler := OptionArg(I);
-          FPMakeCompilerOptions.Compiler := OptionArg(I);
+          GFPpkg.CompilerOptions.Compiler := OptionArg(I);
+          GFPpkg.FPMakeCompilerOptions.Compiler := OptionArg(I);
         end
       else if CheckOption(I,'','os') then
-        CompilerOptions.CompilerOS := StringToOS(OptionArg(I))
+        GFPpkg.CompilerOptions.CompilerOS := StringToOS(OptionArg(I))
       else if CheckOption(I,'','cpu') then
-        CompilerOptions.CompilerCPU := StringToCPU(OptionArg(I))
+        GFPpkg.CompilerOptions.CompilerCPU := StringToCPU(OptionArg(I))
       else if CheckOption(I,'h','help') then
         begin
           ShowUsage;
@@ -281,13 +282,15 @@ end;
 
 procedure TMakeTool.DoRun;
 var
-  ActionPackage : TFPPackage;
   OldCurrDir : String;
   i      : Integer;
   SL     : TStringList;
+  Repo: TFPRepository;
+  InstPackages: TFPCurrentDirectoryPackagesStructure;
 begin
   OldCurrDir:=GetCurrentDir;
   Try
+    InitializeFppkg;
     LoadGlobalDefaults;
     ProcessCommandLine(true);
 
@@ -295,22 +298,21 @@ begin
     for i := 0 to FPMKUnitDepDefaultCount-1 do
       FPMKUnitDeps[i]:=FPMKUnitDepsDefaults[i];
 
-    // Scan is special, it doesn't need a valid local setup
-    if (ParaAction='scan') then
-      begin
-        RebuildRemoteRepository;
-        ListRemoteRepository;
-        SaveRemoteRepository;
-        halt(0);
-      end;
-
     MaybeCreateLocalDirs;
-    if not GlobalOptions.CommandLineSection.SkipConfigurationFiles then
-      LoadCompilerDefaults
+    if not GFPpkg.Options.CommandLineSection.SkipConfigurationFiles then
+      begin
+        GFPpkg.InitializeCompilerOptions;
+        if GFPpkg.Options.GlobalSection.ConfigVersion = 4 then
+          begin
+            // This version did not have any repository configured, but used a
+            // 'local' and 'global' compiler-setting.
+            GFPpkg.Options.AddRepositoriesForCompilerSettings(GFPpkg.CompilerOptions);
+          end;
+      end
     else
       begin
-        FPMakeCompilerOptions.InitCompilerDefaults;
-        CompilerOptions.InitCompilerDefaults;
+        GFPpkg.FPMakeCompilerOptions.InitCompilerDefaults;
+        GFPpkg.CompilerOptions.InitCompilerDefaults;
       end;
 
     // The command-line is parsed for the second time, to make it possible
@@ -319,15 +321,15 @@ begin
 
     // If CompilerVersion, CompilerOS or CompilerCPU is still empty, use the
     // compiler-executable to get them
-    FPMakeCompilerOptions.CheckCompilerValues;
-    CompilerOptions.CheckCompilerValues;
+    GFPpkg.FPMakeCompilerOptions.CheckCompilerValues;
+    GFPpkg.CompilerOptions.CheckCompilerValues;
 
     LoadLocalAvailableMirrors;
 
     // Load local repository, update first if this is a new installation
     // errors will only be reported as warning. The user can be bootstrapping
     // and do an update later
-    if not FileExists(GlobalOptions.GlobalSection.LocalPackagesFile) then
+    if not FileExists(GFPpkg.Options.GlobalSection.LocalPackagesFile) then
       begin
         try
           pkghandler.ExecuteAction('','update');
@@ -336,20 +338,19 @@ begin
             pkgglobals.Log(llWarning,E.Message);
         end;
       end;
-    LoadLocalAvailableRepository;
-    FindInstalledPackages(FPMakeCompilerOptions,true);
+    FindInstalledPackages(GFPpkg.FPMakeCompilerOptions,true);
     CheckFPMakeDependencies;
     // We only need to reload the status when we use a different
     // configuration for compiling fpmake or when the CPU, OS or compiler
     // are set in the command-line
-    if (GlobalOptions.GlobalSection.CompilerConfig<>GlobalOptions.GlobalSection.FPMakeCompilerConfig) or
-       (CompilerOptions.CompilerCPU<>FPMakeCompilerOptions.CompilerCPU) or
-       (CompilerOptions.CompilerOS<>FPMakeCompilerOptions.CompilerOS) or
-       (CompilerOptions.Compiler<>FPMakeCompilerOptions.Compiler) then
-      FindInstalledPackages(CompilerOptions,true);
+    if (GFPpkg.Options.GlobalSection.CompilerConfig<>GFPpkg.Options.GlobalSection.FPMakeCompilerConfig) or
+       (GFPpkg.CompilerOptions.CompilerCPU<>GFPpkg.FPMakeCompilerOptions.CompilerCPU) or
+       (GFPpkg.CompilerOptions.CompilerOS<>GFPpkg.FPMakeCompilerOptions.CompilerOS) or
+       (GFPpkg.CompilerOptions.Compiler<>GFPpkg.FPMakeCompilerOptions.Compiler) then
+      FindInstalledPackages(GFPpkg.CompilerOptions,true);
 
     // Check for broken dependencies
-    if not GlobalOptions.CommandLineSection.AllowBroken and
+    if not GFPpkg.Options.CommandLineSection.AllowBroken and
        (((ParaAction='fixbroken') and (ParaPackages.Count>0)) or
         (ParaAction='compile') or
         (ParaAction='build') or
@@ -363,9 +364,25 @@ begin
         FreeAndNil(SL);
       end;
 
+    if (ParaAction='install') or (ParaAction='uninstall') or
+      (ParaAction='fixbroken') then
+      GFPpkg.ScanInstalledPackagesForAvailablePackages;
+
     if ParaPackages.Count=0 then
       begin
-        ActionPackage:=AvailableRepository.AddPackage(CurrentDirPackageName);
+        // Do not add the fake-repository with the contents of the current directory
+        // when a list of packages is shown. (The fake repository should not be shown)
+        if ParaAction<>'list' then
+          begin
+            Repo := TFPRepository.Create(GFPpkg);
+            GFPpkg.RepositoryList.Add(Repo);
+            Repo.RepositoryType := fprtAvailable;
+            Repo.RepositoryName := 'CurrentDirectory';
+            Repo.Description := 'Package in current directory';
+            InstPackages := TFPCurrentDirectoryPackagesStructure.Create(GFPpkg, '', GFPpkg.CompilerOptions);
+            InstPackages.AddPackagesToRepository(Repo);
+            Repo.DefaultPackagesStructure := InstPackages;
+          end;
         pkghandler.ExecuteAction(CurrentDirPackageName,ParaAction);
       end
     else
@@ -375,8 +392,6 @@ begin
           begin
             if sametext(ExtractFileExt(ParaPackages[i]),'.zip') and FileExists(ParaPackages[i]) then
               begin
-                ActionPackage:=AvailableRepository.AddPackage(CmdLinePackageName);
-                ActionPackage.LocalFileName:=ExpandFileName(ParaPackages[i]);
                 pkghandler.ExecuteAction(CmdLinePackageName,ParaAction);
               end
             else
@@ -388,7 +403,7 @@ begin
       end;
 
     // Recompile all packages dependent on this package
-    if (ParaAction='install') and not GlobalOptions.CommandLineSection.SkipFixBrokenAfterInstall then
+    if (ParaAction='install') and not GFPpkg.Options.CommandLineSection.SkipFixBrokenAfterInstall then
       pkghandler.ExecuteAction('','fixbroken');
 
     Terminate;

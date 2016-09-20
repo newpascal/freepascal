@@ -1409,6 +1409,7 @@ implementation
     function handle_specialize_inline_specialization(var srsym:tsym;out srsymtable:tsymtable;out spezcontext:tspecializationcontext):boolean;
       var
         spezdef : tdef;
+        symname : tsymstr;
       begin
         result:=false;
         spezcontext:=nil;
@@ -1424,7 +1425,11 @@ implementation
                 spezdef:=ttypesym(srsym).typedef
               else
                 spezdef:=tdef(tprocsym(srsym).procdeflist[0]);
-              spezdef:=generate_specialization_phase1(spezcontext,spezdef);
+              if (spezdef.typ=errordef) and (sp_generic_dummy in srsym.symoptions) then
+                symname:=srsym.RealName
+              else
+                symname:='';
+              spezdef:=generate_specialization_phase1(spezcontext,spezdef,symname);
               case spezdef.typ of
                 errordef:
                   begin
@@ -1456,10 +1461,13 @@ implementation
                     spezdef:=generate_specialization_phase2(spezcontext,tstoreddef(spezdef),false,'');
                     spezcontext.free;
                     spezcontext:=nil;
-                    srsym:=spezdef.typesym;
-                    srsymtable:=srsym.owner;
-                    check_hints(srsym,srsym.symoptions,srsym.deprecatedmsg);
-                    result:=true;
+                    if spezdef<>generrordef then
+                      begin
+                        srsym:=spezdef.typesym;
+                        srsymtable:=srsym.owner;
+                        check_hints(srsym,srsym.symoptions,srsym.deprecatedmsg);
+                        result:=true;
+                      end;
                   end;
                 else
                   internalerror(2015070302);
@@ -2837,8 +2845,16 @@ implementation
                                hdef:=generate_specialization_phase2(spezcontext,tstoreddef(hdef),false,'');
                                spezcontext.free;
                                spezcontext:=nil;
-                               srsym:=hdef.typesym;
-                               srsymtable:=srsym.owner;
+                               if hdef<>generrordef then
+                                 begin
+                                   srsym:=hdef.typesym;
+                                   srsymtable:=srsym.owner;
+                                 end
+                               else
+                                 begin
+                                   srsym:=generrorsym;
+                                   srsymtable:=nil;
+                                 end;
                              end
                            else
                              if hdef.typ=procdef then
@@ -2866,7 +2882,13 @@ implementation
                if assigned(srsym) and
                    not (
                      (srsym.typ=typesym) and
-                     (ttypesym(srsym).typedef.typ in [recorddef,objectdef,arraydef,procvardef,undefineddef]) and
+                     (
+                       (ttypesym(srsym).typedef.typ in [recorddef,objectdef,arraydef,procvardef,undefineddef]) or
+                       (
+                         (ttypesym(srsym).typedef.typ=errordef) and
+                         (sp_generic_dummy in srsym.symoptions)
+                       )
+                     ) and
                      not (sp_generic_para in srsym.symoptions) and
                      (token in [_LT, _LSHARPBRACKET])
                    ) then

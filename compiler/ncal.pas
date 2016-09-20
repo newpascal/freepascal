@@ -666,6 +666,18 @@ implementation
             is_managed_type(tarraydef(resultdef).elementdef)) and
            not(target_info.system in systems_garbage_collected_managed_types) then
           begin
+            { after converting a parameter to an open array, its resultdef is
+              set back to its original resultdef so we can get the value of the
+              "high" parameter correctly, even though we already inserted a
+              type conversion to "open array". Since here we work on this
+              converted parameter, set it back to the type to which it was
+              converted in order to avoid type mismatches at the LLVM level }
+            if is_open_array(parasym.vardef) and
+               is_dynamic_array(orgparadef) then
+              begin
+                left.resultdef:=resultdef;
+                orgparadef:=resultdef;
+              end;
             paraaddrtype:=cpointerdef.getreusable(orgparadef);
             { create temp with address of the parameter }
             temp:=ctempcreatenode.create(
@@ -1469,6 +1481,9 @@ implementation
  ****************************************************************************}
 
     constructor tcallnode.create(l:tnode;v : tprocsym;st : TSymtable; mp: tnode; callflags:tcallnodeflags;sc:tspecializationcontext);
+      var
+        srsym: tsym;
+        srsymtable: tsymtable;
       begin
          inherited create(calln,l,nil);
          spezcontext:=sc;
@@ -1483,14 +1498,21 @@ implementation
          paralength:=-1;
          varargsparas:=nil;
          if assigned(current_structdef) and
-            assigned(mp) then
+            assigned(mp) and
+            assigned(current_procinfo) then
            begin
             { only needed when calling a destructor from an exception block in a
               contructor of a TP-style object }
-            if is_object(current_structdef) and
-               (current_procinfo.procdef.proctypeoption=potype_constructor) and
+            if (current_procinfo.procdef.proctypeoption=potype_constructor) and
                (cnf_create_failed in callflags) then
-              call_vmt_node:=load_vmt_pointer_node;
+              if is_object(current_structdef) then
+                call_vmt_node:=load_vmt_pointer_node
+              else if is_class(current_structdef) then
+                begin
+                  if not searchsym(copy(internaltypeprefixName[itp_vmt_afterconstruction_local],2,255),srsym,srsymtable) then
+                    internalerror(2016090801);
+                  call_vmt_node:=cloadnode.create(srsym,srsymtable);
+                end;
            end;
       end;
 
@@ -1954,7 +1976,7 @@ implementation
             loadn:
               result:=(tabstractvarsym(tloadnode(hp).symtableentry).varregable in [vr_none,vr_addr]);
             temprefn:
-              result:=not(ti_may_be_in_reg in ttemprefnode(hp).tempinfo^.flags);
+              result:=not(ti_may_be_in_reg in ttemprefnode(hp).tempflags);
           end;
       end;
 
@@ -2798,7 +2820,8 @@ implementation
             { normal call to method like cl1.proc }
               begin
                 { destructor:
-                     if not called from exception block in constructor
+                     if not(called from exception block in constructor) or
+                        (called from afterconstruction)
                        call beforedestruction and release instance, vmt=1
                      else
                        don't call beforedestruction and release instance, vmt=-1
@@ -2808,7 +2831,10 @@ implementation
                     else
                       call afterconstruction, vmt=1 }
                 if (procdefinition.proctypeoption=potype_destructor) then
-                  if not(cnf_create_failed in callnodeflags) then
+                  if (cnf_create_failed in callnodeflags) and
+                     is_class(methodpointer.resultdef) then
+                    vmttree:=call_vmt_node.getcopy
+                  else if not(cnf_create_failed in callnodeflags) then
                     vmttree:=cpointerconstnode.create(1,voidpointertype)
                   else
                     vmttree:=cpointerconstnode.create(TConstPtrUInt(-1),voidpointertype)
@@ -2892,6 +2918,17 @@ implementation
       end;
 
 
+    function check_funcret_temp_used_as_para(var n: tnode; arg: pointer): foreachnoderesult;
+      var
+        tempinfo : ptempinfo absolute arg;
+      begin
+        result := fen_false;
+        if (n.nodetype=temprefn) and
+           (ttemprefnode(n).tempinfo = tempinfo) then
+          result := fen_norecurse_true;
+      end;
+
+
     function tcallnode.funcret_can_be_reused:boolean;
       var
         realassignmenttarget: tnode;
@@ -2943,10 +2980,10 @@ implementation
           substituted function result may not be in a register, as we cannot
           take its address in that case                                      }
         if (realassignmenttarget.nodetype=temprefn) and
-           not(ti_addr_taken in ttemprefnode(realassignmenttarget).tempinfo^.flags) and
-           not(ti_may_be_in_reg in ttemprefnode(realassignmenttarget).tempinfo^.flags) then
+           not(ti_addr_taken in ttemprefnode(realassignmenttarget).tempflags) and
+           not(ti_may_be_in_reg in ttemprefnode(realassignmenttarget).tempflags) then
           begin
-            result:=true;
+            result:=not foreachnodestatic(left,@check_funcret_temp_used_as_para,ttemprefnode(realassignmenttarget).tempinfo);
             exit;
           end;
 
@@ -3041,7 +3078,7 @@ implementation
                   to the result on the caller side will take care of decreasing
                   the reference count }
                 if paramanager.ret_in_param(resultdef,procdefinition) then
-                  include(temp.tempinfo^.flags,ti_nofini);
+                  temp.includetempflag(ti_nofini);
                 add_init_statement(temp);
                 { When the function result is not used in an inlined function
                   we need to delete the temp. This can currently only be done by
@@ -4496,7 +4533,7 @@ implementation
             addstatement(inlinecleanupstatement,ctempdeletenode.create(tempnode));
             { inherit addr_taken flag }
             if (tabstractvarsym(p).addr_taken) then
-              include(tempnode.tempinfo^.flags,ti_addr_taken);
+              tempnode.includetempflag(ti_addr_taken);
             inlinelocals[indexnr] := ctemprefnode.create(tempnode);
           end;
       end;
@@ -4578,17 +4615,9 @@ implementation
             exit(true);
 
           { Value parameters of which we know they are modified by definition
-            have to be copied to a temp; the same goes for cases of "x:=f(x)"
-            where x is passed as value parameter to f(), at least if we
-            optimized invocation by setting the funcretnode to x to avoid an
-            assignment afterwards (since x may be read inside the function after
-            it modified result==x) }
+            have to be copied to a temp }
           if (para.parasym.varspez=vs_value) and
-             (not(para.parasym.varstate in [vs_initialised,vs_declared,vs_read]) or
-              (assigned(aktassignmentnode) and
-               (aktassignmentnode.right=self) and
-               (nf_assign_done_in_right in aktassignmentnode.flags) and
-               actualtargetnode(@aktassignmentnode.left)^.isequal(actualtargetnode(@para.left)^))) then
+             not(para.parasym.varstate in [vs_initialised,vs_declared,vs_read]) then
             exit(true);
 
           { the compiler expects that it can take the address of parameters passed by reference in
@@ -4670,9 +4699,9 @@ implementation
           the routine cannot be (e.g., because its address is taken in the
           routine), or if the temp is a const and the parameter gets modified }
         if (para.left.nodetype=temprefn) and
-           (not(ti_may_be_in_reg in ttemprefnode(para.left).tempinfo^.flags) or
+           (not(ti_may_be_in_reg in ttemprefnode(para.left).tempflags) or
             not(tparavarsym(para.parasym).varregable in [vr_none,vr_addr])) and
-           (not(ti_const in ttemprefnode(para.left).tempinfo^.flags) or
+           (not(ti_const in ttemprefnode(para.left).tempflags) or
             (tparavarsym(para.parasym).varstate in [vs_initialised,vs_declared,vs_read])) then
           exit;
 
@@ -4693,19 +4722,19 @@ implementation
             para.left := ctemprefnode.create(tempnode);
             { inherit addr_taken flag }
             if (tabstractvarsym(para.parasym).addr_taken) then
-              include(tempnode.tempinfo^.flags,ti_addr_taken);
+              tempnode.includetempflag(ti_addr_taken);
 
             { inherit const }
             if tabstractvarsym(para.parasym).varspez=vs_const then
               begin
-                include(tempnode.tempinfo^.flags,ti_const);
+                tempnode.includetempflag(ti_const);
 
                 { apply less strict rules for the temp. to be a register than
                   ttempcreatenode does
 
                   this way, dyn. array, ansistrings etc. can be put into registers as well }
                 if tparavarsym(para.parasym).is_regvar(false) then
-                  include(tempnode.tempinfo^.flags,ti_may_be_in_reg);
+                  tempnode.includetempflag(ti_may_be_in_reg);
               end;
 
             result:=true;
@@ -4765,10 +4794,10 @@ implementation
         addstatement(inlinecleanupstatement,ctempdeletenode.create(tempnode));
         { inherit addr_taken flag }
         if (tabstractvarsym(para.parasym).addr_taken) then
-          include(tempnode.tempinfo^.flags,ti_addr_taken);
+          tempnode.includetempflag(ti_addr_taken);
         { inherit read only }
         if tabstractvarsym(para.parasym).varspez=vs_const then
-          include(tempnode.tempinfo^.flags,ti_const);
+          tempnode.includetempflag(ti_const);
         paraaddr:=caddrnode.create_internal(para.left);
         include(paraaddr.flags,nf_typedaddr);
         addstatement(inlineinitstatement,cassignmentnode.create(ctemprefnode.create(tempnode),
@@ -4850,6 +4879,36 @@ implementation
       end;
 
 
+    { reference symbols that are imported from another unit }
+    function importglobalsyms(var n:tnode; arg:pointer):foreachnoderesult;
+      var
+        sym : tsym;
+      begin
+        result:=fen_false;
+        if n.nodetype=loadn then
+          begin
+            sym:=tloadnode(n).symtableentry;
+            if sym.typ=staticvarsym then
+              begin
+                if FindUnitSymtable(tloadnode(n).symtable).moduleid<>current_module.moduleid then
+                  current_module.addimportedsym(sym);
+              end
+            else if (sym.typ=constsym) and (tconstsym(sym).consttyp=constresourcestring) then
+              begin
+                if tloadnode(n).symtableentry.owner.moduleid<>current_module.moduleid then
+                  current_module.addimportedsym(sym);
+              end;
+          end
+        else if (n.nodetype=calln) then
+          begin
+            if (assigned(tcallnode(n).procdefinition)) and
+               (tcallnode(n).procdefinition.typ=procdef) and
+               (findunitsymtable(tcallnode(n).procdefinition.owner).moduleid<>current_module.moduleid) then
+              current_module.addimportedsym(tprocdef(tcallnode(n).procdefinition).procsym);
+          end;
+      end;
+
+
     function tcallnode.pass1_inline:tnode;
       var
         n,
@@ -4887,6 +4946,7 @@ implementation
         { create a copy of the body and replace parameter loads with the parameter values }
         body:=tprocdef(procdefinition).inlininginfo^.code.getcopy;
         foreachnodestatic(pm_postprocess,body,@removeusercodeflag,nil);
+        foreachnodestatic(pm_postprocess,body,@importglobalsyms,nil);
         foreachnode(pm_preprocess,body,@replaceparaload,@fileinfo);
 
         { Concat the body and finalization parts }

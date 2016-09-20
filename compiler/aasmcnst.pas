@@ -335,7 +335,8 @@ type
      class function get_vectorized_dead_strip_section_symbol_start(const basename: string; st: tsymtable; options: ttcdeadstripsectionsymboloptions): tasmsymbol; virtual;
      class function get_vectorized_dead_strip_section_symbol_end(const basename: string; st: tsymtable; options: ttcdeadstripsectionsymboloptions): tasmsymbol; virtual;
 
-     class function get_dynstring_rec_name(typ: tstringtype; winlike: boolean; len: asizeint): string;
+     class function get_dynstring_rec_name(typ: tstringtype; winlike: boolean; len: asizeint): TSymStr;
+     class function get_dynstring_rec(typ: tstringtype; winlike: boolean; len: asizeint): trecorddef;
      { the datalist parameter specifies where the data for the string constant
        will be emitted (via an internal data builder) }
      function emit_ansistring_const(datalist: TAsmList; data: pchar; len: asizeint; encoding: tstringencoding): tasmlabofs;
@@ -383,7 +384,7 @@ type
        filled in with the actual data (via ttypedconstplaceholder.replace)
 
        useful in case you have table preceded by the number of elements, and
-       you cound the elements while building the table }
+       you count the elements while building the table }
      function emit_placeholder(def: tdef): ttypedconstplaceholder; virtual; abstract;
     protected
      { common code to check whether a placeholder can be added at the current
@@ -948,8 +949,15 @@ implementation
          kept via the linker script) }
        if tcalo_no_dead_strip in options then
          begin
-           if target_info.system in systems_darwin then
-             prelist.concat(tai_directive.Create(asd_reference,sym.name))
+           if (target_info.system in systems_darwin) then
+             begin
+              { Objective-C section declarations contain "no_dead_strip"
+                attributes if none of their symbols need to be stripped -> don't
+                add extra ".reference" statement for their symbols (gcc/clang
+                don't either) }
+              if not(section in [low(TObjCAsmSectionType)..high(TObjCAsmSectionType)]) then
+                prelist.concat(tai_directive.Create(asd_reference,sym.name))
+             end
            else if section<>sec_fpc then
              internalerror(2015101402);
          end;
@@ -1128,13 +1136,16 @@ implementation
        options: ttcasmlistoptions;
        foundsec: longint;
      begin
-       options:=[tcalo_is_lab];
-       { Add a section header if the previous one was different. We'll use the
-         same section name in case multiple items are added to the same kind of
-         section (rodata, rodata_no_rel, ...), so that everything will still
-         end up in the same section even if there are multiple section headers }
-       if finternal_data_current_section<>sectype then
-         include(options,tcalo_new_section);
+       { you can't start multiple concurrent internal data builders for the
+         same tcb, finish the first before starting another }
+       if finternal_data_current_section<>sec_none then
+         internalerror(2016082801);
+       { we don't know what was previously added to this list, so always add
+         a section header. We'll use the same section name in case multiple
+         items are added to the same kind of section (rodata, rodata_no_rel,
+         ...), so that everything will still end up in the same section even if
+         there are multiple section headers }
+       options:=[tcalo_is_lab,tcalo_new_section];
        finternal_data_current_section:=sectype;
        l:=nil;
        { did we already create a section of this type for the internal data of
@@ -1209,6 +1220,7 @@ implementation
          alignment));
        tcb.free;
        tcb:=nil;
+       finternal_data_current_section:=sec_none;
      end;
 
 
@@ -1359,7 +1371,9 @@ implementation
        { if we're starting an anonymous record, we can't align it yet because
          the alignment depends on the fields that will be added -> we'll do
          it at the end }
-       else if not anonymous then
+       else if not anonymous or
+          ((def.typ<>recorddef) and
+           not is_object(def)) then
          begin
            { add padding if necessary, and update the current field/offset }
            info:=curagginfo;
@@ -1446,7 +1460,7 @@ implementation
      end;
 
 
-   class function ttai_typedconstbuilder.get_dynstring_rec_name(typ: tstringtype; winlike: boolean; len: asizeint): string;
+   class function ttai_typedconstbuilder.get_dynstring_rec_name(typ: tstringtype; winlike: boolean; len: asizeint): TSymStr;
      begin
        case typ of
          st_ansistring:
@@ -1462,6 +1476,72 @@ implementation
            internalerror(2014080402);
        end;
        result:=result+tostr(len);
+     end;
+
+
+   class function ttai_typedconstbuilder.get_dynstring_rec(typ: tstringtype; winlike: boolean; len: asizeint): trecorddef;
+     var
+       name: TSymStr;
+       streledef: tdef;
+       strtypesym: ttypesym;
+       srsym: tsym;
+       srsymtable: tsymtable;
+     begin
+       name:=get_dynstring_rec_name(typ,winlike,len);
+       { search in the interface of all units for the type to reuse it }
+       if searchsym_type(name,srsym,srsymtable) then
+         begin
+           result:=trecorddef(ttypesym(srsym).typedef);
+           exit;
+         end
+       else
+         begin
+           { also search the implementation of the current unit }
+           strtypesym:=try_search_current_module_type(name);
+           if assigned(strtypesym) then
+             begin
+               result:=trecorddef(strtypesym.typedef);
+               exit;
+             end;
+         end;
+       if (typ<>st_widestring) or
+          not winlike then
+         begin
+           result:=crecorddef.create_global_internal('$'+name,1,1,1);
+           { encoding }
+           result.add_field_by_def('',u16inttype);
+           { element size }
+           result.add_field_by_def('',u16inttype);
+           { elements }
+           case typ of
+             st_ansistring:
+               streledef:=cansichartype;
+             st_unicodestring:
+               streledef:=cwidechartype;
+             else
+               internalerror(2016082301);
+           end;
+{$ifdef cpu64bitaddr}
+           { dummy for alignment }
+           result.add_field_by_def('',u32inttype);
+{$endif cpu64bitaddr}
+           { reference count }
+           result.add_field_by_def('',ptrsinttype);
+           { length in elements }
+           result.add_field_by_def('',ptrsinttype);
+         end
+       else
+         begin
+           result:=crecorddef.create_global_internal('$'+name,4,
+             targetinfos[target_info.system]^.alignment.recordalignmin,
+             targetinfos[target_info.system]^.alignment.maxCrecordalign);
+           { length in bytes }
+           result.add_field_by_def('',s32inttype);
+           streledef:=cwidechartype;
+         end;
+       { data (include zero terminator) }
+       result.add_field_by_def('',carraydef.getreusable(streledef,len+1));
+       trecordsymtable(trecorddef(result).symtable).addalignmentpadding;
      end;
 
 

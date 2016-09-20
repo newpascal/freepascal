@@ -17,6 +17,12 @@
   dependent on objpas unit.
 }
 
+{ Disable checks of pointers explictly,
+  as we are dealing here with special pointer that
+  might be seen as invalid by heaptrc unit CheckPointer function }
+
+{$checkpointer off}
+
 {$mode objfpc}
 
 unit exeinfo;
@@ -876,7 +882,7 @@ begin
               found_addr:=phdr^.p_vaddr;
             inc(pointer(phdr), phdr_size);
           end;
-      {$ifdef DEBUG}
+      {$ifdef DEBUG_LINEINFO}
       end
     else
       begin
@@ -886,26 +892,26 @@ begin
            writeln(stderr,'AUX entry AT_PHENT not found');
         if (phdr=nil) then
            writeln(stderr,'AUX entry AT_PHDR not found');
-      {$endif DEBUG}
+      {$endif DEBUG_LINEINFO}
       end;
 
      if found_addr<>ptruint(-1) then
        begin
-          {$ifdef DEBUG}
+          {$ifdef DEBUG_LINEINFO}
           Writeln(stderr,'Found addr = $',hexstr(found_addr,2 * sizeof(ptruint)));
           {$endif}
           BaseAddr:=pointer(found_addr);
        end
-  {$ifdef DEBUG}
+  {$ifdef DEBUG_LINEINFO}
      else
     writeln(stderr,'Error parsing stack');
-  {$endif DEBUG}
+  {$endif DEBUG_LINEINFO}
   end
   else
   begin
-  {$ifdef DEBUG}
+  {$ifdef DEBUG_LINEINFO}
     writeln(stderr,'Exception parsing stack');
-  {$endif DEBUG}
+  {$endif DEBUG_LINEINFO}
   end;
   ExitProc:=SavedExitProc;
 end;

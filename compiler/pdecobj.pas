@@ -1347,7 +1347,7 @@ implementation
               begin
                 Message(parser_e_forward_mismatch);
                 { recover }
-                current_structdef:=cobjectdef.create(current_objectdef.objecttype,n,nil,true);
+                current_structdef:=cobjectdef.create(objecttype,n,nil,true);
                 include(current_structdef.objectoptions,oo_is_forward);
               end
             else
@@ -1450,6 +1450,8 @@ implementation
         if not assigned(fd) and
            (token=_SEMICOLON) then
           begin
+            if is_objectpascal_helper(current_structdef) then
+              consume(_FOR);
             { add to the list of definitions to check that the forward
               is resolved. this is required for delphi mode }
             current_module.checkforwarddefs.add(current_structdef);

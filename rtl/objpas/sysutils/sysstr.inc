@@ -630,7 +630,7 @@ begin
  Q := StrEnd(P);
  result:='';
  if P=Q then exit;
- if P^<>quote then exit;
+ if P^<>quote then exit(strpas(P));
  inc(p);
 
  setlength(result,(Q-P)+1);
@@ -1836,8 +1836,7 @@ var p : pchar;
 begin
   p:=pchar(pointer(s)); // work around CONST. Ansiextract is safe for nil
   result:=AnsiExtractquotedStr(p,AQuote);
-  if result='' Then
-    result:=s;
+  
 end;
 
 function StrToBool(const S: string): Boolean;

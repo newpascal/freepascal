@@ -442,6 +442,8 @@ uses sysconst;
 
 const
   TDateTimeEpsilon = 2.2204460493e-16;
+  HalfMilliSecond = OneMillisecond /2 ;
+  
 
 { ---------------------------------------------------------------------
     Auxiliary routines
@@ -1281,49 +1283,49 @@ end;
 
 Function YearsBetween(const ANow, AThen: TDateTime): Integer;
 begin
-  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+TDateTimeEpsilon)/ApproxDaysPerYear);
+  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+HalfMilliSecond)/ApproxDaysPerYear);
 end;
 
 
 Function MonthsBetween(const ANow, AThen: TDateTime): Integer;
 begin
-  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+TDateTimeEpsilon)/ApproxDaysPerMonth);
+  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+HalfMilliSecond)/ApproxDaysPerMonth);
 end;
 
 
 Function WeeksBetween(const ANow, AThen: TDateTime): Integer;
 begin
-  Result:=Trunc(Abs(DateTimeDiff(ANow,AThen))+TDateTimeEpsilon) div 7;
+  Result:=Trunc(Abs(DateTimeDiff(ANow,AThen))+HalfMilliSecond) div 7;
 end;
 
 
 Function DaysBetween(const ANow, AThen: TDateTime): Integer;
 begin
-  Result:=Trunc(Abs(DateTimeDiff(ANow,AThen))+TDateTimeEpsilon);
+  Result:=Trunc(Abs(DateTimeDiff(ANow,AThen))+HalfMilliSecond);
 end;
 
 
 Function HoursBetween(const ANow, AThen: TDateTime): Int64;
 begin
-  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+TDateTimeEpsilon)*HoursPerDay);
+  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+HalfMilliSecond)*HoursPerDay);
 end;
 
 
 Function MinutesBetween(const ANow, AThen: TDateTime): Int64;
 begin
-  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+TDateTimeEpsilon)*MinsPerDay);
+  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+HalfMilliSecond)*MinsPerDay);
 end;
 
 
 Function SecondsBetween(const ANow, AThen: TDateTime): Int64;
 begin
-  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+TDateTimeEpsilon)*SecsPerDay);
+  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+HalfMilliSecond)*SecsPerDay);
 end;
 
 
 Function MilliSecondsBetween(const ANow, AThen: TDateTime): Int64;
 begin
-  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+TDateTimeEpsilon)*MSecsPerDay);
+  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+HalfMilliSecond)*MSecsPerDay);
 end;
 
 Procedure PeriodBetween(Const ANow, AThen: TDateTime; Out Years, months, days : Word); 
@@ -2091,8 +2093,8 @@ begin
   a := (14-month) div 12;
   y := year + 4800 - a;
   m := month + (12*a) - 3;
-  result := day + ((153*m+2) div 5) + (365*y) + (y div 4) - (y div 100) + (y div 400) - 32045;
-  result := result - 0.5;
+  result := day + ((153*m+2) div 5) + (365*y)
+    + (y div 4) - (y div 100) + (y div 400) - 32045.5 + frac(avalue);
 end;
 
 
@@ -2118,6 +2120,8 @@ begin
   month := m + 3 - 12 *  ( m div 10 );
   year := (100*b) + d - 4800 + ( m div 10 );
   result := TryEncodeDate ( Year, Month, Day, ADateTime );
+  if Result then
+    ADateTime:=IncMilliSecond(IncHour(ADateTime,-12),MillisecondOfTheDay(Abs(Frac(aValue))));
 end;
 
 Function DateTimeToModifiedJulianDate(const AValue: TDateTime): Double;
