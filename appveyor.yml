@@ -46,10 +46,10 @@ build_script:
   - make clean all
 
 after_build:
-  - make install INSTALL_PREFIX=%APPVEYOR_BUILD_FOLDER%\newpascal\fpc
+  - make install INSTALL_PREFIX=%APPVEYOR_BUILD_FOLDER%\freepascal\fpc
   - SET PATH=%ORIGINAL_PATH%
-  - appveyor DownloadFile %FPC_CONFIGURE_DL% -FileName %APPVEYOR_BUILD_FOLDER%\newpascal\configure.bat
-  - 7z a -tzip fpc.zip %APPVEYOR_BUILD_FOLDER%\newpascal
+  - appveyor DownloadFile %FPC_CONFIGURE_DL% -FileName %APPVEYOR_BUILD_FOLDER%\freepascal\configure.bat
+  - 7z a -tzip fpc.zip %APPVEYOR_BUILD_FOLDER%\freepascal
   
 artifacts:
   - path: fpc.zip
@@ -58,11 +58,11 @@ artifacts:
     name: fpcsrc
 
 deploy:
-  release: newpascal-v$(appveyor_build_version)
-  description: 'Release of NewPascal compiler'
+  release: fpc4np-v$(appveyor_build_version)
+  description: 'Release of FreePascal compiler for NewPascal'
   provider: GitHub
   auth_token:
-    secure: hciZXDslu8epZhwmm/LfiZBmhbPk7BPpLd/3MOtst/uIRw2LPeAEMCXmBFikJzxQ
+    secure: 0zjNX5MmwwPNlCpgGKHe44W2flr5RdJm1uqe7poKPfnUDQYXzpgGOVPTU7pLVY0s
   artifact: fpc,fpcsrc
   draft: false
   prerelease: false
