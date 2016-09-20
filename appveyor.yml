@@ -32,6 +32,10 @@ environment:
   BINW32_DL: 'https://raw.githubusercontent.com/newpascal/npbuild/master/binw32.7z'
   FPC_CONFIGURE_DL: 'https://raw.githubusercontent.com/newpascal/npbuild/master/configure.bat'
 
+# debug rdp 
+#init:
+#  - ps: iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
+
 install:
   - appveyor DownloadFile %BOOTSTRAP_DL%
   - appveyor DownloadFile %BINW32_DL%
@@ -50,7 +54,11 @@ after_build:
   - SET PATH=%ORIGINAL_PATH%
   - appveyor DownloadFile %FPC_CONFIGURE_DL% -FileName %APPVEYOR_BUILD_FOLDER%\freepascal\configure.bat
   - 7z a -tzip fpc.zip %APPVEYOR_BUILD_FOLDER%\freepascal
-  
+
+# debug rdp 
+#on_finish:
+#  - ps: $blockRdp = $true; iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
+
 artifacts:
   - path: fpc.zip
     name: fpc
