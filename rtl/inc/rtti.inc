@@ -396,7 +396,6 @@ begin
     tkobject,
 {$endif FPC_HAS_FEATURE_OBJECTS}
     tkrecord:
-      begin
 {$if FPC_FULLVERSION>30100}
       { find init table }
       with RTTIRecordOp(typeinfo, typeinfo)^ do
