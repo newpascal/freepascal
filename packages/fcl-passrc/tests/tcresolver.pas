@@ -58,6 +58,11 @@ Type
   end;
   PTestResolverReferenceData = ^TTestResolverReferenceData;
 
+  TSystemUnitPart = (
+    supTObject
+    );
+  TSystemUnitParts = set of TSystemUnitPart;
+
   { TTestResolver }
 
   TTestResolver = Class(TTestParser)
@@ -68,7 +73,8 @@ Type
     function GetModuleCount: integer;
     function GetModules(Index: integer): TTestEnginePasResolver;
     function OnPasResolverFindUnit(const aUnitName: String): TPasModule;
-    procedure OnFindReference(Element, FindData: pointer);
+    procedure OnFindReference(El: TPasElement; FindData: pointer);
+    procedure OnCheckElementParent(El: TPasElement; arg: pointer);
   Protected
     Procedure SetUp; override;
     Procedure TearDown; override;
@@ -82,38 +88,134 @@ Type
     function AddModuleWithSrc(aFilename, Src: string): TTestEnginePasResolver;
     function AddModuleWithIntfImplSrc(aFilename, InterfaceSrc,
       ImplementationSrc: string): TTestEnginePasResolver;
-    procedure AddSystemUnit;
-    procedure StartProgram(NeedSystemUnit: boolean);
+    procedure AddSystemUnit(Parts: TSystemUnitParts = []);
+    procedure StartProgram(NeedSystemUnit: boolean; SystemUnitParts: TSystemUnitParts = []);
     procedure StartUnit(NeedSystemUnit: boolean);
     property Modules[Index: integer]: TTestEnginePasResolver read GetModules;
     property ModuleCount: integer read GetModuleCount;
+    property ResolverEngine: TTestEnginePasResolver read FResolverEngine;
   Published
     Procedure TestEmpty;
+    // alias
     Procedure TestAliasType;
     Procedure TestAlias2Type;
     Procedure TestAliasTypeRefs;
+    // var, const
     Procedure TestVarLongint;
     Procedure TestVarInteger;
     Procedure TestConstInteger;
+    Procedure TestDuplicateVar;
+    // operators
     Procedure TestPrgAssignment;
     Procedure TestPrgProcVar;
     Procedure TestUnitProcVar;
+    Procedure TestAssignIntegers;
+    Procedure TestAssignString;
+    Procedure TestAssignIntToStringFail;
+    Procedure TestIntegerOperators;
+    Procedure TestBooleanOperators;
+    Procedure TestStringOperators;
+    // ToDo: +=, -=, *=, /=
+    // statements
     Procedure TestForLoop;
     Procedure TestStatements;
     Procedure TestCaseStatement;
     Procedure TestTryStatement;
+    Procedure TestTryExceptOnNonTypeFail;
+    Procedure TestTryExceptOnNonClassFail;
+    Procedure TestRaiseNonVarFail;
+    Procedure TestRaiseNonClassFail;
     Procedure TestStatementsRefs;
+    Procedure TestRepeatUntilNonBoolFail;
+    Procedure TestWhileDoNonBoolFail;
+    Procedure TestIfThenNonBoolFail;
+    // units
     Procedure TestUnitRef;
+    // procs
     Procedure TestProcParam;
     Procedure TestFunctionResult;
     Procedure TestProcOverload;
-    Procedure TestProcOverloadRefs;
+    Procedure TestProcOverloadWithBaseTypes;
+    Procedure TestProcOverloadWithClassTypes;
+    Procedure TestProcOverloadWithInhClassTypes;
+    Procedure TestProcOverloadWithInhAliasClassTypes;
+    Procedure TestProcDuplicate;
     Procedure TestNestedProc;
-    Procedure TestDuplicateVar;
+    Procedure TestForwardProc;
+    Procedure TestForwardProcUnresolved;
+    Procedure TestNestedForwardProc;
+    Procedure TestNestedForwardProcUnresolved;
+    Procedure TestForwardProcFuncMismatch;
+    Procedure TestForwardFuncResultMismatch;
+    Procedure TestUnitIntfProc;
+    Procedure TestUnitIntfProcUnresolved;
+    Procedure TestUnitIntfMismatchArgName;
+    Procedure TestProcOverloadIsNotFunc;
+    Procedure TestProcCallMissingParams;
+    Procedure TestBuiltInProcCallMissingParams;
+    // record
     Procedure TestRecord;
     Procedure TestRecordVariant;
     Procedure TestRecordVariantNested;
-    property ResolverEngine: TTestEnginePasResolver read FResolverEngine;
+    // class
+    Procedure TestClass;
+    Procedure TestClassDefaultInheritance;
+    Procedure TestClassTripleInheritance;
+    Procedure TestClassForward;
+    Procedure TestClassForwardNotResolved;
+    Procedure TestClassMethod;
+    Procedure TestClassMethodUnresolved;
+    Procedure TestClassMethodAbstract;
+    Procedure TestClassMethodAbstractWithoutVirtual;
+    Procedure TestClassMethodAbstractHasBody;
+    Procedure TestClassMethodUnresolvedWithAncestor;
+    Procedure TestClassProcFuncMismatch;
+    Procedure TestClassMethodOverload;
+    Procedure TestClassMethodInvalidOverload;
+    Procedure TestClassOverride;
+    Procedure TestClassOverride2;
+    Procedure TestClassMethodScope;
+    Procedure TestClassIdentifierSelf;
+    Procedure TestClassCallInherited;
+    Procedure TestClassCallInheritedNoParamsAbstractFail;
+    Procedure TestClassCallInheritedWithParamsAbstractFail;
+    Procedure TestClassAssignNil;
+    Procedure TestClassAssign;
+    Procedure TestClassNilAsParam;
+    Procedure TestClassOperator_Is_As;
+    Procedure TestClassOperatorIsOnNonDescendantFail;
+    Procedure TestClassOperatorIsOnNonTypeFail;
+    Procedure TestClassOperatorAsOnNonDescendantFail;
+    Procedure TestClassOperatorAsOnNonTypeFail;
+    // ToDo: typecast
+    // ToDo: as function result
+    // ToDo: assign constructor result
+
+    // property
+    Procedure TestProperty1;
+    Procedure TestPropertyAccessorNotInFront;
+    Procedure TestPropertyReadAccessorVarWrongType;
+    Procedure TestPropertyReadAccessorProcNotFunc;
+    Procedure TestPropertyReadAccessorFuncWrongResult;
+    Procedure TestPropertyReadAccessorFuncWrongArgCount;
+    Procedure TestPropertyReadAccessorFunc;
+    Procedure TestPropertyWriteAccessorVarWrongType;
+    Procedure TestPropertyWriteAccessorFuncNotProc;
+    Procedure TestPropertyWriteAccessorProcWrongArgCount;
+    Procedure TestPropertyWriteAccessorProcWrongArg;
+    Procedure TestPropertyWriteAccessorProcWrongArgType;
+    Procedure TestPropertyWriteAccessorProc;
+    Procedure TestPropertyTypeless;
+    Procedure TestPropertyTypelessNoAncestor;
+    Procedure TestPropertyStoredAccessorProcNotFunc;
+    Procedure TestPropertyStoredAccessorFuncWrongResult;
+    Procedure TestPropertyStoredAccessorFuncWrongArgCount;
+    Procedure TestPropertyArgs1;
+    // with
+    Procedure TestWithBlock1;
+    Procedure TestWithBlock2;
+    // arrays
+    Procedure TestDynArrayOfLongint;
   end;
 
 function LinesToStr(Args: array of const): string;
@@ -213,8 +315,9 @@ begin
     on E: EParserError do
       begin
       writeln('ERROR: TTestResolver.ParseProgram Parser: '+E.ClassName+':'+E.Message
+        +' Scanner at'
         +' File='+Scanner.CurFilename
-        +' LineNo='+IntToStr(Scanner.CurRow)
+        +' Row='+IntToStr(Scanner.CurRow)
         +' Col='+IntToStr(Scanner.CurColumn)
         +' Line="'+Scanner.CurLine+'"'
         );
@@ -223,8 +326,9 @@ begin
     on E: EPasResolve do
       begin
       writeln('ERROR: TTestResolver.ParseProgram PasResolver: '+E.ClassName+':'+E.Message
+        +' Scanner at'
         +' File='+Scanner.CurFilename
-        +' LineNo='+IntToStr(Scanner.CurRow)
+        +' Row='+IntToStr(Scanner.CurRow)
         +' Col='+IntToStr(Scanner.CurColumn)
         +' Line="'+Scanner.CurLine+'"'
         );
@@ -446,7 +550,7 @@ var
   begin
     p:=CommentStartP+2;
     Identifier:=ReadIdentifier(p);
-    //writeln('TTestResolver.CheckReferenceDirectives.AddPointer ',Identifier);
+    //writeln('TTestResolver.CheckReferenceDirectives.AddDirectReference ',Identifier);
     AddMarkerForTokenBehindComment(mkDirectReference,Identifier);
   end;
 
@@ -551,7 +655,7 @@ var
     El, LabelEl: TPasElement;
     Ref: TResolvedReference;
   begin
-    //writeln('CheckReference searching reference: ',aMarker^.Filename,' Line=',aMarker^.LineNumber,' Col=',aMarker^.StartCol,'-',aMarker^.EndCol,' Label="',aMarker^.Identifier,'"');
+    //writeln('CheckResolverReference searching reference: ',aMarker^.Filename,' Line=',aMarker^.LineNumber,' Col=',aMarker^.StartCol,'-',aMarker^.EndCol,' Label="',aMarker^.Identifier,'"');
     aLabel:=FindLabel(aMarker^.Identifier);
     if aLabel=nil then
       RaiseErrorAt('label "'+aMarker^.Identifier+'" not found',aMarker^.Filename,aMarker^.LineNumber,aMarker^.StartCol);
@@ -593,7 +697,7 @@ var
           Ref:=TResolvedReference(El.CustomData);
           write(' Decl=',GetObjName(Ref.Declaration));
           ResolverEngine.UnmangleSourceLineNumber(Ref.Declaration.SourceLinenumber,aLine,aCol);
-          write(Ref.Declaration.SourceFilename,'(',aLine,',',aCol,')');
+          write(',',Ref.Declaration.SourceFilename,'(',aLine,',',aCol,')');
           end
         else
           write(' has no TResolvedReference');
@@ -618,18 +722,25 @@ var
   // check if one element at {=a} is a TPasAliasType pointing to an element labeled {#a}
   var
     aLabel: PMarker;
-    ReferenceElements: TFPList;
-    i, LabelLine, LabelCol: Integer;
-    El: TPasElement;
-    DeclEl: TPasType;
+    ReferenceElements, LabelElements: TFPList;
+    i, LabelLine, LabelCol, j: Integer;
+    El, LabelEl: TPasElement;
+    DeclEl, TypeEl: TPasType;
   begin
-    //writeln('CheckPointer searching pointer: ',aMarker^.Filename,' Line=',aMarker^.LineNumber,' Col=',aMarker^.StartCol,'-',aMarker^.EndCol,' Label="',aMarker^.Identifier,'"');
+    writeln('CheckDirectReference searching pointer: ',aMarker^.Filename,' Line=',aMarker^.LineNumber,' Col=',aMarker^.StartCol,'-',aMarker^.EndCol,' Label="',aMarker^.Identifier,'"');
     aLabel:=FindLabel(aMarker^.Identifier);
     if aLabel=nil then
-      RaiseErrorAt('label "'+aMarker^.Identifier+'" not found',aMarker^.Filename,aMarker^.LineNumber,aMarker^.StartCol);
+      RaiseErrorAt('label "'+aMarker^.Identifier+'" not found',aMarker);
 
+    LabelElements:=nil;
     ReferenceElements:=nil;
     try
+      writeln('CheckDirectReference finding elements at label ...');
+      LabelElements:=FindElementsAt(aLabel^.Filename,aLabel^.LineNumber,aLabel^.StartCol,aLabel^.EndCol);
+      if LabelElements.Count=0 then
+        RaiseErrorAt('label "'+aLabel^.Identifier+'" has no elements',aLabel);
+
+      writeln('CheckDirectReference finding elements at reference ...');
       ReferenceElements:=FindElementsAt(aMarker^.Filename,aMarker^.LineNumber,aMarker^.StartCol,aMarker^.EndCol);
       if ReferenceElements.Count=0 then
         RaiseErrorAt('reference "'+aMarker^.Identifier+'" has no elements',aMarker);
@@ -637,7 +748,23 @@ var
       for i:=0 to ReferenceElements.Count-1 do
         begin
         El:=TPasElement(ReferenceElements[i]);
-        if El.ClassType=TPasAliasType then
+        writeln('CheckDirectReference ',i,'/',ReferenceElements.Count,' ',GetTreeDesc(El,2));
+        if El.ClassType=TPasVariable then
+          begin
+          if TPasVariable(El).VarType=nil then
+            begin
+            writeln('CheckDirectReference Var without Type: ',GetObjName(El),' El.Parent=',GetObjName(El.Parent));
+            AssertNotNull('TPasVariable(El='+El.Name+').VarType',TPasVariable(El).VarType);
+            end;
+          TypeEl:=TPasVariable(El).VarType;
+          for j:=0 to LabelElements.Count-1 do
+            begin
+            LabelEl:=TPasElement(LabelElements[j]);
+            if TypeEl=LabelEl then
+              exit; // success
+            end;
+          end
+        else if El is TPasAliasType then
           begin
           DeclEl:=TPasAliasType(El).DestType;
           ResolverEngine.UnmangleSourceLineNumber(DeclEl.SourceLinenumber,LabelLine,LabelCol);
@@ -646,13 +773,36 @@ var
           and (aLabel^.StartCol<=LabelCol)
           and (aLabel^.EndCol>=LabelCol) then
             exit; // success
-          writeln('CheckDirectReference Decl at ',DeclEl.SourceFilename,'(',LabelLine,',',LabelCol,')');
-          RaiseErrorAt('wrong direct reference "'+aMarker^.Identifier+'"',aMarker);
+          end
+        else if El.ClassType=TPasArgument then
+          begin
+          TypeEl:=TPasArgument(El).ArgType;
+          for j:=0 to LabelElements.Count-1 do
+            begin
+            LabelEl:=TPasElement(LabelElements[j]);
+            if TypeEl=LabelEl then
+              exit; // success
+            end;
           end;
         end;
+      // failed -> show candidates
+      writeln('CheckDirectReference failed: Labels:');
+      for j:=0 to LabelElements.Count-1 do
+        begin
+        LabelEl:=TPasElement(LabelElements[j]);
+        writeln('  Label ',GetObjName(LabelEl),' at ',ResolverEngine.GetElementSourcePosStr(LabelEl));
+        end;
+      writeln('CheckDirectReference failed: References:');
+      for i:=0 to ReferenceElements.Count-1 do
+        begin
+        El:=TPasElement(ReferenceElements[i]);
+        writeln('  Reference ',GetObjName(El),' at ',ResolverEngine.GetElementSourcePosStr(El));
+        end;
+      RaiseErrorAt('wrong direct reference "'+aMarker^.Identifier+'"',aMarker);
     finally
+      LabelElements.Free;
+      ReferenceElements.Free;
     end;
-
   end;
 
 var
@@ -660,10 +810,12 @@ var
   i: Integer;
   SrcLines: TStringList;
 begin
+  Module.ForEachCall(@OnCheckElementParent,nil);
   FirstMarker:=nil;
   LastMarker:=nil;
   FoundRefs:=Default(TTestResolverReferenceData);
   try
+    //writeln('TTestResolver.CheckReferenceDirectives find all markers');
     // find all markers
     for i:=0 to Resolver.Streams.Count-1 do
       begin
@@ -672,6 +824,7 @@ begin
       SrcLines.Free;
       end;
 
+    //writeln('TTestResolver.CheckReferenceDirectives check references');
     // check references
     aMarker:=FirstMarker;
     while aMarker<>nil do
@@ -682,6 +835,7 @@ begin
       end;
       aMarker:=aMarker^.Next;
       end;
+    writeln('TTestResolver.CheckReferenceDirectives COMPLETE');
 
   finally
     while FirstMarker<>nil do
@@ -740,37 +894,50 @@ begin
   Result:=AddModuleWithSrc(aFilename,Src);
 end;
 
-procedure TTestResolver.AddSystemUnit;
+procedure TTestResolver.AddSystemUnit(Parts: TSystemUnitParts);
+var
+  Intf, Impl: TStringList;
 begin
-  AddModuleWithIntfImplSrc('system.pp',
-    // interface
-    LinesToStr([
-    'type',
-    '  integer=longint;',
-    '  sizeint=int64;',
+  Intf:=TStringList.Create;
+  // interface
+  Intf.Add('type');
+  Intf.Add('  integer=longint;');
+  Intf.Add('  sizeint=int64;');
     //'const',
     //'  LineEnding = #10;',
     //'  DirectorySeparator = ''/'';',
     //'  DriveSeparator = '''';',
     //'  AllowDirectorySeparators : set of char = [''\'',''/''];',
     //'  AllowDriveSeparators : set of char = [];',
-    'var',
-    '  ExitCode: Longint;',
+  if supTObject in Parts then
+    begin
+    Intf.Add('type');
+    Intf.Add('  TObject = class');
+    Intf.Add('  end;');
+    end;
+  Intf.Add('var');
+  Intf.Add('  ExitCode: Longint;');
     //'Procedure Move(const source;var dest;count:SizeInt);',
-    ''
-    // implementation
-    ]),LinesToStr([
-   // 'Procedure Move(const source;var dest;count:SizeInt);',
-   // 'begin',
-   // 'end;',
-    ''
-    ]));
+
+  // implementation
+  Impl:=TStringList.Create;
+    // 'Procedure Move(const source;var dest;count:SizeInt);',
+    // 'begin',
+    // 'end;',
+
+  try
+    AddModuleWithIntfImplSrc('system.pp',Intf.Text,Impl.Text);
+  finally
+    Intf.Free;
+    Impl.Free;
+  end;
 end;
 
-procedure TTestResolver.StartProgram(NeedSystemUnit: boolean);
+procedure TTestResolver.StartProgram(NeedSystemUnit: boolean;
+  SystemUnitParts: TSystemUnitParts);
 begin
   if NeedSystemUnit then
-    AddSystemUnit
+    AddSystemUnit(SystemUnitParts)
   else
     Parser.ImplicitUses.Clear;
   Add('program '+ExtractFileUnitName(MainFilename)+';');
@@ -839,20 +1006,84 @@ begin
   raise Exception.Create('can''t find unit "'+aUnitName+'"');
 end;
 
-procedure TTestResolver.OnFindReference(Element, FindData: pointer);
+procedure TTestResolver.OnFindReference(El: TPasElement; FindData: pointer);
 var
-  El: TPasElement absolute Element;
   Data: PTestResolverReferenceData absolute FindData;
   Line, Col: integer;
 begin
   ResolverEngine.UnmangleSourceLineNumber(El.SourceLinenumber,Line,Col);
-  //writeln('TTestResolver.OnFindReference ',GetObjName(El),' ',El.SourceFilename,' Line=',Line,',Col=',Col,' SearchFile=',Data^.Filename,',Line=',Data^.Line,',Col=',Data^.StartCol,'-',Data^.EndCol);
+  writeln('TTestResolver.OnFindReference ',El.SourceFilename,' Line=',Line,',Col=',Col,' ',GetObjName(El),' SearchFile=',Data^.Filename,',Line=',Data^.Line,',Col=',Data^.StartCol,'-',Data^.EndCol);
   if (Data^.Filename=El.SourceFilename)
   and (Data^.Line=Line)
   and (Data^.StartCol<=Col)
   and (Data^.EndCol>=Col)
   then
     Data^.Found.Add(El);
+end;
+
+procedure TTestResolver.OnCheckElementParent(El: TPasElement; arg: pointer);
+var
+  SubEl: TPasElement;
+  i: Integer;
+
+  procedure E(Msg: string);
+  var
+    s: String;
+  begin
+    s:='TTestResolver.OnCheckElementParent El='+GetTreeDesc(El)+' '+
+      ResolverEngine.GetElementSourcePosStr(El)+' '+Msg;
+    writeln('ERROR: ',s);
+    raise Exception.Create(s);
+  end;
+
+begin
+  if arg=nil then ;
+  writeln('TTestResolver.OnCheckElementParent ',GetObjName(El));
+  if El=nil then exit;
+  if El.Parent=El then
+    E('El.Parent=El='+GetObjName(El));
+  if El is TBinaryExpr then
+    begin
+    if (TBinaryExpr(El).left<>nil) and (TBinaryExpr(El).left.Parent<>El) then
+      E('TBinaryExpr(El).left.Parent='+GetObjName(TBinaryExpr(El).left.Parent)+'<>El');
+    if (TBinaryExpr(El).right<>nil) and (TBinaryExpr(El).right.Parent<>El) then
+      E('TBinaryExpr(El).right.Parent='+GetObjName(TBinaryExpr(El).right.Parent)+'<>El');
+    end
+  else if El is TParamsExpr then
+    begin
+    if (TParamsExpr(El).Value<>nil) and (TParamsExpr(El).Value.Parent<>El) then
+      E('TParamsExpr(El).Value.Parent='+GetObjName(TParamsExpr(El).Value.Parent)+'<>El');
+    for i:=0 to length(TParamsExpr(El).Params)-1 do
+      if TParamsExpr(El).Params[i].Parent<>El then
+        E('TParamsExpr(El).Params[i].Parent='+GetObjName(TParamsExpr(El).Params[i].Parent)+'<>El');
+    end
+  else if El is TPasDeclarations then
+    begin
+    for i:=0 to TPasDeclarations(El).Declarations.Count-1 do
+      begin
+      SubEl:=TPasElement(TPasDeclarations(El).Declarations[i]);
+      if SubEl.Parent<>El then
+        E('SubEl=TPasElement(TPasDeclarations(El).Declarations[i])='+GetObjName(SubEl)+' SubEl.Parent='+GetObjName(SubEl.Parent)+'<>El');
+      end;
+    end
+  else if El is TPasImplBlock then
+    begin
+    for i:=0 to TPasImplBlock(El).Elements.Count-1 do
+      begin
+      SubEl:=TPasElement(TPasImplBlock(El).Elements[i]);
+      if SubEl.Parent<>El then
+        E('TPasElement(TPasImplBlock(El).Elements[i]).Parent='+GetObjName(SubEl.Parent)+'<>El');
+      end;
+    end
+  else if El is TPasImplWithDo then
+    begin
+    for i:=0 to TPasImplWithDo(El).Expressions.Count-1 do
+      begin
+      SubEl:=TPasExpr(TPasImplWithDo(El).Expressions[i]);
+      if SubEl.Parent<>El then
+        E('TPasExpr(TPasImplWithDo(El).Expressions[i]).Parent='+GetObjName(SubEl.Parent)+'<>El');
+      end;
+    end;
 end;
 
 function TTestResolver.GetModules(Index: integer): TTestEnginePasResolver;
@@ -1010,6 +1241,28 @@ begin
   AssertEquals('c1 expr value','3',ExprC1.Value);
 end;
 
+procedure TTestResolver.TestDuplicateVar;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('var a: longint;');
+  Add('var a: string;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected duplicate identifier, but got msg number "'+E.Message+'"',
+        PasResolver.nDuplicateIdentifier,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('duplicate identifier spotted',true,ok);
+end;
+
 procedure TTestResolver.TestPrgAssignment;
 var
   El: TPasElement;
@@ -1129,6 +1382,146 @@ begin
   AssertSame('proc sub var type is proc sub t1',ProcSubType1,ProcSubVar1Type);
 end;
 
+procedure TTestResolver.TestAssignIntegers;
+begin
+  StartProgram(false);
+  Add('var');
+  Add('  {#vbyte}vbyte:byte;');
+  Add('  {#vshortint}vshortint:shortint;');
+  Add('  {#vword}vword:word;');
+  Add('  {#vsmallint}vsmallint:smallint;');
+  Add('  {#vcardinal}vcardinal:cardinal;');
+  Add('  {#vlongint}vlongint:longint;');
+  Add('  {#vint64}vint64:int64;');
+  Add('  {#vcomp}vcomp:comp;');
+  Add('begin');
+  Add('  {@vbyte}vbyte:=0;');
+  Add('  {@vbyte}vbyte:=255;');
+  Add('  {@vshortint}vshortint:=0;');
+  Add('  {@vshortint}vshortint:=-128;');
+  Add('  {@vshortint}vshortint:= 127;');
+  Add('  {@vword}vword:=0;');
+  Add('  {@vword}vword:=+$ffff;');
+  Add('  {@vsmallint}vsmallint:=0;');
+  Add('  {@vsmallint}vsmallint:=-$8000;');
+  Add('  {@vsmallint}vsmallint:= $7fff;');
+  Add('  {@vcardinal}vcardinal:=0;');
+  Add('  {@vcardinal}vcardinal:=$ffffffff;');
+  Add('  {@vlongint}vlongint:=0;');
+  Add('  {@vlongint}vlongint:=-$80000000;');
+  Add('  {@vlongint}vlongint:= $7fffffff;');
+  Add('  {@vlongint}vlongint:={@vbyte}vbyte;');
+  Add('  {@vlongint}vlongint:={@vshortint}vshortint;');
+  Add('  {@vlongint}vlongint:={@vword}vword;');
+  Add('  {@vlongint}vlongint:={@vsmallint}vsmallint;');
+  Add('  {@vlongint}vlongint:={@vlongint}vlongint;');
+  Add('  {@vcomp}vcomp:=0;');
+  Add('  {@vcomp}vcomp:=$ffffffffffffffff;');
+  Add('  {@vint64}vint64:=0;');
+  Add('  {@vint64}vint64:=-$8000000000000000;');
+  Add('  {@vint64}vint64:= $7fffffffffffffff;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestAssignString;
+begin
+  StartProgram(false);
+  Add('var');
+  Add('  vstring:string;');
+  Add('  vchar:char;');
+  Add('begin');
+  Add('  vstring:='''';');
+  Add('  vstring:=''abc'';');
+  Add('  vstring:=''a'';');
+  Add('  vchar:=''c'';');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestAssignIntToStringFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('var');
+  Add('  vstring:string;');
+  Add('begin');
+  Add('  vstring:=2;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected Incompatible types: got "Longint" expected "String", but got msg number "'+E.Message+'"',
+        PasResolver.nIncompatibleTypeGotExpected,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('assign int to str fails',true,ok);
+end;
+
+procedure TTestResolver.TestIntegerOperators;
+begin
+  StartProgram(false);
+  Add('var');
+  Add('  i,j,k:longint;');
+  Add('begin');
+  Add('  i:=1;');
+  Add('  i:=1+2;');
+  Add('  i:=1+2+3;');
+  Add('  i:=1-2;');
+  Add('  i:=j;');
+  Add('  i:=j+1;');
+  Add('  i:=-j+1;');
+  Add('  i:=j+k;');
+  Add('  i:=-j+k;');
+  Add('  i:=j*k;');
+  Add('  i:=j div k;');
+  Add('  i:=j mod k;');
+  Add('  i:=j shl k;');
+  Add('  i:=j shr k;');
+  Add('  i:=j and k;');
+  Add('  i:=j or k;');
+  Add('  i:=j and not k;');
+  Add('  i:=(j+k) div 3;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestBooleanOperators;
+begin
+  StartProgram(false);
+  Add('var');
+  Add('  i,j,k:boolean;');
+  Add('begin');
+  Add('  i:=false;');
+  Add('  i:=true;');
+  Add('  i:=j and k;');
+  Add('  i:=j or k;');
+  Add('  i:=j or not k;');
+  Add('  i:=(not j) or k;');
+  Add('  i:=j or false;');
+  Add('  i:=j and true;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestStringOperators;
+begin
+  StartProgram(false);
+  Add('var');
+  Add('  i,j:string;');
+  Add('  k:char;');
+  Add('begin');
+  Add('  i:='''';');
+  Add('  i:=''''+'''';');
+  Add('  i:=k+'''';');
+  Add('  i:=''''+k;');
+  Add('  i:=''a''+j;');
+  Add('  i:=''abc''+j;');
+  Add('  k:=j;');
+  Add('  k:=''a'';');
+  ParseProgram;
+end;
+
 procedure TTestResolver.TestForLoop;
 begin
   StartProgram(false);
@@ -1186,7 +1579,8 @@ procedure TTestResolver.TestTryStatement;
 begin
   StartProgram(false);
   Add('type');
-  Add('  {#Exec}Exception = longint;');
+  Add('  TObject = class end;');
+  Add('  {#Exec}Exception = class end;');
   Add('var');
   Add('  {#v1}v1,{#e1}e:longint;');
   Add('begin');
@@ -1203,14 +1597,109 @@ begin
   Add('  try');
   Add('    {@v1}v1:={@e1}e;');
   Add('  except');
-  Add('    on {#e2}E: {@Exec}Exception do');
+  Add('    on {#e2}{=Exec}E: Exception do');
   Add('      if {@e2}e=nil then ;');
-  Add('    on {#e3}E: {@Exec}Exception do');
+  Add('    on {#e3}{=Exec}E: Exception do');
   Add('      raise {@e3}e;');
   Add('    else');
   Add('      {@v1}v1:={@e1}e;');
   Add('  end');
   ParseProgram;
+end;
+
+procedure TTestResolver.TestTryExceptOnNonTypeFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type TObject = class end;');
+  Add('var E: TObject;');
+  Add('begin');
+  Add('  try');
+  Add('  except');
+  Add('    on E do ;');
+  Add('  end;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EParserError do
+      begin
+      AssertEquals('Expected "Expected type, but got variable", but got msg number "'+E.Message+'"',
+        PParser.nParserExpectedTypeButGot,Parser.LastMsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('try..except..on longint do failed',true,ok);
+end;
+
+procedure TTestResolver.TestTryExceptOnNonClassFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('begin');
+  Add('  try');
+  Add('  except');
+  Add('    on longint do ;');
+  Add('  end;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected "class expected but longint found", but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('try..except..on longint do failed',true,ok);
+end;
+
+procedure TTestResolver.TestRaiseNonVarFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type TObject = class end;');
+  Add('begin');
+  Add('  raise TObject;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected "var expected but type found", but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('raise longint failed',true,ok);
+end;
+
+procedure TTestResolver.TestRaiseNonClassFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('var');
+  Add('  E: longint;');
+  Add('begin');
+  Add('  raise E;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected "class expected but longint found", but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('raise longint failed',true,ok);
 end;
 
 procedure TTestResolver.TestStatementsRefs;
@@ -1241,6 +1730,70 @@ begin
   AssertEquals('3 declarations',3,PasProgram.ProgramSection.Declarations.Count);
 end;
 
+procedure TTestResolver.TestRepeatUntilNonBoolFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('begin');
+  Add('  repeat');
+  Add('  until 3;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected boolean expected but longint found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('repeat until condition not boolean spotted',true,ok);
+end;
+
+procedure TTestResolver.TestWhileDoNonBoolFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('begin');
+  Add('  while 3 do ;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected boolean expected but longint found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('repeat while do condition not boolean spotted',true,ok);
+end;
+
+procedure TTestResolver.TestIfThenNonBoolFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('begin');
+  Add('  if 3 then ;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected boolean expected but longint found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('if-then condition not boolean spotted',true,ok);
+end;
+
 procedure TTestResolver.TestUnitRef;
 var
   El, DeclEl, OtherUnit: TPasElement;
@@ -1254,8 +1807,8 @@ begin
   Add('var exitCOde: string;');
   Add('implementation');
   Add('initialization');
-  Add('  ExitcodE:=''3'';');
-  Add('  afile.eXitCode:=3;');
+  Add('  ExitcodE:=''1'';');
+  Add('  afile.eXitCode:=''2'';');
   Add('  System.exiTCode:=3;');
   ParseUnit;
 
@@ -1373,15 +1926,15 @@ begin
   Add('begin');
   Add('  Func1(3);');
   ParseProgram;
-  AssertEquals('1 declarations',1,PasProgram.ProgramSection.Declarations.Count);
+  AssertEquals('2 declarations',2,PasProgram.ProgramSection.Declarations.Count);
 
   El:=TPasElement(PasProgram.ProgramSection.Declarations[0]);
-  AssertEquals('overloaded proc',TPasOverloadedProc,El.ClassType);
+  AssertEquals('is function',TPasFunction,El.ClassType);
 
   AssertEquals('1 statement',1,PasProgram.InitializationSection.Elements.Count);
 end;
 
-procedure TTestResolver.TestProcOverloadRefs;
+procedure TTestResolver.TestProcOverloadWithBaseTypes;
 begin
   StartProgram(false);
   Add('function {#A}Func1(i: longint; j: longint = 0): longint; overload;');
@@ -1395,6 +1948,104 @@ begin
   Add('begin');
   Add('  {@A}Func1(3);');
   ParseProgram;
+end;
+
+procedure TTestResolver.TestProcOverloadWithClassTypes;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class end;');
+  Add('  {#TA}TClassA = class end;');
+  Add('  {#TB}TClassB = class end;');
+  Add('procedure {#DoA}DoIt({=TA}p: TClassA); overload;');
+  Add('begin');
+  Add('end;');
+  Add('procedure {#DoB}DoIt({=TB}p: TClassB); overload;');
+  Add('begin');
+  Add('end;');
+  Add('var');
+  Add('  {#A}{=TA}A: TClassA;');
+  Add('  {#B}{=TB}B: TClassB;');
+  Add('begin');
+  Add('  {@DoA}DoIt({@A}A)');
+  Add('  {@DoB}DoIt({@B}B)');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestProcOverloadWithInhClassTypes;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class end;');
+  Add('  {#TA}TClassA = class end;');
+  Add('  {#TB}TClassB = class(TClassA) end;');
+  Add('  {#TC}TClassC = class(TClassB) end;');
+  Add('procedure {#DoA}DoIt({=TA}p: TClassA); overload;');
+  Add('begin');
+  Add('end;');
+  Add('procedure {#DoB}DoIt({=TB}p: TClassB); overload;');
+  Add('begin');
+  Add('end;');
+  Add('var');
+  Add('  {#A}{=TA}A: TClassA;');
+  Add('  {#B}{=TB}B: TClassB;');
+  Add('  {#C}{=TC}C: TClassC;');
+  Add('begin');
+  Add('  {@DoA}DoIt({@A}A)');
+  Add('  {@DoB}DoIt({@B}B)');
+  Add('  {@DoB}DoIt({@C}C)');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestProcOverloadWithInhAliasClassTypes;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class end;');
+  Add('  {#TA}TClassA = class end;');
+  Add('  {#TB}{=TA}TClassB = TClassA;');
+  Add('  {#TC}TClassC = class(TClassB) end;');
+  Add('procedure {#DoA}DoIt({=TA}p: TClassA); overload;');
+  Add('begin');
+  Add('end;');
+  Add('procedure {#DoC}DoIt({=TC}p: TClassC); overload;');
+  Add('begin');
+  Add('end;');
+  Add('var');
+  Add('  {#A}{=TA}A: TClassA;');
+  Add('  {#B}{=TB}B: TClassB;');
+  Add('  {#C}{=TC}C: TClassC;');
+  Add('begin');
+  Add('  {@DoA}DoIt({@A}A)');
+  Add('  {@DoA}DoIt({@B}B)');
+  Add('  {@DoC}DoIt({@C}C)');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestProcDuplicate;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('procedure ProcA(i: longint);');
+  Add('begin');
+  Add('end;');
+  Add('procedure ProcA(i: longint);');
+  Add('begin');
+  Add('end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected duplicate identifier, but got msg number "'+E.Message+'"',
+        PasResolver.nDuplicateIdentifier,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('duplicate identifier spotted',true,ok);
 end;
 
 procedure TTestResolver.TestNestedProc;
@@ -1421,13 +2072,29 @@ begin
   ParseProgram;
 end;
 
-procedure TTestResolver.TestDuplicateVar;
+procedure TTestResolver.TestForwardProc;
+begin
+  StartProgram(false);
+  Add('procedure {#A_forward}FuncA(i: longint); forward;');
+  Add('procedure {#B}FuncB(i: longint);');
+  Add('begin');
+  Add('  {@A_forward}FuncA(i);');
+  Add('end;');
+  Add('procedure {#A}FuncA(i: longint);');
+  Add('begin');
+  Add('end;');
+  Add('begin');
+  Add('  {@A}FuncA(3);');
+  Add('  {@B}FuncB(3);');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestForwardProcUnresolved;
 var
   ok: Boolean;
 begin
   StartProgram(false);
-  Add('var a: longint;');
-  Add('var a: string;');
+  Add('procedure FuncA(i: longint); forward;');
   Add('begin');
   ok:=false;
   try
@@ -1435,12 +2102,238 @@ begin
   except
     on E: EPasResolve do
       begin
-      AssertEquals('Expected duplicate identifier, but got msg number "'+E.Message+'"',
+      AssertEquals('Expected forward proc not resolved, but got msg number "'+E.Message+'"',
+        PasResolver.nForwardProcNotResolved,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('unresolved forward proc raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestNestedForwardProc;
+begin
+  StartProgram(false);
+  Add('procedure {#A}FuncA;');
+  Add('  procedure {#B_forward}ProcB(i: longint); forward;');
+  Add('  procedure {#C}ProcC(i: longint);');
+  Add('  begin');
+  Add('    {@B_forward}ProcB(i);');
+  Add('  end;');
+  Add('  procedure {#B}ProcB(i: longint);');
+  Add('  begin');
+  Add('  end;');
+  Add('begin');
+  Add('  {@B}ProcB(3);');
+  Add('  {@C}ProcC(3);');
+  Add('end;');
+  Add('begin');
+  Add('  {@A}FuncA;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestNestedForwardProcUnresolved;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('procedure FuncA;');
+  Add('  procedure ProcB(i: longint); forward;');
+  Add('begin');
+  Add('end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected forward proc not resolved, but got msg number "'+E.Message+'"',
+        PasResolver.nForwardProcNotResolved,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('unresolved forward proc raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestForwardProcFuncMismatch;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('procedure DoIt; forward;');
+  Add('function DoIt: longint;');
+  Add('begin');
+  Add('end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected "procedure expected, but function found", but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('proc type mismatch raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestForwardFuncResultMismatch;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('function DoIt: longint; forward;');
+  Add('function DoIt: string;');
+  Add('begin');
+  Add('end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected "Result type mismatch", but got msg number "'+E.Message+'"',
+        PasResolver.nResultTypeMismatchExpectedButFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('function result type mismatch raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestUnitIntfProc;
+begin
+  StartUnit(false);
+  Add('interface');
+  Add('procedure {#A_forward}FuncA(i: longint);');
+  Add('implementation');
+  Add('procedure {#A}FuncA(i: longint);');
+  Add('begin');
+  Add('end;');
+  Add('initialization');
+  Add('  {@A}FuncA(3);');
+  ParseUnit;
+end;
+
+procedure TTestResolver.TestUnitIntfProcUnresolved;
+var
+  ok: Boolean;
+begin
+  StartUnit(false);
+  Add('interface');
+  Add('procedure {#A_forward}FuncA(i: longint);');
+  Add('implementation');
+  Add('initialization');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected forward proc not resolved, but got msg number "'+E.Message+'"',
+        PasResolver.nForwardProcNotResolved,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('unresolved forward proc raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestUnitIntfMismatchArgName;
+var
+  ok: Boolean;
+begin
+  StartUnit(false);
+  Add('interface');
+  Add('procedure {#A_forward}ProcA(i: longint);');
+  Add('implementation');
+  Add('procedure {#A}ProcA(j: longint);');
+  Add('begin');
+  Add('end;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected function header "ProcA" doesn''t match forward : var name changes, but got msg number "'+E.Message+'"',
+        PasResolver.nFunctionHeaderMismatchForwardVarName,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('mismatch proc argument name raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestProcOverloadIsNotFunc;
+var
+  ok: Boolean;
+begin
+  StartUnit(false);
+  Add('interface');
+  Add('var ProcA: longint;');
+  Add('procedure {#A_Decl}ProcA(i: longint);');
+  Add('implementation');
+  Add('procedure {#A_Impl}ProcA(i: longint);');
+  Add('begin');
+  Add('end;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected Duplicate identifier, but got msg number "'+E.Message+'"',
         PasResolver.nDuplicateIdentifier,E.MsgNumber);
       ok:=true;
       end;
   end;
-  AssertEquals('duplicate identifier spotted',true,ok);
+  AssertEquals('overload proc/var raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestProcCallMissingParams;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('procedure Proc1(a: longint);');
+  Add('begin');
+  Add('end;');
+  Add('begin');
+  Add('  Proc1;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected Wrong number of parameters for call to "Proc1", but got msg number "'+E.Message+'"',
+        PasResolver.nWrongNumberOfParametersForCallTo,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('proc call without params raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestBuiltInProcCallMissingParams;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('begin');
+  Add('  length;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected Wrong number of parameters for call to "length", but got msg number "'+E.Message+'"',
+        PasResolver.nWrongNumberOfParametersForCallTo,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('proc call without params raised an error',true,ok);
 end;
 
 procedure TTestResolver.TestRecord;
@@ -1499,6 +2392,1224 @@ begin
   Add('  {@r}r.{@c}c.{@d}d:=6;');
   Add('  {@r}r.{@c}c.{@e}e:=7;');
   Add('  {@r}r.{@c}c.{@f}f:=8;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClass;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('    {#B}b: longint;');
+  Add('  end;');
+  Add('var');
+  Add('  {#C}{=TOBJ}c: TObject;');
+  Add('begin');
+  Add('  {@C}c.{@b}b:=3;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassDefaultInheritance;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('    {#OBJ_a}a: longint;');
+  Add('    {#OBJ_b}b: longint;');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('    {#A_a}a: longint;');
+  Add('    {#A_c}c: longint;');
+  Add('  end;');
+  Add('var');
+  Add('  {#V}{=A}v: TClassA;');
+  Add('begin');
+  Add('  {@V}v.{@A_c}c:=2;');
+  Add('  {@V}v.{@OBJ_b}b:=3;');
+  Add('  {@V}v.{@A_a}a:=4;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassTripleInheritance;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('    {#OBJ_a}a: longint;');
+  Add('    {#OBJ_b}b: longint;');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('    {#A_a}a: longint;');
+  Add('    {#A_c}c: longint;');
+  Add('  end;');
+  Add('  {#B}TClassB = class(TClassA)');
+  Add('    {#B_a}a: longint;');
+  Add('    {#B_d}d: longint;');
+  Add('  end;');
+  Add('var');
+  Add('  {#V}{=B}v: TClassB;');
+  Add('begin');
+  Add('  {@V}v.{@B_d}d:=1;');
+  Add('  {@V}v.{@A_c}c:=2;');
+  Add('  {@V}v.{@OBJ_B}b:=3;');
+  Add('  {@V}v.{@B_a}a:=4;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassForward;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('  end;');
+  Add('  {#B_forward}TClassB = class;');
+  Add('  {#A}TClassA = class');
+  Add('    {#A_a}a: longint;');
+  Add('    {#A_b}{=B_forward}b: TClassB;');
+  Add('  end;');
+  Add('  {#B}TClassB = class(TClassA)');
+  Add('    {#B_a}a: longint;');
+  Add('    {#B_d}d: longint;');
+  Add('  end;');
+  Add('var');
+  Add('  {#V}{=B}v: TClassB;');
+  Add('begin');
+  Add('  {@V}v.{@B_d}d:=1;');
+  Add('  {@V}v.{@B_a}a:=2;');
+  Add('  {@V}v.{@A_b}b:=nil;');
+  Add('  {@V}v.{@A_b}b.{@B_a}a:=3;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassForwardNotResolved;
+var
+  ErrorNo: Integer;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('  end;');
+  Add('  TClassB = class;');
+  Add('var');
+  Add('  v: TClassB;');
+  Add('begin');
+  ErrorNo:=0;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      ErrorNo:=E.MsgNumber;
+  end;
+  AssertEquals('Forward class not resolved raises correct error',nForwardTypeNotResolved,ErrorNo);
+end;
+
+procedure TTestResolver.TestClassMethod;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('    procedure {#A_ProcA_Decl}ProcA;');
+  Add('  end;');
+  Add('procedure TClassA.ProcA;');
+  Add('begin');
+  Add('end;');
+  Add('var');
+  Add('  {#V}{=A}v: TClassA;');
+  Add('begin');
+  Add('  {@V}v.{@A_ProcA_Decl}ProcA;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassMethodUnresolved;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('  end;');
+  Add('  TClassA = class');
+  Add('    procedure ProcA;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected forward proc not resolved, but got msg number "'+E.Message+'"',
+        PasResolver.nForwardProcNotResolved,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('unresolved forward proc raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestClassMethodAbstract;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure ProcA; virtual; abstract;');
+  Add('  end;');
+  Add('begin');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassMethodAbstractWithoutVirtual;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure ProcA; abstract;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected abstract without virtual, but got msg number "'+E.Message+'"',
+        PasResolver.nInvalidProcModifiers,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('abstract method without virtual raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestClassMethodAbstractHasBody;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure ProcA; virtual; abstract;');
+  Add('  end;');
+  Add('procedure TObject.ProcA;');
+  Add('begin');
+  Add('end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected abstract must not have implementation, but got msg number "'+E.Message+'"',
+        PasResolver.nAbstractMethodsMustNotHaveImplementation,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('abstract method with body raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestClassMethodUnresolvedWithAncestor;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure ProcA; virtual; abstract;');
+  Add('  end;');
+  Add('  TClassA = class');
+  Add('    procedure ProcA;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected forward proc not resolved, but got msg number "'+E.Message+'"',
+        PasResolver.nForwardProcNotResolved,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('unresolved forward proc raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestClassProcFuncMismatch;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure DoIt;');
+  Add('  end;');
+  Add('function TObject.DoIt: longint;');
+  Add('begin');
+  Add('end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected "procedure expected, but function found", but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('proc type mismatch raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestClassMethodOverload;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure DoIt;');
+  Add('    procedure DoIt(i: longint);');
+  Add('    procedure DoIt(s: string);');
+  Add('  end;');
+  Add('procedure TObject.DoIt;');
+  Add('begin');
+  Add('end;');
+  Add('procedure TObject.DoIt(i: longint);');
+  Add('begin');
+  Add('end;');
+  Add('procedure TObject.DoIt(s: string);');
+  Add('begin');
+  Add('end;');
+  Add('begin');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassMethodInvalidOverload;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure DoIt(i: longint);');
+  Add('    procedure DoIt(k: longint);');
+  Add('  end;');
+  Add('procedure TObject.DoIt(i: longint);');
+  Add('begin');
+  Add('end;');
+  Add('procedure TObject.DoIt(k: longint);');
+  Add('begin');
+  Add('end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected Duplicate identifier, but got msg number "'+E.Message+'"',
+        PasResolver.nDuplicateIdentifier,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('duplicate method signature raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestClassOverride;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure {#TOBJ_ProcA}ProcA; virtual; abstract;');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('    procedure {#A_ProcA}ProcA; override;');
+  Add('  end;');
+  Add('procedure TClassA.ProcA;');
+  Add('begin');
+  Add('end;');
+  Add('var');
+  Add('  {#V}{=A}v: TClassA;');
+  Add('begin');
+  Add('  {@V}v.{@A_ProcA}ProcA;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassOverride2;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure {#TOBJ_ProcA}ProcA; virtual; abstract;');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('    procedure {#A_ProcA}ProcA; override;');
+  Add('  end;');
+  Add('  {#B}TClassB = class');
+  Add('    procedure {#B_ProcA}ProcA; override;');
+  Add('  end;');
+  Add('procedure TClassA.ProcA;');
+  Add('begin');
+  Add('end;');
+  Add('procedure TClassB.ProcA;');
+  Add('begin');
+  Add('end;');
+  Add('var');
+  Add('  {#V}{=B}v: TClassB;');
+  Add('begin');
+  Add('  {@V}v.{@B_ProcA}ProcA;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassMethodScope;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('    {#A_A}A: longint;');
+  Add('    procedure {#A_ProcB}ProcB;');
+  Add('  end;');
+  Add('procedure TClassA.ProcB;');
+  Add('begin');
+  Add('  {@A_A}A:=3;');
+  Add('end;');
+  Add('begin');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassIdentifierSelf;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    {#C}C: longint;');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('    {#B}B: longint;');
+  Add('    procedure {#A_ProcB}ProcB;');
+  Add('  end;');
+  Add('procedure TClassA.ProcB;');
+  Add('begin');
+  Add('  {@B}B:=1;');
+  Add('  {@C}C:=2;');
+  Add('  {@A}Self.{@B}B:=3;');
+  Add('end;');
+  Add('begin');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassCallInherited;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure {#TOBJ_ProcA}ProcA(i: longint); virtual;');
+  Add('    procedure {#TOBJ_ProcB}ProcB(j: longint); virtual;');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('    procedure {#A_ProcA}ProcA(i: longint); override;');
+  Add('    procedure {#A_ProcB}ProcB(j: longint); override;');
+  Add('  end;');
+  Add('procedure TObject.ProcA(i: longint);');
+  Add('begin');
+  Add('  inherited; // ignore and do not raise error');
+  Add('end;');
+  Add('procedure TObject.ProcB(j: longint);');
+  Add('begin');
+  Add('end;');
+  Add('procedure TClassA.ProcA({#i1}i: longint);');
+  Add('begin');
+  Add('  {@A_ProcA}ProcA({@i1}i);');
+  Add('  {@TOBJ_ProcA}inherited;');
+  Add('  inherited {@TOBJ_ProcA}ProcA({@i1}i);');
+  Add('  {@A_ProcB}ProcB({@i1}i);');
+  Add('  inherited {@TOBJ_ProcB}ProcB({@i1}i);');
+  Add('end;');
+  Add('procedure TClassA.ProcB(j: longint);');
+  Add('begin');
+  Add('end;');
+  Add('begin');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassCallInheritedNoParamsAbstractFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure ProcA; virtual; abstract;');
+  Add('  end;');
+  Add('  TClassA = class');
+  Add('    procedure ProcA; override;');
+  Add('  end;');
+  Add('procedure TClassA.ProcA;');
+  Add('begin');
+  Add('  inherited;');
+  Add('end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected Abstract methods cannot be called directly, but got msg number "'+E.Message+'"',
+        PasResolver.nAbstractMethodsCannotBeCalledDirectly,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('inherited without parameters calling abstract method fails',true,ok);
+end;
+
+procedure TTestResolver.TestClassCallInheritedWithParamsAbstractFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure ProcA(c: char); virtual; abstract;');
+  Add('  end;');
+  Add('  TClassA = class');
+  Add('    procedure ProcA(c: char); override;');
+  Add('  end;');
+  Add('procedure TClassA.ProcA(c: char);');
+  Add('begin');
+  Add('  inherited ProcA(c);');
+  Add('end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected Abstract methods cannot be called directly, but got msg number "'+E.Message+'"',
+        PasResolver.nAbstractMethodsCannotBeCalledDirectly,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('inherited without parameters calling abstract method fails',true,ok);
+end;
+
+procedure TTestResolver.TestClassAssignNil;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('    {#FSub}FSub: TClassA;');
+  Add('    property {#Sub}Sub: TClassA read {@FSub}FSub write {@FSub}FSub;');
+  Add('  end;');
+  Add('var');
+  Add('  {#v}{=A}v: TClassA;');
+  Add('begin');
+  Add('  {@v}v:=nil;');
+  Add('  if {@v}v=nil then ;');
+  Add('  if {@v}v<>nil then ;');
+  Add('  {@v}v.{@FSub}FSub:=nil;');
+  Add('  if {@v}v.{@FSub}FSub=nil then ;');
+  Add('  if {@v}v.{@FSub}FSub<>nil then ;');
+  Add('  {@v}v.{@Sub}Sub:=nil;');
+  Add('  if {@v}v.{@Sub}Sub=nil then ;');
+  Add('  if {@v}v.{@Sub}Sub<>nil then ;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassAssign;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('    {#FSub}FSub: TClassA;');
+  Add('    property {#Sub}Sub: TClassA read {@FSub}FSub write {@FSub}FSub;');
+  Add('  end;');
+  Add('var');
+  Add('  {#o}{=TOBJ}o: TObject;');
+  Add('  {#v}{=A}v: TClassA;');
+  Add('  {#p}{=A}p: TClassA;');
+  Add('begin');
+  Add('  {@o}o:={@v}v;');
+  Add('  {@v}v:={@p}p;');
+  Add('  if {@v}v={@p}p then ;');
+  Add('  if {@v}v={@o}o then ;');
+  Add('  if {@o}o={@o}o then ;');
+  Add('  if {@o}o={@v}v then ;');
+  Add('  if {@v}v<>{@p}p then ;');
+  Add('  if {@v}v<>{@o}o then ;');
+  Add('  if {@o}o<>{@o}o then ;');
+  Add('  if {@o}o<>{@v}v then ;');
+  Add('  {@v}v.{@FSub}FSub:={@p}p;');
+  Add('  {@p}p:={@v}v.{@FSub}FSub;');
+  Add('  {@o}o:={@v}v.{@FSub}FSub;');
+  Add('  {@v}v.{@Sub}Sub:={@p}p;');
+  Add('  {@p}p:={@v}v.{@Sub}Sub;');
+  Add('  {@o}o:={@v}v.{@Sub}Sub;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassNilAsParam;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('  end;');
+  Add('procedure ProcP(o: TObject);');
+  Add('begin end;');
+  Add('begin');
+  Add('  ProcP(nil);');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassOperator_Is_As;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('    {#Sub}Sub: TClassA;');
+  Add('  end;');
+  Add('var');
+  Add('  {#o}{=TOBJ}o: TObject;');
+  Add('  {#v}{=A}v: TClassA;');
+  Add('begin');
+  Add('  if {@o}o is {@A}TClassA then;');
+  Add('  if {@v}v is {@A}TClassA then;');
+  Add('  if {@v}v.{@Sub}Sub is {@A}TClassA then;');
+  Add('  {@v}v:={@o}o as {@A}TClassA;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestClassOperatorIsOnNonDescendantFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('  end;');
+  Add('var');
+  Add('  {#o}{=TOBJ}o: TObject;');
+  Add('  {#v}{=A}v: TClassA;');
+  Add('begin');
+  Add('  if {@v}v is {@TObj}TObject then;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected types are not related, but got msg number "'+E.Message+'"',
+        PasResolver.nTypesAreNotRelated,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('operator "is" requires descendant',true,ok);
+end;
+
+procedure TTestResolver.TestClassOperatorIsOnNonTypeFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('  end;');
+  Add('var');
+  Add('  {#o}{=TOBJ}o: TObject;');
+  Add('  {#v}{=A}v: TClassA;');
+  Add('begin');
+  Add('  if {@o}o is {@v}v then;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected class type expected, but got variable, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('operator "is" requires descendant type',true,ok);
+end;
+
+procedure TTestResolver.TestClassOperatorAsOnNonDescendantFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('  end;');
+  Add('var');
+  Add('  {#o}{=TOBJ}o: TObject;');
+  Add('  {#v}{=A}v: TClassA;');
+  Add('begin');
+  Add('  {@o}o:={@v}v as {@TObj}TObject;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected types are not related, but got msg number "'+E.Message+'"',
+        PasResolver.nTypesAreNotRelated,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('operator "as" requires descendant',true,ok);
+end;
+
+procedure TTestResolver.TestClassOperatorAsOnNonTypeFail;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('  end;');
+  Add('var');
+  Add('  {#o}{=TOBJ}o: TObject;');
+  Add('  {#v}{=A}v: TClassA;');
+  Add('begin');
+  Add('  {@o}o:={@v}v as {@o}o;');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected types are not related, but got msg number "'+E.Message+'"',
+        PasResolver.nTypesAreNotRelated,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('operator "as" requires descendant type',true,ok);
+end;
+
+procedure TTestResolver.TestProperty1;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('    {#FB}FB: longint;');
+  Add('    property {#B}B: longint read {@FB}FB write {@FB}FB;');
+  Add('  end;');
+  Add('var');
+  Add('  {#v}{=A}v: TClassA;');
+  Add('begin');
+  Add('  {@v}v.{@b}b:=3;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestPropertyAccessorNotInFront;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    property B: longint read FB;');
+  Add('    FB: longint;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected Identifier not found, but got msg number "'+E.Message+'"',
+        PasResolver.nIdentifierNotFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property accessor not in front raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyReadAccessorVarWrongType;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    FB: string;');
+  Add('    property B: longint read FB;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected Longint expected, but String found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property read accessor wrong type raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyReadAccessorProcNotFunc;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure GetB;');
+  Add('    property B: longint read GetB;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected function expected, but procedure found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property read accessor wrong function type raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyReadAccessorFuncWrongResult;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    function GetB: string;');
+  Add('    property B: longint read GetB;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected function result longint expected, but function result string found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property read accessor function wrong result type raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyReadAccessorFuncWrongArgCount;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    function GetB(i: longint): string;');
+  Add('    property B: longint read GetB;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected function arg count 0 expected, but 1 found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property read accessor function wrong arg count raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyReadAccessorFunc;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('    function {#GetB}GetB: longint;');
+  Add('    property {#B}B: longint read {@GetB}GetB;');
+  Add('  end;');
+  Add('function TObject.GetB: longint;');
+  Add('begin');
+  Add('end;');
+  Add('var');
+  Add('  {#o}{=TOBJ}o: TObject;');
+  Add('begin');
+  Add('  if {@o}o.{@B}B=3 then ;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestPropertyWriteAccessorVarWrongType;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    FB: string;');
+  Add('    property B: longint write FB;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected Longint expected, but String found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property read accessor wrong type raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyWriteAccessorFuncNotProc;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    function SetB: longint;');
+  Add('    property B: longint write SetB;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected procedure expected, but function found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property write accessor wrong function instead of proc raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyWriteAccessorProcWrongArgCount;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure SetB;');
+  Add('    property B: longint write SetB;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected procedure arg count 1 expected, but 0 found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property write accessor procedure wrong arg count raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyWriteAccessorProcWrongArg;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure SetB(var Value: longint);');
+  Add('    property B: longint write SetB;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected procedure arg longint expected, but var found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property write accessor procedure wrong arg type raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyWriteAccessorProcWrongArgType;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    procedure SetB(Value: string);');
+  Add('    property B: longint write SetB;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected procedure(Value: longint) expected, but procedure(Value: string) found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property write accessor procedure wrong arg type raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyWriteAccessorProc;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('    procedure {#SetB}SetB(Value: longint);');
+  Add('    property {#B}B: longint write {@SetB}SetB;');
+  Add('  end;');
+  Add('procedure TObject.SetB(Value: longint);');
+  Add('begin');
+  Add('end;');
+  Add('var');
+  Add('  {#o}{=TOBJ}o: TObject;');
+  Add('begin');
+  Add('  {@o}o.{@B}B:=3;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestPropertyTypeless;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('    {#FB}FB: longint;');
+  Add('    property {#TOBJ_B}B: longint write {@FB}FB;');
+  Add('  end;');
+  Add('  {#TA}TClassA = class');
+  Add('    {#FC}FC: longint;');
+  Add('    property {#TA_B}{@TOBJ_B}B write {@FC}FC;');
+  Add('  end;');
+  Add('var');
+  Add('  {#v}{=TA}v: TClassA;');
+  Add('begin');
+  Add('  {@v}v.{@TA_B}B:=3;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestPropertyTypelessNoAncestor;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('  end;');
+  Add('  TClassA = class');
+  Add('    property B;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected no property found to override, but got msg number "'+E.Message+'"',
+        PasResolver.nNoPropertyFoundToOverride,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property typeless without ancestor property raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyStoredAccessorProcNotFunc;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    FB: longint;');
+  Add('    procedure GetB;');
+  Add('    property B: longint read FB stored GetB;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected function expected, but procedure found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property stored accessor wrong function type raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyStoredAccessorFuncWrongResult;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    FB: longint;');
+  Add('    function GetB: string;');
+  Add('    property B: longint read FB stored GetB;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected function result longint expected, but function result string found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property stored accessor function wrong result type raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyStoredAccessorFuncWrongArgCount;
+var
+  ok: Boolean;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    FB: longint;');
+  Add('    function GetB(i: longint): boolean;');
+  Add('    property B: longint read FB stored GetB;');
+  Add('  end;');
+  Add('begin');
+  ok:=false;
+  try
+    ParseModule;
+  except
+    on E: EPasResolve do
+      begin
+      AssertEquals('Expected function arg count 0 expected, but 1 found, but got msg number "'+E.Message+'"',
+        PasResolver.nXExpectedButYFound,E.MsgNumber);
+      ok:=true;
+      end;
+  end;
+  AssertEquals('property stored accessor function wrong arg count raised an error',true,ok);
+end;
+
+procedure TTestResolver.TestPropertyArgs1;
+begin
+  exit;
+
+  StartProgram(false);
+  Add('type');
+  Add('  TObject = class');
+  Add('    function GetB(Index: longint): boolean;');
+  Add('    procedure SetB(Index: longint; Value: longint);');
+  Add('    property B[Index: longint]: longint read GetB write SetB;');
+  Add('  end;');
+  Add('function TObject.GetB(Index: longint): boolean;');
+  Add('begin');
+  Add('end;');
+  Add('procedure TObject.SetB(Index: longint; Value: longint);');
+  Add('begin');
+  Add('end;');
+  Add('begin');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestWithBlock1;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('    {#TOBJ_A}A: longint;');
+  Add('  end;');
+  Add('var');
+  Add('  {#o}{=TOBJ}o: TObject;');
+  Add('  {#a}a: longint;');
+  Add('begin');
+  Add('  {@a}a:=1;');
+  Add('  with {@o}o do');
+  Add('    {@TOBJ_A}a:=2;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestWithBlock2;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('    {#TOBJ_i}i: longint;');
+  Add('  end;');
+  Add('  {#TA}TClassA = class');
+  Add('    {#TA_j}j: longint;');
+  Add('    {#TA_b}{=TA}b: TClassA;');
+  Add('  end;');
+  Add('var');
+  Add('  {#o}{=TOBJ}o: TObject;');
+  Add('  {#a}{=TA}a: TClassA;');
+  Add('  {#i}i: longint;');
+  Add('begin');
+  Add('  {@i}i:=1;');
+  Add('  with {@o}o do');
+  Add('    {@TOBJ_i}i:=2;');
+  Add('  {@i}i:=1;');
+  Add('  with {@o}o,{@a}a do begin');
+  Add('    {@TOBJ_i}i:=3;');
+  Add('    {@TA_j}j:=4;');
+  Add('    {@TA_b}b:={@a}a;');
+  Add('  end;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestDynArrayOfLongint;
+begin
+  Exit;
+
+  StartProgram(false);
+  Add('type TIntArray = array of longint;');
+  Add('var a: TIntArray;');
+  Add('begin');
+  Add('  SetLength(a,3);');
+  Add('  a[0]:=1;');
+  Add('  a[1]:=length(a);');
+  Add('  a[2]:=a[0];');
   ParseProgram;
 end;
 

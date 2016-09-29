@@ -329,7 +329,9 @@ type
     po_delphi, // Delphi mode: forbid nested comments
     po_cassignments,  // allow C-operators += -= *= /=
     po_resolvestandardtypes, // search for 'longint', 'string', etc., do not use dummies, TPasResolver sets this to use its declarations
-    po_asmwhole  // store whole text between asm..end in TPasImplAsmStatement.Tokens
+    po_asmwhole,  // store whole text between asm..end in TPasImplAsmStatement.Tokens
+    po_nooverloadedprocs,  // do not create TPasOverloadedProc for procs with same name
+    po_keepclassforward    // default: delete class fowards when there is a class declaration
     );
   TPOptions = set of TPOption;
 
@@ -848,7 +850,8 @@ Procedure TStreamLineReader.InitFromStream(AStream : TStream);
 
 begin
   SetLength(FContent,AStream.Size);
-  AStream.Read(FContent[1],AStream.Size);
+  if FContent<>'' then
+    AStream.Read(FContent[1],length(FContent));
   FPos:=0;
 end;
 
