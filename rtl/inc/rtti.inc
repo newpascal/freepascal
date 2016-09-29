@@ -64,8 +64,6 @@ type
   record
     Initialize: TRTTIRecInitFiniOp;
     Finalize: TRTTIRecInitFiniOp;
-    Reserved1: CodePointer;
-    Reserved2: CodePointer;
   end;
 
   PRecordInfoInit=^TRecordInfoInit;
