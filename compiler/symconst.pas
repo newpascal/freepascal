@@ -582,6 +582,14 @@ type
   );
   tvaroptions=set of tvaroption;
 
+  tmanagementoperator=(mop_none,
+    mop_initialize,
+    mop_finalize,
+    mop_copy,
+    mop_clone
+  );
+  tmanagementoperators=set of tmanagementoperator;
+
   { register variable }
   tvarregable=(vr_none,
     vr_intreg,
@@ -701,6 +709,7 @@ type
     itp_rtti_normal_array,
     itp_rtti_dyn_array,
     itp_rtti_proc_param,
+    itp_init_record_operators,
     itp_rtti_enum_size_start_rec,
     itp_rtti_enum_min_max_rec,
     itp_rtti_enum_basetype_array_rec,
@@ -842,6 +851,7 @@ inherited_objectoptions : tobjectoptions = [oo_has_virtual,oo_has_private,oo_has
        '$rtti_normal_array$',
        '$rtti_dyn_array$',
        '$rtti_proc_param$',
+       '$init_record_operators$',
        '$rtti_enum_size_start_rec$',
        '$rtti_enum_min_max_rec$',
        '$rtti_enum_basetype_array_rec$',
