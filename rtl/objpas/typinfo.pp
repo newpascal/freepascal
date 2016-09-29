@@ -312,6 +312,7 @@ unit typinfo;
             tkRecord:
               (
                 RecSize: Integer;
+                RecInitTable: Pointer;
                 ManagedFldCount: Integer;
                 {ManagedFields: array[1..ManagedFldCount] of TManagedField}
               );
