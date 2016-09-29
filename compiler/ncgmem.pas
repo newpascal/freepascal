@@ -127,7 +127,7 @@ implementation
                  vmtname:=tobjectdef(tclassrefdef(resultdef).pointeddef).vmt_mangledname;
                  reference_reset_symbol(href,
                    current_asmdata.RefAsmSymbol(vmtname,AT_DATA,indirect),0,
-                   voidpointertype.size);
+                   resultdef.alignment);
                  hlcg.a_loadaddr_ref_reg(current_asmdata.CurrAsmList,resultdef,resultdef,href,location.register);
                  if otherunit then
                    current_module.add_extern_asmsym(vmtname,AB_EXTERNAL,AT_DATA);
@@ -146,7 +146,7 @@ implementation
                      { find/add necessary classref/classname pool entries }
                      objcfinishstringrefpoolentry(entry,sp_objcclassnames,sec_objc_cls_refs,sec_objc_class_names);
                    end;
-                 reference_reset_symbol(href,tasmlabel(entry^.Data),0,voidpointertype.size);
+                 reference_reset_symbol(href,tasmlabel(entry^.Data),0,objc_idtype.alignment);
                  hlcg.a_load_ref_reg(current_asmdata.CurrAsmList,objc_idtype,objc_idtype,href,location.register);
                end;
            end
@@ -194,7 +194,7 @@ implementation
                 if hsym.localloc.loc<>LOC_REFERENCE then
                   internalerror(200309283);
 
-                hlcg.reference_reset_base(href,parentfpvoidpointertype,location.register,hsym.localloc.reference.offset,sizeof(pint));
+                hlcg.reference_reset_base(href,parentfpvoidpointertype,location.register,hsym.localloc.reference.offset,parentfpvoidpointertype.alignment);
                 hlcg.a_load_ref_reg(current_asmdata.CurrAsmList,parentfpvoidpointertype,parentfpvoidpointertype,href,location.register);
               end;
           end;
@@ -319,6 +319,7 @@ implementation
             hlcg.allocallcpuregisters(current_asmdata.CurrAsmList);
             hlcg.a_call_name(current_asmdata.CurrAsmList,pd,'FPC_CHECKPOINTER',[@paraloc1],nil,false);
             hlcg.deallocallcpuregisters(current_asmdata.CurrAsmList);
+            include(current_settings.moduleswitches,cs_checkpointer_called);
           end;
       end;
 
@@ -407,6 +408,7 @@ implementation
                     hlcg.allocallcpuregisters(current_asmdata.CurrAsmList);
                     hlcg.a_call_name(current_asmdata.CurrAsmList,pd,'FPC_CHECKPOINTER',[@paraloc1],nil,false);
                     hlcg.deallocallcpuregisters(current_asmdata.CurrAsmList);
+                    system.include(current_settings.moduleswitches,cs_checkpointer_called);
                   end;
                end
              else
@@ -542,7 +544,7 @@ implementation
                earlier versions)
              }
              asmsym:=current_asmdata.RefAsmSymbol(vs.mangledname,AT_DATA);
-             reference_reset_symbol(tmpref,asmsym,0,sizeof(pint));
+             reference_reset_symbol(tmpref,asmsym,0,voidpointertype.alignment);
              hlcg.g_ptrtypecast_ref(current_asmdata.CurrAsmList,left.resultdef,cpointerdef.getreusable(resultdef),location.reference);
              location.reference.index:=hlcg.getintregister(current_asmdata.CurrAsmList,ptruinttype);
              hlcg.a_load_ref_reg(current_asmdata.CurrAsmList,ptruinttype,ptruinttype,tmpref,location.reference.index);
@@ -867,10 +869,10 @@ implementation
 
          newsize:=def_cgsize(resultdef);
          secondpass(left);
-         if left.location.loc=LOC_CREFERENCE then
-           location_reset_ref(location,LOC_CREFERENCE,newsize,left.location.reference.alignment)
+         if left.location.loc in [LOC_CREFERENCE,LOC_REFERENCE] then
+           location_reset_ref(location,left.location.loc,newsize,left.location.reference.alignment)
          else
-           location_reset_ref(location,LOC_REFERENCE,newsize,left.location.reference.alignment);
+           location_reset_ref(location,LOC_REFERENCE,newsize,resultdef.alignment);
 
          { an ansistring needs to be dereferenced }
          if is_ansistring(left.resultdef) or

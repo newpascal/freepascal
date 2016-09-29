@@ -42,16 +42,49 @@ type
     {$endif}
   end;
 
-  PRecordInfo=^TRecordInfo;
-  TRecordInfo=
+  PRecordInfoFull=^TRecordInfoFull;
+  TRecordInfoFull=
 {$ifdef USE_PACKED}
   packed
 {$endif USE_PACKED}
   record
     Size: Longint;
+{$if FPC_FULLVERSION>30100}
+    InitTable: Pointer;
+{$endif FPC_FULLVERSION>30100}
     Count: Longint;
     { Elements: array[count] of TRecordElement }
   end;
+
+{$if FPC_FULLVERSION>30100}
+  TRTTIRecVarOp=procedure(ARec: Pointer);
+  TRTTIRecCloneOp=procedure(ASrc, ADest: Pointer);
+
+  PRTTIRecordOpVMT=^TRTTIRecordOpVMT;
+  TRTTIRecordOpVMT=
+{$ifdef USE_PACKED}
+  packed
+{$endif USE_PACKED}
+  record
+    Initialize: TRTTIRecVarOp;
+    Finalize: TRTTIRecVarOp;
+    Copy: TRTTIRecVarOp;
+    Clone: TRTTIRecCloneOp;
+  end;
+
+  PRecordInfoInit=^TRecordInfoInit;
+  TRecordInfoInit=
+{$ifdef USE_PACKED}
+  packed
+{$endif USE_PACKED}
+  record
+    Size: Longint;
+    Terminator: Pointer;
+    RecordOp: PRTTIRecordOpVMT;
+    Count: Longint;
+    { Elements: array[count] of TRecordElement }
+  end;
+{$endif FPC_FULLVERSION>30100}
 
   PArrayInfo=^TArrayInfo;
   TArrayInfo=
@@ -83,8 +116,26 @@ end;
 function RTTIRecordSize(typeInfo: Pointer): SizeInt;
 begin
   typeInfo:=aligntoptr(typeInfo+2+PByte(typeInfo)[1]);
-  result:=PRecordInfo(typeInfo)^.Size;
+  result:=PRecordInfoFull(typeInfo)^.Size;
 end;
+
+{$if FPC_FULLVERSION>30100}
+function RTTIRecordOp(typeInfo: Pointer; var initrtti: Pointer): PRecordInfoInit; inline;
+begin
+  { find init table and management operators }
+  typeInfo:=aligntoptr(typeInfo+2+PByte(typeInfo)[1]);
+  result:=typeInfo;
+
+  { check terminator, maybe we are already in init table }
+  if Assigned(result^.Terminator) then
+  begin
+    { point to more optimal initrtti }
+    initrtti:=PRecordInfoFull(result)^.InitTable;
+    { and point to management operators in our init table }
+    result:=aligntoptr(initrtti+2+PByte(initrtti)[1]);
+  end
+end;
+{$endif FPC_FULLVERSION>30100}
 
 function RTTISize(typeInfo: Pointer): SizeInt;
 begin
@@ -112,8 +163,13 @@ var
   i : longint;
 begin
   typeInfo:=aligntoptr(typeInfo+2+PByte(typeInfo)[1]);
-  Count:=PRecordInfo(typeInfo)^.Count;
-  Inc(PRecordInfo(typeInfo));
+{$if FPC_FULLVERSION>30100}
+  Count:=PRecordInfoInit(typeInfo)^.Count;
+  Inc(PRecordInfoInit(typeInfo));
+{$else FPC_FULLVERSION>30100}
+  Count:=PRecordInfoFull(typeInfo)^.Count;
+  Inc(PRecordInfoFull(typeInfo));
+{$endif FPC_FULLVERSION>30100}
   { Process elements }
   for i:=1 to count Do
     begin
@@ -173,7 +229,17 @@ begin
     tkObject,
 {$endif FPC_HAS_FEATURE_OBJECTS}
     tkRecord:
+{$if FPC_FULLVERSION>30100}
+      { if possible try to use more optimal initrtti }
+      with RTTIRecordOp(typeinfo, typeinfo)^ do
+      begin
+        recordrtti(data,typeinfo,@int_initialize);
+        if Assigned(recordop) and Assigned(recordop^.Initialize) then
+          recordop^.Initialize(data);
+      end;
+{$else FPC_FULLVERSION>30100}
       recordrtti(data,typeinfo,@int_initialize);
+{$endif FPC_FULLVERSION>30100}
 {$ifdef FPC_HAS_FEATURE_VARIANTS}
     tkVariant:
       variant_init(PVarData(Data)^);
@@ -203,7 +269,17 @@ begin
     tkObject,
 {$endif FPC_HAS_FEATURE_OBJECTS}
     tkRecord:
+{$if FPC_FULLVERSION>30100}
+      { if possible try to use more optimal initrtti }
+      with RTTIRecordOp(typeinfo, typeinfo)^ do
+      begin
+        if Assigned(recordop) and Assigned(recordop^.Finalize) then
+          recordop^.Finalize(data);
+        recordrtti(data,typeinfo,@int_finalize);
+      end;
+{$else FPC_FULLVERSION>30100}
       recordrtti(data,typeinfo,@int_finalize);
+{$endif FPC_FULLVERSION>30100}
     tkInterface:
       Intf_Decr_Ref(PPointer(Data)^);
 {$ifdef FPC_HAS_FEATURE_DYNARRAYS}
@@ -239,7 +315,17 @@ begin
     tkobject,
 {$endif FPC_HAS_FEATURE_OBJECTS}
     tkrecord :
-      recordrtti(data,typeinfo,@int_addref);
+{$if FPC_FULLVERSION>30100}
+      { find init table }
+      with RTTIRecordOp(typeinfo, typeinfo)^ do
+{$endif FPC_FULLVERSION>30100}
+      begin
+        recordrtti(data,typeinfo,@int_addref);
+{$if FPC_FULLVERSION>30100}
+        if Assigned(recordop) and Assigned(recordop^.Copy) then
+          recordop^.Copy(Data);
+{$endif FPC_FULLVERSION>30100}
+      end;
 {$ifdef FPC_HAS_FEATURE_DYNARRAYS}
     tkDynArray:
       fpc_dynarray_incr_ref(PPointer(Data)^);
@@ -311,26 +397,42 @@ begin
 {$endif FPC_HAS_FEATURE_OBJECTS}
     tkrecord:
       begin
+{$if FPC_FULLVERSION>30100}
+      { find init table }
+      with RTTIRecordOp(typeinfo, typeinfo)^ do
+{$endif FPC_FULLVERSION>30100}
+      begin
         Temp:=aligntoptr(typeInfo+2+PByte(typeInfo)[1]);
-
-        Result:=PRecordInfo(Temp)^.Size;
-        Count:=PRecordInfo(Temp)^.Count;
-        Inc(PRecordInfo(Temp));
-        expectedoffset:=0;
-        { Process elements with rtti }
-        for i:=1 to count Do
+{$if FPC_FULLVERSION>30100}
+        if Assigned(recordop) and Assigned(recordop^.Clone) then
+          recordop^.Clone(Src,Dest)
+        else
           begin
-            Info:=PRecordElement(Temp)^.TypeInfo{$ifndef VER3_0}^{$endif};
-            Offset:=PRecordElement(Temp)^.Offset;
-            Inc(PRecordElement(Temp));
-            if Offset>expectedoffset then
-              move((Src+expectedoffset)^,(Dest+expectedoffset)^,Offset-expectedoffset);
-            copiedsize:=fpc_Copy_internal(Src+Offset,Dest+Offset,Info);
-            expectedoffset:=Offset+copiedsize;
+            Result:=Size;
+            Inc(PRecordInfoInit(Temp));
+{$else FPC_FULLVERSION>30100}
+            Result:=PRecordInfoFull(Temp)^.Size;
+            Count:=PRecordInfoFull(Temp)^.Count;
+            Inc(PRecordInfoFull(Temp));
+{$endif FPC_FULLVERSION>30100}
+            expectedoffset:=0;
+            { Process elements with rtti }
+            for i:=1 to Count Do
+              begin
+                Info:=PRecordElement(Temp)^.TypeInfo{$ifndef VER3_0}^{$endif};
+                Offset:=PRecordElement(Temp)^.Offset;
+                Inc(PRecordElement(Temp));
+                if Offset>expectedoffset then
+                  move((Src+expectedoffset)^,(Dest+expectedoffset)^,Offset-expectedoffset);
+                copiedsize:=fpc_Copy_internal(Src+Offset,Dest+Offset,Info);
+                expectedoffset:=Offset+copiedsize;
+              end;
+            { elements remaining? }
+            if result>expectedoffset then
+              move((Src+expectedoffset)^,(Dest+expectedoffset)^,Result-expectedoffset);
+{$if FPC_FULLVERSION>30100}
           end;
-        { elements remaining? }
-        if result>expectedoffset then
-          move((Src+expectedoffset)^,(Dest+expectedoffset)^,Result-expectedoffset);
+{$endif FPC_FULLVERSION>30100}
       end;
 {$ifdef FPC_HAS_FEATURE_DYNARRAYS}
     tkDynArray:
@@ -358,7 +460,7 @@ begin
 end;
 
 
-procedure fpc_initialize_array(data,typeinfo : pointer;count : SizeInt); [public,alias:'FPC_INITIALIZE_ARRAY'] compilerproc;
+procedure fpc_initialize_array(data,typeinfo : pointer;count : SizeInt); [public,alias:'FPC_INITIALIZE_ARRAY']; compilerproc;
   var
      i, size : SizeInt;
   begin

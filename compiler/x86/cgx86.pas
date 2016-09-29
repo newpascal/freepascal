@@ -132,8 +132,6 @@ unit cgx86;
 
         procedure generate_leave(list : TAsmList);
       protected
-        in_make_direct_ref : boolean;
-
         procedure a_jmp_cond(list : TAsmList;cond : TOpCmp;l: tasmlabel);
         procedure check_register_size(size:tcgsize;reg:tregister);
 
@@ -428,7 +426,8 @@ unit cgx86;
           exit;
 
         { handle indirect symbols first }
-        make_direct_ref(list,ref);
+        if ref.refaddr<>addr_load_indirect then
+            make_direct_ref(list,ref);
 
 {$if defined(x86_64)}
         { Only 32bit is allowed }
@@ -457,22 +456,12 @@ unit cgx86;
             else
               begin
                 { don't use add, as the flags may contain a value }
-                reference_reset_base(href,ref.base,0,8);
-                href.index:=hreg;
-                if ref.scalefactor<>0 then
-                  begin
-                    reference_reset_base(href,ref.base,0,8);
-                    href.index:=hreg;
-                    list.concat(taicpu.op_ref_reg(A_LEA,S_Q,href,hreg));
-                    ref.base:=hreg;
-                  end
-                else
-                  begin
-                    reference_reset_base(href,ref.index,0,8);
-                    href.index:=hreg;
-                    list.concat(taicpu.op_reg_reg(A_ADD,S_Q,ref.index,hreg));
-                    ref.index:=hreg;
-                  end;
+                reference_reset_base(href,hreg,0,ref.alignment);
+                href.index:=ref.index;
+                href.scalefactor:=ref.scalefactor;
+                list.concat(taicpu.op_ref_reg(A_LEA,S_Q,href,hreg));
+                ref.index:=hreg;
+                ref.scalefactor:=1;
                end;
           end;
 
@@ -521,7 +510,7 @@ unit cgx86;
                 else
                   begin
                     { don't use add, as the flags may contain a value }
-                    reference_reset_base(href,ref.base,0,8);
+                    reference_reset_base(href,ref.base,0,ref.alignment);
                     href.index:=hreg;
                     ref.base:=getaddressregister(list);
                     list.concat(taicpu.op_ref_reg(A_LEA,S_Q,href,ref.base));
@@ -556,7 +545,7 @@ unit cgx86;
                       else
                         begin
                           { don't use add, as the flags may contain a value }
-                          reference_reset_base(href,ref.base,0,8);
+                          reference_reset_base(href,ref.base,0,ref.alignment);
                           href.index:=hreg;
                           ref.base:=getaddressregister(list);
                           list.concat(taicpu.op_ref_reg(A_LEA,S_Q,href,ref.base));
@@ -615,7 +604,7 @@ unit cgx86;
             else
               begin
                 { don't use add, as the flags may contain a value }
-                reference_reset_base(href,ref.base,0,8);
+                reference_reset_base(href,ref.base,0,ref.alignment);
                 href.index:=hreg;
                 list.concat(taicpu.op_ref_reg(A_LEA,S_L,href,hreg));
                 ref.base:=hreg;
@@ -659,20 +648,27 @@ unit cgx86;
         href : treference;
         hreg : tregister;
       begin
-        if in_make_direct_ref then
-          exit;
-        in_make_direct_ref:=true;
         if assigned(ref.symbol) and (ref.symbol.bind in asmsymbindindirect) then
           begin
+            { load the symbol into a register }
             hreg:=getaddressregister(list);
             reference_reset_symbol(href,ref.symbol,0,sizeof(pint));
+            { tell make_simple_ref that we are loading the symbol address via an indirect
+              symbol and that hence it should not call make_direct_ref() again }
+            href.refaddr:=addr_load_indirect;
             a_op_ref_reg(list,OP_MOVE,OS_ADDR,href,hreg);
             if ref.base<>NR_NO then
-              a_op_reg_reg(list,OP_ADD,OS_ADDR,ref.base,hreg);
+              begin
+                { fold symbol register into base register }
+                reference_reset_base(href,hreg,0,sizeof(pint));
+                href.index:=ref.base;
+                hreg:=getaddressregister(list);
+                a_loadaddr_ref_reg(list,href,hreg);
+              end;
+            { we're done }
             ref.symbol:=nil;
             ref.base:=hreg;
           end;
-        in_make_direct_ref:=false;
       end;
 
 
@@ -1046,7 +1042,8 @@ unit cgx86;
 
         { this could probably done in a more optimized way, but for now this
           is sufficent }
-        make_direct_ref(list,dirref);
+        if dirref.refaddr<>addr_load_indirect then
+          make_direct_ref(list,dirref);
 
         with dirref do
           begin
@@ -1083,12 +1080,12 @@ unit cgx86;
                             then
                       begin
 {$ifdef x86_64}
-                        reference_reset_symbol(tmpref,dirref.symbol,0,dirref.alignment);
+                        reference_reset_symbol(tmpref,dirref.symbol,0,sizeof(pint));
                         tmpref.refaddr:=addr_pic;
                         tmpref.base:=NR_RIP;
                         list.concat(taicpu.op_ref_reg(A_MOV,S_Q,tmpref,r));
 {$else x86_64}
-                        reference_reset_symbol(tmpref,dirref.symbol,0,dirref.alignment);
+                        reference_reset_symbol(tmpref,dirref.symbol,0,sizeof(pint));
                         tmpref.refaddr:=addr_pic;
                         tmpref.base:=current_procinfo.got;
                         include(current_procinfo.flags,pi_needs_got);
@@ -1147,7 +1144,7 @@ unit cgx86;
                       system_i386_linux,system_i386_android:
                         if segment=NR_GS then
                           begin
-                            reference_reset_symbol(tmpref,current_asmdata.RefAsmSymbol('___fpc_threadvar_offset',AT_DATA),0,dirref.alignment);
+                            reference_reset_symbol(tmpref,current_asmdata.RefAsmSymbol('___fpc_threadvar_offset',AT_DATA),0,sizeof(pint));
                             tmpref.segment:=NR_GS;
                             list.concat(Taicpu.op_ref_reg(A_ADD,tcgsize2opsize[OS_ADDR],tmpref,r));
                           end
