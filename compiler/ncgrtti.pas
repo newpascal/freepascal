@@ -983,7 +983,7 @@ implementation
           begin
             rttilab := current_asmdata.DefineAsmSymbol(
                 internaltypeprefixName[itp_init_record_operators]+def.rtti_mangledname(rt),
-                AB_GLOBAL,AT_DATA);
+                AB_GLOBAL,AT_DATA,def);
             tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
 
             tcb.begin_anonymous_record(
