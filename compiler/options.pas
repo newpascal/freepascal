@@ -3324,6 +3324,7 @@ begin
 {$if defined(x86_64) or defined(i386) or defined(arm) or defined(aarch64)}
   def_system_macro('FPC_HAS_EXTENDEDINTERFACERTTI');
 {$endif x86_64 or i386 or arm or aarch64}
+  def_system_macro('FPC_HAS_MANAGEMENT_OPERATORS');
 
   def_system_macro('FPC_HAS_UNICODESTRING');
   def_system_macro('FPC_RTTI_PACKSET1');
