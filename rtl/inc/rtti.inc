@@ -50,7 +50,7 @@ type
   record
     Size: Longint;
 {$if FPC_FULLVERSION>30100}
-    InitTable: Pointer;
+    InitTable: PPointer;
 {$endif FPC_FULLVERSION>30100}
     Count: Longint;
     { Elements: array[count] of TRecordElement }
@@ -130,7 +130,7 @@ begin
   if Assigned(result^.Terminator) then
   begin
     { point to more optimal initrtti }
-    initrtti:=PRecordInfoFull(result)^.InitTable;
+    initrtti:=PRecordInfoFull(result)^.InitTable^;
     { and point to management operators in our init table }
     result:=aligntoptr(initrtti+2+PByte(initrtti)[1]);
   end
