@@ -1030,12 +1030,13 @@ implementation
            { store rtti management operators only for init table }
            if (rt=initrtti) then
            begin
-             tcb.emit_tai(Tai_const.Create_nil_codeptr,voidpointertype);
+             tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype);
              if (trecordsymtable(def.symtable).managementoperators=[]) then
-               tcb.emit_tai(Tai_const.Create_nil_codeptr,voidpointertype)
+               tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype)
              else
                tcb.emit_tai(Tai_const.Createname(
-                 internaltypeprefixName[itp_init_record_operators]+def.rtti_mangledname(rt),AT_DATA,0),voidpointertype);
+                 internaltypeprefixName[itp_init_record_operators]+def.rtti_mangledname(rt),
+                 AT_DATA_FORCEINDIRECT,0),voidpointertype);
            end else
            begin
              Include(def.defstates, ds_init_table_used);
@@ -1187,9 +1188,9 @@ implementation
           begin
             tcb.emit_ord_const(def.size, u32inttype);
             { inittable terminator for vmt vInitTable }
-            tcb.emit_tai(Tai_const.Create_nil_codeptr,voidpointertype);
+            tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype);
             { pointer to management operators }
-            tcb.emit_tai(Tai_const.Create_nil_codeptr,voidpointertype);
+            tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype);
             { enclosing record takes care of alignment }
             fields_write_rtti_data(tcb,def,rt);
           end;
