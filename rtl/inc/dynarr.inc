@@ -34,7 +34,7 @@ type
       thus use packed also in this case }
     {$ifdef VER3_0_0}
       packed
-    {$endif VER"_0_0}
+    {$endif VER3_0_0}
   {$endif powerpc64}
 
 {$endif FPC_REQUIRES_PROPER_ALIGNMENT}
@@ -187,7 +187,7 @@ procedure fpc_dynarray_setlength(var p : pointer;pti : pointer;
           fillchar(newp^,size,0);
 {$if FPC_FULLVERSION>30100}
           { call int_InitializeArray for management operators }
-          if PByte(eletype)^ in [tkRecord, tkObject] then
+          if assigned(eletypemngd) and (PByte(eletype)^ in [tkRecord, tkObject]) then
             int_InitializeArray(pointer(newp)+sizeof(tdynarray), eletype, dims[0]);
 {$endif FPC_FULLVERSION>30100}
           updatep := true;
@@ -264,7 +264,7 @@ procedure fpc_dynarray_setlength(var p : pointer;pti : pointer;
                            (dims[0]-realp^.high-1)*elesize,0);
 {$if FPC_FULLVERSION>30100}
                          { call int_InitializeArray for management operators }
-                         if PByte(eletype)^ in [tkRecord, tkObject] then
+                         if assigned(eletypemngd) and (PByte(eletype)^ in [tkRecord, tkObject]) then
                            int_InitializeArray(pointer(realp)+sizeof(tdynarray)+elesize*(realp^.high+1),
                              eletype, dims[0]-realp^.high-1);
 {$endif FPC_FULLVERSION>30100}
