@@ -59,7 +59,7 @@ type
 {$if FPC_FULLVERSION>30100}
   TRTTIRecVarOp=procedure(ARec: Pointer);
   TRTTIRecCloneOp=procedure(ASrc, ADest: Pointer);
-
+  TRTTIRecOpType=(rotAny, rotInitialize, rotFinalize, rotCopy, rotClone);
   PRTTIRecordOpVMT=^TRTTIRecordOpVMT;
   TRTTIRecordOpVMT=
 {$ifdef USE_PACKED}
@@ -137,8 +137,15 @@ begin
 end;
 {$endif FPC_FULLVERSION>30100}
 
+{$if FPC_FULLVERSION>30100}
+function RTTISizeAndOp(typeInfo: Pointer;
+  const expectedManagementOp: TRTTIRecOpType; out hasManagementOp: boolean): SizeInt;
+begin
+  hasManagementOp:=false;
+{$else}
 function RTTISize(typeInfo: Pointer): SizeInt;
 begin
+{$endif}
   case PByte(typeinfo)^ of
     tkAString,tkWString,tkUString,
     tkInterface,tkDynarray:
@@ -149,8 +156,26 @@ begin
 {$endif FPC_HAS_FEATURE_VARIANTS}
     tkArray:
       result:=RTTIArraySize(typeinfo);
+{$if FPC_FULLVERSION>30100}
+    tkObject:
+      result:=RTTIRecordSize(typeinfo);
+    tkRecord:
+      with RTTIRecordOp(typeInfo,typeInfo)^ do
+        begin
+          result:=Size;
+          hasManagementOp := Assigned(RecordOp);
+          if hasManagementOp then
+            case expectedManagementOp of
+              rotInitialize: hasManagementOp:=Assigned(RecordOp^.Initialize);
+              rotFinalize: hasManagementOp:=Assigned(RecordOp^.Finalize);
+              rotCopy: hasManagementOp:=Assigned(RecordOp^.Copy);
+              rotClone: hasManagementOp:=Assigned(RecordOp^.Clone);
+            end;
+        end;
+{$else FPC_FULLVERSION>30100}
     tkObject,tkRecord:
       result:=RTTIRecordSize(typeinfo);
+{$endif FPC_FULLVERSION>30100}
   else
     result:=-1;
   end;
@@ -462,30 +487,51 @@ end;
 procedure fpc_initialize_array(data,typeinfo : pointer;count : SizeInt); [public,alias:'FPC_INITIALIZE_ARRAY']; compilerproc;
   var
      i, size : SizeInt;
+{$if FPC_FULLVERSION>30100}
+    hasManagementOp: boolean;
   begin
-     size:=RTTISize(typeinfo);
-     if size>0 then
-       for i:=0 to count-1 do
-         int_initialize(data+size*i,typeinfo);
+    size:=RTTISizeAndOp(typeinfo, rotInitialize, hasManagementOp);
+    if (size>0) or hasManagementOp then
+{$else FPC_FULLVERSION>30100}
+  begin    
+    size:=RTTISize(typeInfo);
+    if size>0 then
+{$endif FPC_FULLVERSION>30100}
+      for i:=0 to count-1 do
+        int_initialize(data+size*i,typeinfo);
   end;
 
 
 procedure fpc_finalize_array(data,typeinfo : pointer;count : SizeInt); [Public,Alias:'FPC_FINALIZE_ARRAY'];  compilerproc;
   var
      i, size: SizeInt;
+{$if FPC_FULLVERSION>30100}
+    hasManagementOp: boolean;
   begin
-     size:=RTTISize(typeinfo);
-     if size>0 then
-       for i:=0 to count-1 do
-         int_finalize(data+size*i,typeinfo);
+    size:=RTTISizeAndOp(typeinfo, rotFinalize, hasManagementOp);
+    if (size>0) or hasManagementOp then
+{$else FPC_FULLVERSION>30100}
+  begin    
+    size:=RTTISize(typeInfo);
+    if size>0 then
+{$endif FPC_FULLVERSION>30100}
+      for i:=0 to count-1 do
+        int_finalize(data+size*i,typeinfo);
   end;
 
 procedure fpc_addref_array(data,typeinfo: pointer; count: SizeInt); [public,alias:'FPC_ADDREF_ARRAY']; compilerproc;
   var
     i, size: SizeInt;
+{$if FPC_FULLVERSION>30100}
+    hasManagementOp: boolean;
   begin
-    size:=RTTISize(typeinfo);
+    size:=RTTISizeAndOp(typeinfo, rotCopy, hasManagementOp);
+    if (size>0) or hasManagementOp then
+{$else FPC_FULLVERSION>30100}
+  begin    
+    size:=RTTISize(typeInfo);
     if size>0 then
+{$endif FPC_FULLVERSION>30100}
       for i:=0 to count-1 do
         int_addref(data+size*i,typeinfo);
   end;
@@ -510,9 +556,16 @@ procedure FinalizeArray(p, typeInfo: Pointer; count: SizeInt);
 procedure CopyArray(dest, source, typeInfo: Pointer; count: SizeInt);
   var
     i, size: SizeInt;
+{$if FPC_FULLVERSION>30100}
+    hasManagementOp: boolean;
   begin
+    size:=RTTISizeAndOp(typeinfo, rotClone, hasManagementOp);
+    if (size>0) or hasManagementOp then
+{$else FPC_FULLVERSION>30100}
+  begin    
     size:=RTTISize(typeInfo);
     if size>0 then
+{$endif FPC_FULLVERSION>30100}
       for i:=0 to count-1 do
         fpc_Copy_internal(source+size*i, dest+size*i, typeInfo);
   end;
