@@ -295,7 +295,7 @@ implementation
                  assigned(tstoreddef(def_to).genconstraintdata) then
                begin
                  if (cdo_assign_operator_dec in cdoptions) or
-                     (def_from.typ=def_to.typ) then
+                     (def_from.typ<>def_to.typ) then
                    begin
                      { not compatible anyway }
                      doconv:=tc_not_possible;
