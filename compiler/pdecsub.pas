@@ -1482,7 +1482,7 @@ implementation
                            MessagePos(pd.fileinfo,type_e_type_id_expected);
                      end;
                    if (optoken in [_ASSIGNMENT,_OP_EXPLICIT]) and
-                      equal_defs(pd.returndef,tparavarsym(pd.parast.SymList[0]).vardef) and
+                      equal_defs_assignment_op_dec(pd.returndef,tparavarsym(pd.parast.SymList[0]).vardef) and
                       (pd.returndef.typ<>undefineddef) and (tparavarsym(pd.parast.SymList[0]).vardef.typ<>undefineddef) then
                      message(parser_e_no_such_assignment)
                    else if not isoperatoracceptable(pd,optoken) then
