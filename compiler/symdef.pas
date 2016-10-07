@@ -4433,6 +4433,9 @@ implementation
            variantrecdesc:=nil;
         end;
 
+      var
+        hashedid : THashedIDString;
+        sym : tsym;
       begin
          inherited ppuload(recorddef,ppufile);
          if df_copied_def in defoptions then
@@ -4452,7 +4455,15 @@ implementation
              trecordsymtable(symtable).datasize:=ppufile.getasizeint;
              trecordsymtable(symtable).paddingsize:=ppufile.getword;
              ppufile.getsmallset(trecordsymtable(symtable).managementoperators);
+             hashedid.id := ppufile.getstring();
              trecordsymtable(symtable).ppuload(ppufile);
+             if hashedid.id<>'' then
+               begin
+                 sym:=tsym(symtable.FindWithHash(hashedid));
+                 if sym.typ<>fieldvarsym then
+                   Internalerror(201610070);
+                 trecordsymtable(symtable).defaultfield:=tfieldvarsym(sym);
+               end;
              { the variantrecdesc is needed only for iso-like new statements new(prec,1,2,3 ...);
                but because iso mode supports no units, there is no need to store the variantrecdesc
                in the ppu
@@ -4599,6 +4610,10 @@ implementation
              ppufile.putasizeint(trecordsymtable(symtable).datasize);
              ppufile.putword(trecordsymtable(symtable).paddingsize);
              ppufile.putsmallset(trecordsymtable(symtable).managementoperators);
+             if assigned(trecordsymtable(symtable).defaultfield) then
+                 ppufile.putstring(trecordsymtable(symtable).defaultfield.Name)
+              else
+                ppufile.putstring('');
              { the variantrecdesc is needed only for iso-like new statements new(prec,1,2,3 ...);
                but because iso mode supports no units, there is no need to store the variantrecdesc
                in the ppu
