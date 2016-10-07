@@ -132,7 +132,9 @@ type
      { symbol should be registered with the unit's public assembler symbols }
      tcalo_is_public_asm,
      { symbol should be declared with AT_DATA_FORCEINDIRECT }
-     tcalo_data_force_indirect
+     tcalo_data_force_indirect,
+     { apply const_align() to the alignment, for user-defined data }
+     tcalo_apply_constalign
    );
    ttcasmlistoptions = set of ttcasmlistoption;
 
@@ -911,6 +913,8 @@ implementation
      var
        prelist: tasmlist;
      begin
+       if tcalo_apply_constalign in options then
+         alignment:=const_align(alignment);
        { have we finished all aggregates? }
        if (getcurragginfo<>nil) and
           { in case of syntax errors, the aggregate may not have been finished }
@@ -937,12 +941,12 @@ implementation
            { we always need a new section here, since if we started a new
              object file then we have to say what the section is, and otherwise
              we need a new section because that's how the dead stripping works }
-           new_section(prelist,section,secname,const_align(alignment));
+           new_section(prelist,section,secname,alignment);
          end
        else if tcalo_new_section in options then
-         new_section(prelist,section,secname,const_align(alignment))
+         new_section(prelist,section,secname,alignment)
        else
-         prelist.concat(cai_align.Create(const_align(alignment)));
+         prelist.concat(cai_align.Create(alignment));
 
        { On Darwin, use .reference to ensure the data doesn't get dead stripped.
          On other platforms, the data must be in the .fpc section (which is
@@ -1077,8 +1081,11 @@ implementation
 
 
    class function ttai_typedconstbuilder.get_string_header_size(typ: tstringtype; winlikewidestring: boolean): pint;
-     const
-       ansistring_header_size =
+     var
+       ansistring_header_size: pint;
+       unicodestring_header_size: pint;
+     begin
+       ansistring_header_size:=
          { encoding }
          2 +
          { elesize }
@@ -1088,11 +1095,10 @@ implementation
          4 +
 {$endif cpu64bitaddr}
          { reference count }
-         sizeof(pint) +
+         sizesinttype.size +
          { length }
-         sizeof(pint);
-       unicodestring_header_size = ansistring_header_size;
-     begin
+         sizesinttype.size;
+       unicodestring_header_size:=ansistring_header_size;
        case typ of
          st_ansistring:
            result:=ansistring_header_size;
@@ -1322,10 +1328,10 @@ implementation
        emit_tai(tai_const.create_32bit(0),u32inttype);
        inc(result.ofs,4);
 {$endif cpu64bitaddr}
-       emit_tai(tai_const.create_pint(-1),ptrsinttype);
-       inc(result.ofs,sizeof(pint));
-       emit_tai(tai_const.create_pint(len),ptrsinttype);
-       inc(result.ofs,sizeof(pint));
+       emit_tai(tai_const.create_sizeint(-1),sizesinttype);
+       inc(result.ofs,sizesinttype.size);
+       emit_tai(tai_const.create_sizeint(len),sizesinttype);
+       inc(result.ofs,sizesinttype.size);
        if string_symofs=0 then
          begin
            { results in slightly more efficient code }
@@ -1526,9 +1532,9 @@ implementation
            result.add_field_by_def('',u32inttype);
 {$endif cpu64bitaddr}
            { reference count }
-           result.add_field_by_def('',ptrsinttype);
+           result.add_field_by_def('',sizesinttype);
            { length in elements }
-           result.add_field_by_def('',ptrsinttype);
+           result.add_field_by_def('',sizesinttype);
          end
        else
          begin

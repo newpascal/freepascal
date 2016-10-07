@@ -71,7 +71,7 @@ implementation
          ex,if_a,else_a : tnode;
       begin
          consume(_IF);
-         ex:=comp_expr([ef_accept_equal]);
+         ex:=comp_expr([ef_accept_equal,ef_ignore_default_field]);
          consume(_THEN);
          if not(token in endtokens) then
            if_a:=statement
@@ -1120,6 +1120,8 @@ implementation
          srsym      : tsym;
          srsymtable : TSymtable;
          s          : TIDString;
+      label
+        trycallagain;
       begin
          filepos:=current_tokenpos;
          code:=nil;
@@ -1284,6 +1286,7 @@ implementation
 
              { change a load of a procvar to a call. this is also
                supported in fpc mode }
+             trycallagain:
              if p.nodetype in [vecn,derefn,typeconvn,subscriptn,loadn] then
                maybe_call_procvar(p,false);
 
@@ -1301,7 +1304,15 @@ implementation
                 ((p.nodetype=calln) and
                  (assigned(tcallnode(p).procdefinition)) and
                  (tcallnode(p).procdefinition.proctypeoption=potype_operator)) then
-               Message(parser_e_illegal_expression);
+               begin
+                 if has_default_field(p.resultdef) then
+                   begin
+                     p := csubscriptnode.create(trecordsymtable(trecorddef(p.resultdef).symtable).defaultfield,p);
+                     typecheckpass(p);
+                     goto trycallagain;
+                   end;
+                 Message(parser_e_illegal_expression);
+               end;
 
              if not assigned(p.resultdef) then
                do_typecheckpass(p);

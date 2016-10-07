@@ -230,7 +230,10 @@ begin
       AddOption('-XXs');
       // Create fpmkunit.pp if needed
       if NeedFPMKUnitSource then
-        CreateFPMKUnitSource(TempBuildDir+PathDelim+'fpmkunit.pp');
+        begin
+          Log(llWarning,SLogUseInternalFpmkunit);
+          CreateFPMKUnitSource(TempBuildDir+PathDelim+'fpmkunit.pp');
+        end;
       // Call compiler
       If ExecuteProcess(GFPpkg.FPMakeCompilerOptions.Compiler,OOptions+' '+FPmakeSrc)<>0 then
         begin
@@ -342,20 +345,32 @@ begin
   AddOption('--cpu='+CPUToString(GFPpkg.CompilerOptions.CompilerCPU));
   AddOption('--os='+OSToString(GFPpkg.CompilerOptions.CompilerOS));
 
-  InstallRepo := GFPpkg.RepositoryByName(GFPpkg.Options.CommandLineSection.InstallRepository);
-
-  if not Assigned(InstallRepo.DefaultPackagesStructure) then
+  // While scanning a source-repository it could be necessary to create manifest
+  // files. At this moment the InstallRepo could not be initialized yet. And the
+  // manifest command does not use the --prefix and --baseinstalldir parameters.
+  if (command<>'manifest') then
     begin
-      Error(SErrIllConfRepository,[InstallRepo.RepositoryName]);
-      Exit;
+      InstallRepo := GFPpkg.RepositoryByName(GFPpkg.Options.CommandLineSection.InstallRepository);
+
+      if not Assigned(InstallRepo.DefaultPackagesStructure) then
+        begin
+          Error(SErrIllConfRepository,[InstallRepo.RepositoryName]);
+          Exit;
+        end;
+      CondAddOption('--prefix',InstallRepo.DefaultPackagesStructure.GetPrefix);
+      CondAddOption('--baseinstalldir',InstallRepo.DefaultPackagesStructure.GetBaseInstallDir);
     end;
-  CondAddOption('--prefix',InstallRepo.DefaultPackagesStructure.GetPrefix);
-  CondAddOption('--baseinstalldir',InstallRepo.DefaultPackagesStructure.GetBaseInstallDir);
 
-  for i := GFPpkg.Options.SectionList.Count -1 downto 0 do
+  for i := GFPpkg.RepositoryList.Count-1 downto 0 do
     begin
-      if GFPpkg.Options.SectionList[ i ] is TFppkgRepositoryOptionSection then
-        CondAddOption('--searchpath', TFppkgRepositoryOptionSection(GFPpkg.Options.SectionList[ i ]).Path);
+      if GFPpkg.RepositoryList[i] is TFPRepository then
+        begin
+          InstallRepo := TFPRepository(GFPpkg.RepositoryList[i]);
+          if (InstallRepo.RepositoryType = fprtInstalled) and Assigned(InstallRepo.DefaultPackagesStructure) then
+            begin
+              CondAddOption('--searchpath', InstallRepo.DefaultPackagesStructure.GetBaseInstallDir);
+            end;
+        end;
     end;
 
   { Run FPMake }

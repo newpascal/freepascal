@@ -86,6 +86,8 @@ Resourcestring
   SLogPackageDependency      = 'Dependency on package %s %s, installed %s, available %s  (%s)';
   SLogPackageChecksumChanged = 'Package %s needs to be rebuild, dependency %s is modified';
   SLogCheckBrokenDependenvies= 'Checking for broken dependencies';
+  SLogFailedToCreateManifest = 'Failed to create manifest from fpmake.pp-file (%s) while scanning for available packages: %s';
+  SLogUseInternalFpmkunit    = 'Fpmkunit not available, fallback to internal version.';
 
   SLogCfgHeader                      = 'Settings from configuration-files:';
   SLogCfgSectionHeader               = ' %s-section:';
@@ -132,7 +134,7 @@ Resourcestring
   SDbgBackupFile             = 'Creating Backup File "%s"';
   SDbgPackageMultipleLocations = 'Multiple installations found for package %s, using installation "%s"';
   SDbgPackageDependencyOtherTarget  = 'Dependency on package %s is not for %s';
-  SDbgObsoleteDependency     = 'Obsolete dependency found on package %s';
+  SDbgObsoleteDependency     = 'Package %s depends on package %s which is not installed anymore';
 
   SProgrReinstallDependent   = 'Re-install packages which are dependent on just installed packages';
   SProgrInstallDependencies  = 'Install dependencies';

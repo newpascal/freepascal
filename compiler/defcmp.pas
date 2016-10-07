@@ -1863,7 +1863,10 @@ implementation
           begin
             operatorpd:=search_assignment_operator(def_from,def_to,cdo_explicit in cdoptions);
             if assigned(operatorpd) then
-             eq:=te_convert_operator;
+              eq:=te_convert_operator
+            else 
+             if has_default_field(def_from) then
+               eq:=te_convert_default
           end;
 
         { update convtype for te_equal when it is not yet set }

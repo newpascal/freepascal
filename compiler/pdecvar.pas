@@ -1689,6 +1689,17 @@ implementation
                if hdef.typ=undefineddef then
                  Message(parser_e_cant_use_type_parameters_here);
 
+             { Parse default field before ; }
+             if (vd_record in options) and (sc.Count = 1) then
+               if idtoken = _DEFAULT then
+               begin
+                 consume(token);
+                 if assigned(trecordsymtable(recst).defaultfield) then
+                   Internalerror(201604170);
+                 fieldvs:=tfieldvarsym(sc[0]);
+                 trecordsymtable(recst).defaultfield := fieldvs;
+               end;
+
              { try to parse the hint directives }
              hintsymoptions:=[];
              deprecatedmsg:=nil;
@@ -1879,7 +1890,20 @@ implementation
                 consume(_LKLAMMER);
                 inc(variantrecordlevel);
                 if token<>_RKLAMMER then
+                begin
                   read_record_fields([vd_record],nil,@variantdesc^^.branches[high(variantdesc^^.branches)].nestedvariant,hadgendummy);
+
+                  { push to parent default field }
+                  if assigned(unionsymtable.defaultfield) then
+                  begin
+                    if assigned(trecordsymtable(recst).defaultfield) and
+                       (unionsymtable.defaultfield <> trecordsymtable(recst).defaultfield) then
+                      Internalerror(201605010);
+
+                    trecordsymtable(recst).defaultfield := unionsymtable.defaultfield;
+                  end;
+                end;
+                
                 dec(variantrecordlevel);
                 consume(_RKLAMMER);
 

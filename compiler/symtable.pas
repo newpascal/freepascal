@@ -140,6 +140,7 @@ interface
           { object/classes. In XE5 and newer is possible to use class operator }
           { for classes (like for Delphi .NET before) only for Delphi NEXTGEN  }
           managementoperators : tmanagementoperators;
+          defaultfield: tfieldvarsym;          
 
           constructor create(const n:string;usealign,recordminalign,recordmaxCalign:shortint);
           procedure insertunionst(unionst : trecordsymtable;offset : longint);
@@ -325,6 +326,7 @@ interface
     function  searchsym(const s : TIDString;out srsym:tsym;out srsymtable:TSymtable):boolean;
     function  searchsym_with_flags(const s : TIDString;out srsym:tsym;out srsymtable:TSymtable;flags:tsymbol_search_flags):boolean;
     function  searchsym_maybe_with_symoption(const s : TIDString;out srsym:tsym;out srsymtable:TSymtable;flags:tsymbol_search_flags;option:tsymoption):boolean;
+    function  has_default_field(def:tdef):boolean;
     { searches for a symbol with the given name that has the given option in
       symoptions set }
     function  searchsym_with_symoption(const s : TIDString;out srsym:tsym;out srsymtable:TSymtable;option:tsymoption):boolean;
@@ -3135,6 +3137,14 @@ implementation
           end;
         srsym:=nil;
         srsymtable:=nil;
+      end;
+
+    function  has_default_field(def:tdef):boolean;
+      begin
+        result:=false;
+        if (def=nil) or (def.typ<>recorddef) then
+          exit;
+        result := Assigned(trecordsymtable(trecorddef(def).symtable).defaultfield);
       end;
 
     function searchsym_with_symoption(const s: TIDString;out srsym:tsym;out

@@ -973,9 +973,9 @@ implementation
         targetinfos[target_info.system]^.alignment.recordalignmin,
         targetinfos[target_info.system]^.alignment.maxCrecordalign);
       { placeholder for tablecount }
-      tablecountplaceholder:=unitinits.emit_placeholder(sinttype);
+      tablecountplaceholder:=unitinits.emit_placeholder(aluuinttype);
       { initcount (initialised at run time }
-      unitinits.emit_ord_const(0,sinttype);
+      unitinits.emit_ord_const(0,aluuinttype);
       count:=0;
       hp:=tused_unit(usedunits.first);
       while assigned(hp) do
@@ -1034,7 +1034,7 @@ implementation
           inc(count);
         end;
       { fill in tablecount }
-      tablecountplaceholder.replace(tai_const.Create_aint(count),sinttype);
+      tablecountplaceholder.replace(tai_const.Create_aint(count),aluuinttype);
       tablecountplaceholder.free;
       { Add to data segment }
 
@@ -1181,7 +1181,7 @@ implementation
         targetinfos[target_info.system]^.alignment.maxCrecordalign
       );
       { placeholder for the count }
-      countplaceholder:=tcb.emit_placeholder(ptruinttype);
+      countplaceholder:=tcb.emit_placeholder(sizesinttype);
       count:=0;
       hp:=tused_unit(usedunits.first);
       while assigned(hp) do
@@ -1204,7 +1204,7 @@ implementation
          inc(count);
        end;
       { Insert TableCount at start }
-      countplaceholder.replace(Tai_const.Create_pint(count),ptruinttype);
+      countplaceholder.replace(Tai_const.Create_sizeint(count),sizesinttype);
       countplaceholder.free;
       { insert in data segment }
       tabledef:=tcb.end_anonymous_record;
@@ -1299,7 +1299,7 @@ implementation
       tcb.begin_anonymous_record('',default_settings.packrecords,sizeof(pint),
         targetinfos[target_info.system]^.alignment.recordalignmin,
         targetinfos[target_info.system]^.alignment.maxCrecordalign);
-      countplaceholder:=tcb.emit_placeholder(ptruinttype);
+      countplaceholder:=tcb.emit_placeholder(sizesinttype);
       while assigned(hp) do
         begin
           If (hp.flags and uf_has_resourcestrings)=uf_has_resourcestrings then
@@ -1317,7 +1317,7 @@ implementation
           hp:=tmodule(hp.next);
         end;
       { Insert TableCount at start }
-      countplaceholder.replace(Tai_const.Create_pint(count),ptruinttype);
+      countplaceholder.replace(Tai_const.Create_sizeint(count),sizesinttype);
       countplaceholder.free;
       { Add to data segment }
       tabledef:=tcb.end_anonymous_record;
