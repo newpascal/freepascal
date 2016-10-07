@@ -59,7 +59,8 @@ interface
           cdo_allow_variant,
           cdo_parameter,
           cdo_warn_incompatible_univ,
-          cdo_strict_undefined_check  // undefined defs are incompatible to everything except other undefined defs
+          cdo_strict_undefined_check,  // undefined defs are incompatible to everything except other undefined defs
+          cdo_assign_operator_dec
        );
        tcompare_defs_options = set of tcompare_defs_option;
 
@@ -114,6 +115,11 @@ interface
 
     { Returns if the type def_from can be converted to def_to or if both types are equal }
     function compare_defs(def_from,def_to:tdef;fromtreetype:tnodetype):tequaltype;
+
+    { Returns true, if def1 and def2 are semantically the same,
+      different than standard equal_defs, required for generic
+      operators implicit and explicit }
+    function equal_defs_assignment_op_dec(def_from,def_to:tdef):boolean;
 
     { Returns true, if def1 and def2 are semantically the same }
     function equal_defs(def_from,def_to:tdef):boolean;
@@ -288,7 +294,8 @@ implementation
              if assigned(tstoreddef(def_from).genconstraintdata) or
                  assigned(tstoreddef(def_to).genconstraintdata) then
                begin
-                 if def_from.typ<>def_to.typ then
+                 if (cdo_assign_operator_dec in cdoptions) or
+                     (def_from.typ=def_to.typ) then
                    begin
                      { not compatible anyway }
                      doconv:=tc_not_possible;
@@ -1872,6 +1879,18 @@ implementation
           doconv:=tc_equal;
 
         compare_defs_ext:=eq;
+      end;
+
+
+    function equal_defs_assignment_op_dec(def_from,def_to:tdef):boolean;
+      var
+        convtyp : tconverttype;
+        pd : tprocdef;
+      begin
+        { Compare defs with nothingn and no explicit typecasts and
+          searching for overloaded operators is not needed, additionaly
+          put special flag for generic assignment operators implicit and explicit }
+        equal_defs_assignment_op_dec:=(compare_defs_ext(def_from,def_to,nothingn,convtyp,pd,[cdo_assign_operator_dec])>=te_equal);
       end;
 
 
