@@ -716,11 +716,37 @@ implementation
               a better error message, see also #19122 }
             if (left.resultdef.typ<>procvardef) and
               (right.nodetype=calln) and is_void(right.resultdef) then
-              CGMessage(type_e_procedures_return_no_value)
+            begin
+              if not has_default_field(left.resultdef) then
+                CGMessage(type_e_procedures_return_no_value)
+              else
+              begin
+                left := csubscriptnode.create(trecordsymtable(trecorddef(left.resultdef).symtable).defaultfield,left);
+                result := self.pass_typecheck;
+                exit;
+              end;
+            end
             else if nf_internal in flags then
               inserttypeconv_internal(right,left.resultdef)
             else
-              inserttypeconv(right,left.resultdef);
+              begin
+                inserttypeconv(right,left.resultdef);
+                if (right.nodetype = typeconvn) and (ttypeconvnode(right).default_field) then
+                  if not has_default_field(left.resultdef) then
+                    Internalerror(201604210)
+                  else
+                  begin
+                    { ttypeconvnode with default_field = true is used as temporary node
+                      to get access to default field - trdefault5.pp }
+                    hp := ttypeconvnode(right).left;
+                    ttypeconvnode(right).left := nil;
+                    right.Free;
+                    right := hp;
+                    left := csubscriptnode.create(trecordsymtable(trecorddef(left.resultdef).symtable).defaultfield,left);
+                    result := self.pass_typecheck;
+                    exit;
+                  end;
+              end;  
           end;
 
         { call helpers for interface }

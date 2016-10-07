@@ -695,6 +695,14 @@ implementation
               para.left:=p1;
             end;
 
+          { support for writeln for record with default field }
+          if has_default_field(para.left.resultdef) then
+            begin
+              p1:=csubscriptnode.create(trecordsymtable(trecorddef(para.left.resultdef).symtable).defaultfield,para.left);
+              typecheckpass(p1);
+              para.left:=p1;
+            end;
+
           if inlinenumber in [in_write_x,in_writeln_x] then
             { prefer strings to chararrays }
             maybe_convert_to_string(para.left);
