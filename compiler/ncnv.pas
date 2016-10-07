@@ -38,7 +38,8 @@ interface
           totypedefderef : tderef;
           convtype : tconverttype;
           warn_pointer_to_signed,
-          assignment_side: boolean;
+          assignment_side,
+          default_field: boolean;
           constructor create(node : tnode;def:tdef);virtual;
           constructor create_explicit(node : tnode;def:tdef);
           constructor create_internal(node : tnode;def:tdef);
@@ -2247,6 +2248,16 @@ implementation
                   exit;
                 end;
 
+              te_convert_default :
+                begin
+                  if left.resultdef.typ <> recorddef then
+                    Internalerror(201604190);
+                  hp := csubscriptnode.create(trecordsymtable(trecorddef(left.resultdef).symtable).defaultfield,left);
+                  left:=nil;
+                  result:=hp;
+                  exit;
+                end;
+
               te_incompatible :
                 begin
                   { Procedures have a resultdef of voiddef and functions of their
@@ -2443,6 +2454,11 @@ implementation
                                end;
                            end;
                        end;
+                   end
+                  else if has_default_field(resultdef) then
+                   begin
+                     default_field:=true;
+                     exit;
                    end
                   else
                    IncompatibleTypes(left.resultdef,resultdef);

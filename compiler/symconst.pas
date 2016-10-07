@@ -736,6 +736,7 @@ type
     Note: the operators > and < are used on this list }
   tequaltype = (
     te_incompatible,
+    te_convert_default,
     te_convert_operator,
     te_convert_l6,
     te_convert_l5,     { ad infinitum... }
@@ -822,7 +823,7 @@ inherited_objectoptions : tobjectoptions = [oo_has_virtual,oo_has_private,oo_has
      );
 
      EqualTypeName : array[tequaltype] of string[16] = (
-       'incompatible','convert_operator','convert_l6', 'convert_l5','convert_l4','convert_l3',
+       'incompatible','convert_default','convert_operator','convert_l6', 'convert_l5','convert_l4','convert_l3',
        'convert_l2','convert_l1','equal','exact'
      );
 

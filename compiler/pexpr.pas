@@ -35,7 +35,10 @@ interface
       texprflag = (
         ef_accept_equal,
         ef_type_only,
-        ef_had_specialize
+        ef_had_specialize,
+        ef_ignore_default_field,
+        ef_had_klammeraffe,
+        ef_had_double_klammeraffe
       );
       texprflags = set of texprflag;
 
@@ -196,7 +199,7 @@ implementation
              end
            else
              begin
-               p1:=comp_expr([ef_accept_equal]);
+               p1:=comp_expr([ef_accept_equal,ef_ignore_default_field]);
                p2:=ccallparanode.create(p1,p2);
              end;
            { it's for the str(l:5,s); }
@@ -1708,7 +1711,7 @@ implementation
 ---------------------------------------------}
 
     { returns whether or not p1 has been changed }
-    function postfixoperators(var p1:tnode;var again:boolean;getaddr:boolean): boolean;
+    function postfixoperators(var p1:tnode;var again:boolean;getaddr:boolean;ignoredefault:boolean=false): boolean;
 
       { tries to avoid syntax errors after invalid qualifiers }
       procedure recoverconsume_postfixops;
@@ -1964,6 +1967,8 @@ implementation
      spezcontext : tspecializationcontext;
      old_current_filepos : tfileposinfo;
     label
+     defaultfieldloop,
+     defaultfieldloop2,
      skipreckklammercheck,
      skippointdefcheck;
     begin
@@ -1986,7 +1991,7 @@ implementation
           _CARET:
              begin
                consume(_CARET);
-
+               defaultfieldloop:
                { support tp/mac procvar^ if the procvar returns a
                  pointer type }
                if ((m_tp_procvar in current_settings.modeswitches) or
@@ -2018,12 +2023,21 @@ implementation
                  end
                else if (p1.resultdef.typ<>pointerdef) then
                  begin
-                    { ^ as binary operator is a problem!!!! (FK) }
-                    again:=false;
-                    Message(parser_e_invalid_qualifier);
-                    recoverconsume_postfixops;
-                    p1.destroy;
-                    p1:=cerrornode.create;
+                   if has_default_field(p1.resultdef) then
+                   begin
+                     p1:=csubscriptnode.create(trecordsymtable(trecorddef(p1.resultdef).symtable).defaultfield,p1);
+                     typecheckpass(p1);
+                     goto defaultfieldloop;
+                   end
+                   else
+                   begin
+                     { ^ as binary operator is a problem!!!! (FK) }
+                     again:=false;
+                     Message(parser_e_invalid_qualifier);
+                     recoverconsume_postfixops;
+                     p1.destroy;
+                     p1:=cerrornode.create;
+                   end  
                  end
                else
                  p1:=cderefnode.create(p1);
@@ -2040,10 +2054,15 @@ implementation
                    protsym:=search_default_property(tabstractrecorddef(p1.resultdef));
                    if not(assigned(protsym)) then
                      begin
-                        p1.destroy;
-                        p1:=cerrornode.create;
-                        again:=false;
-                        message(parser_e_no_default_property_available);
+                       if has_default_field(p1.resultdef) then
+                         p1:=csubscriptnode.create(trecordsymtable(trecorddef(p1.resultdef).symtable).defaultfield,p1)
+                       else
+                         begin
+                           p1.destroy;
+                           p1:=cerrornode.create;
+                           again:=false;
+                           message(parser_e_no_default_property_available);
+                         end;  
                      end
                    else
                      begin
@@ -2188,7 +2207,7 @@ implementation
                { procvar.<something> can never mean anything so always
                  try to call it in case it returns a record/object/... }
                maybe_call_procvar(p1,false);
-
+               defaultfieldloop2:
                if (p1.nodetype=ordconstn) and
                    not is_boolean(p1.resultdef) and
                    not is_enum(p1.resultdef) then
@@ -2345,11 +2364,20 @@ implementation
                                  erroroutp1:=false;
                                end
                              else
-                               begin
-                                 Message1(sym_e_id_no_member,orgpattern);
-                                 { try to clean up }
-                                 consume(_ID);
-                               end;
+                               if assigned(trecordsymtable(structh.symtable).defaultfield) then
+                                 begin
+                                   srsym := trecordsymtable(structh.symtable).defaultfield;
+                                   p1:=csubscriptnode.create(srsym,p1);
+                                   do_typecheckpass_changed(p1,nodechanged);
+                                   result:=result or nodechanged;
+                                   goto defaultfieldloop2;
+                                 end
+                               else                               
+                                 begin
+                                   Message1(sym_e_id_no_member,orgpattern);
+                                   { try to clean up }
+                                   consume(_ID);
+                                 end;
                            end;
                          if erroroutp1 then
                            begin
@@ -2666,7 +2694,15 @@ implementation
                     end;
                 end
               else
-                again:=false;
+                if not ignoredefault and has_default_field(p1.resultdef) and (block_type = bt_body) then
+                  begin
+                    if not assigned(getdefaultfielddef) or not equal_defs(getdefaultfielddef.vardef, trecordsymtable(trecorddef(p1.resultdef).symtable).defaultfield.vardef) then
+                      p1:=csubscriptnode.create(trecordsymtable(trecorddef(p1.resultdef).symtable).defaultfield,p1)
+                    else
+                      again:=false;
+                  end
+                else
+                  again:=false;
              end;
         end;
 
@@ -3285,6 +3321,18 @@ implementation
            result:=not current_procinfo.get_normal_proc.procdef.no_self_node;
          end;
 
+         function has_double_klammeraffe_for_default_field(p1: tnode): boolean;
+         begin
+           result:=not (ef_had_klammeraffe in flags) and (p1.nodetype = addrn)
+             and assigned(taddrnode(p1).left) and has_default_field(taddrnode(p1).left.resultdef);
+         end;
+
+         function get_klammeraffe_level(p1: tnode): integer;
+         begin
+           result:=0;
+           if (p1.nodetype = addrn) then
+             result:=taddrnode(p1).klammeraffe_level;
+         end;
 
       {---------------------------------------------
                       Factor (Main)
@@ -3366,7 +3414,7 @@ implementation
                end;
            { maybe an additional parameter instead of misusing hadspezialize? }
            if dopostfix and not (ef_had_specialize in flags) then
-             updatefpos:=postfixoperators(p1,again,getaddr);
+             updatefpos:=postfixoperators(p1,again,getaddr,ef_ignore_default_field in flags);
          end
         else
          begin
@@ -3703,23 +3751,41 @@ implementation
                     consume(_RKLAMMER);
                   end
                  else
-                  p1:=factor(true,[]);
+                  if ef_had_double_klammeraffe in flags then
+                    p1:=factor(true,[]) { handle @@@ }
+                  else if ef_had_klammeraffe in flags then
+                    p1:=factor(true,[ef_ignore_default_field, ef_had_double_klammeraffe]) { handle @@ }
+                  else
+                    p1:=factor(true,[ef_had_klammeraffe]); { handle @ }
                  if token in postfixoperator_tokens then
                   begin
                     again:=true;
                     postfixoperators(p1,again,getaddr);
                   end;
                  got_addrn:=false;
-                 p1:=caddrnode.create(p1);
-                 p1.fileinfo:=filepos;
-                 if cs_typed_addresses in current_settings.localswitches then
-                   include(p1.flags,nf_typedaddr);
-                 { Store the procvar that we are expecting, the
-                   addrn will use the information to find the correct
-                   procdef or it will return an error }
-                 if assigned(getprocvardef) and
-                    (taddrnode(p1).left.nodetype = loadn) then
-                   taddrnode(p1).getprocvardef:=getprocvardef;
+                 if ((get_klammeraffe_level(p1) < 3) or (ef_had_klammeraffe in flags)) and not has_double_klammeraffe_for_default_field(p1) then
+                 begin
+                   p1:=caddrnode.create(p1);
+                   if ef_had_klammeraffe in flags then
+                     if taddrnode(p1).left.nodetype = addrn then
+                       taddrnode(p1).klammeraffe_level:=taddrnode(taddrnode(p1).left).klammeraffe_level
+                     else
+                       taddrnode(p1).klammeraffe_level:=2;
+                   if ef_had_double_klammeraffe in flags then
+                     taddrnode(p1).klammeraffe_level:=3;
+                   p1.fileinfo:=filepos;
+                   if cs_typed_addresses in current_settings.localswitches then
+                     include(p1.flags,nf_typedaddr);
+                   { Store the procvar that we are expecting, the
+                     addrn will use the information to find the correct
+                     procdef or it will return an error }
+                   if assigned(getprocvardef) and
+                      (taddrnode(p1).left.nodetype = loadn) then
+                     taddrnode(p1).getprocvardef:=getprocvardef;
+                   { typecheck can be do after by previous @ }
+                   if ef_had_double_klammeraffe in flags then
+                     exit(p1);
+                 end;
                end;
 
              _LKLAMMER :
@@ -4323,7 +4389,7 @@ implementation
 
       begin
          oldafterassignment:=afterassignment;
-         p1:=sub_expr(opcompare,[ef_accept_equal],nil);
+         p1:=sub_expr(opcompare,[ef_accept_equal,ef_ignore_default_field],nil);
          { get the resultdef for this expression }
          if not assigned(p1.resultdef) and
             dotypecheck then
@@ -4342,12 +4408,21 @@ implementation
            _ASSIGNMENT :
              begin
                 consume(_ASSIGNMENT);
-                if assigned(p1.resultdef) and (p1.resultdef.typ=procvardef) then
-                  getprocvardef:=tprocvardef(p1.resultdef);
+                if assigned(p1.resultdef) then
+                  case p1.resultdef.typ of
+                    procvardef: getprocvardef:=tprocvardef(p1.resultdef);
+                    pointerdef:
+                      if has_default_field(tpointerdef(p1.resultdef).pointeddef) then
+                        getdefaultfielddef:=tfieldvarsym(trecordsymtable(trecorddef(tpointerdef(p1.resultdef).pointeddef).symtable).defaultfield);
+                    recorddef:
+                      if has_default_field(trecorddef(p1.resultdef)) then
+                        getdefaultfielddef:=tfieldvarsym(trecordsymtable(trecorddef(p1.resultdef).symtable).defaultfield);
+                  end;
                 p2:=sub_expr(opcompare,[ef_accept_equal],nil);
                 if assigned(getprocvardef) then
                   handle_procvar(getprocvardef,p2);
                 getprocvardef:=nil;
+                getdefaultfielddef:=nil;
                 p1:=cassignmentnode.create(p1,p2);
              end;
            _PLUSASN :

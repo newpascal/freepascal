@@ -60,6 +60,7 @@ interface
          cl6_count,
          coper_count : integer; { should be signed }
          ordinal_distance : double;
+         default_modifier : boolean;
          invalid     : boolean;
          wrongparanr : byte;
       end;
@@ -157,6 +158,7 @@ interface
     function isoperatoracceptable(pf : tprocdef; optoken : ttoken) : boolean;
     function isunaryoverloaded(var t : tnode) : boolean;
     function isbinaryoverloaded(var t : tnode) : boolean;
+    function isdefaultoverloaded(var t : tnode) : boolean;
 
     { Register Allocation }
     procedure make_not_regable(p : tnode; how: tregableinfoflags);
@@ -822,6 +824,7 @@ implementation
         ht      : tnode;
         ppn     : tcallparanode;
         cand_cnt : integer;
+        default_field : boolean;
 
         function search_operator(optoken:ttoken;generror:boolean): integer;
           var
@@ -962,7 +965,8 @@ implementation
              end;
         end;
 
-        cand_cnt:=search_operator(optoken,optoken<>_NE);
+        default_field := has_default_field(ld) or has_default_field(rd);
+        cand_cnt:=search_operator(optoken,(optoken<>_NE) and not default_field);
 
         { no operator found for "<>" then search for "=" operator }
         if (cand_cnt=0) and (optoken=_NE) then
@@ -971,7 +975,7 @@ implementation
             ppn:=nil;
             operpd:=nil;
             optoken:=_EQ;
-            cand_cnt:=search_operator(optoken,true);
+            cand_cnt:=search_operator(optoken,not default_field);
           end;
 
         if (cand_cnt=0) then
@@ -998,6 +1002,35 @@ implementation
         t:=ht;
       end;
 
+    function isdefaultoverloaded(var t : tnode) : boolean;
+      var
+        rd,ld   : tdef;
+        optoken : ttoken;
+        operpd  : tprocdef;
+        ht      : tnode;
+        ppn     : tcallparanode;
+        cand_cnt : integer;
+        rdef: trecorddef;
+      begin
+        isdefaultoverloaded:=false;
+        operpd:=nil;
+        ppn:=nil;
+
+        { load easier access variables }
+        ld:=tbinarynode(t).left.resultdef;
+        rd:=tbinarynode(t).right.resultdef;
+
+        if has_default_field(ld) then
+          begin
+            tbinarynode(t).left:=csubscriptnode.create(trecordsymtable(trecorddef(ld).symtable).defaultfield,tbinarynode(t).left);
+            isdefaultoverloaded:=true;
+          end
+        else if has_default_field(rd) then
+          begin
+            tbinarynode(t).right := csubscriptnode.create(trecordsymtable(trecorddef(rd).symtable).defaultfield,tbinarynode(t).right);
+            isdefaultoverloaded:=true;
+          end;
+      end;
 
 {****************************************************************************
                           Register Calculation
@@ -2043,6 +2076,10 @@ implementation
                 eq:=te_convert_l1;
             end;
         end;
+        if eq=te_incompatible then
+          if def_from.typ=recorddef then
+            if Assigned(trecordsymtable(trecorddef(def_from).symtable).defaultfield) then
+              eq:=te_convert_default;
       end;
 
 
@@ -2757,6 +2794,8 @@ implementation
         cdoptions : tcompare_defs_options;
         n : tnode;
 
+      label
+        repeat_for_default_field;
     {$push}
     {$r-}
     {$q-}
@@ -2790,6 +2829,7 @@ implementation
               eq:=te_incompatible;
               def_from:=currpt.resultdef;
               def_to:=currpara.vardef;
+              repeat_for_default_field:
               if not(assigned(def_from)) then
                internalerror(200212091);
               if not(
@@ -3022,6 +3062,8 @@ implementation
                   inc(hp^.coper_count);
                 te_incompatible :
                   hp^.invalid:=true;
+                te_convert_default :
+                  hp^.default_modifier:=true;
                 else
                   internalerror(200212072);
               end;
@@ -3034,6 +3076,15 @@ implementation
                  hp^.wrongparaidx:=paraidx;
                  hp^.wrongparanr:=currparanr;
                  break;
+               end;
+
+              { check again with default field }
+              if hp^.default_modifier and (eq = te_convert_default) then
+               begin
+                 if not has_default_field(def_from) then
+                   Internalerror(201605281);
+                 def_from := trecordsymtable(trecorddef(def_from).symtable).defaultfield.vardef;
+                 goto repeat_for_default_field;
                end;
 
 {$ifdef EXTDEBUG}
@@ -3138,6 +3189,9 @@ implementation
          end
         else
          if currpd^.invalid then
+          res:=-1
+        else
+         if currpd^.default_modifier then
           res:=-1
         else
          begin
