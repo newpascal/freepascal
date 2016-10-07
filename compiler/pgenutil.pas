@@ -144,7 +144,17 @@ uses
               begin
                 case formaldef.typ of
                   recorddef:
-                    MessagePos(filepos,type_e_record_type_expected);
+                    case paradef.typ of
+                      floatdef,enumdef,orddef,stringdef,setdef,variantdef:
+                        continue;
+                      objectdef:
+                        if tobjectdef(paradef).objecttype = odt_object then
+                          continue
+                        else
+                          MessagePos(filepos,type_e_record_type_expected);
+                    else
+                      MessagePos(filepos,type_e_record_type_expected);
+                    end;
                   objectdef:
                     case tobjectdef(formaldef).objecttype of
                       odt_class,
