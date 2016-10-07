@@ -910,9 +910,9 @@ implementation
                  targetinfos[target_info.system]^.alignment.recordalignmin,
                  targetinfos[target_info.system]^.alignment.maxCrecordalign);
                { total size = elecount * elesize of the first arraydef }
-               tcb.emit_tai(Tai_const.Create_pint(def.elecount*def.elesize),ptruinttype);
+               tcb.emit_tai(Tai_const.Create_sizeint(def.elecount*def.elesize),sizeuinttype);
                { total element count }
-               tcb.emit_tai(Tai_const.Create_pint(pint(totalcount)),ptruinttype);
+               tcb.emit_tai(Tai_const.Create_sizeint(asizeint(totalcount)),sizeuinttype);
                { last dimension element type }
                tcb.emit_tai(Tai_const.Create_sym(ref_rtti(curdef.elementdef,rt)),voidpointertype);
                { dimension count }
@@ -941,7 +941,7 @@ implementation
                  targetinfos[target_info.system]^.alignment.recordalignmin,
                  targetinfos[target_info.system]^.alignment.maxCrecordalign);
                { size of elements }
-               tcb.emit_tai(Tai_const.Create_pint(def.elesize),ptruinttype);
+               tcb.emit_tai(Tai_const.Create_sizeint(def.elesize),sizeuinttype);
                { element type }
                write_rtti_reference(tcb,def.elementdef,rt);
                { variant type }
@@ -1490,7 +1490,7 @@ implementation
                 begin
                   while o<tenumsym(syms[i]).value do
                     begin
-                      tcb.emit_tai(Tai_const.create_pint(0),ptruinttype);
+                      tcb.emit_tai(Tai_const.create_nil_dataptr,ptruinttype);
                       inc(o);
                     end;
                   inc(o);
@@ -1530,7 +1530,7 @@ implementation
             rttilab:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_o2s',AB_GLOBAL,AT_DATA_FORCEINDIRECT,tabledef);
             current_asmdata.asmlists[al_rtti].concatlist(tcb.get_final_asmlist(
               rttilab,tabledef,sec_rodata,
-              rttilab.name,const_align(sizeof(pint))));
+              rttilab.name,sizeof(pint)));
             tcb.free;
 
             current_module.add_public_asmsym(rttilab);
@@ -1577,7 +1577,7 @@ implementation
           rttilab:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_s2o',AB_GLOBAL,AT_DATA_FORCEINDIRECT,tabledef);
           current_asmdata.asmlists[al_rtti].concatlist(tcb.get_final_asmlist(
             rttilab,tabledef,sec_rodata,
-            rttilab.name,const_align(sizeof(pint))));
+            rttilab.name,sizeof(pint)));
           tcb.free;
 
           current_module.add_public_asmsym(rttilab);
@@ -1741,7 +1741,7 @@ implementation
         rttidef:=tcb.end_anonymous_record;
         rttilab:=current_asmdata.DefineAsmSymbol(tstoreddef(def).rtti_mangledname(rt),AB_GLOBAL,AT_DATA_FORCEINDIRECT,rttidef);
         current_asmdata.AsmLists[al_rtti].concatList(
-          tcb.get_final_asmlist(rttilab,rttidef,sec_rodata,rttilab.name,const_align(sizeof(pint))));
+          tcb.get_final_asmlist(rttilab,rttidef,sec_rodata,rttilab.name,sizeof(pint)));
         tcb.free;
 
         current_module.add_public_asmsym(rttilab);

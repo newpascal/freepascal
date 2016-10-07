@@ -260,6 +260,8 @@ interface
              special i8086 pointer types (near, far, huge). }
           function pointer_subtraction_result_type:tdef;virtual;
           function compatible_with_pointerdef_size(ptr: tpointerdef): boolean; virtual;
+          {# the integer index type used to convert the pointer to array (i.e. denotes int_type in: ptr[int_type]) }
+          function converted_pointer_to_array_range_type:tdef;virtual;
        end;
        tpointerdefclass = class of tpointerdef;
 
@@ -1070,6 +1072,12 @@ interface
        { integer types corresponding to OS_SINT/OS_INT }
        ossinttype,
        osuinttype,
+       { integer types corresponding to the ALU size, sizeof(aint) and the ALUSInt/ALUUInt types in the system unit }
+       alusinttype,
+       aluuinttype,
+       { integer types corresponding to SizeInt and SizeUInt for the target platform }
+       sizeuinttype,
+       sizesinttype,
        { unsigned and signed ord type with the same size as a pointer }
        ptruinttype,
        ptrsinttype,
@@ -3380,6 +3388,12 @@ implementation
       end;
 
 
+    function tpointerdef.converted_pointer_to_array_range_type:tdef;
+      begin
+        result:=ptrsinttype;
+      end;
+
+
 {****************************************************************************
                               TCLASSREFDEF
 ****************************************************************************}
@@ -3648,7 +3662,8 @@ implementation
          { divide by the element size and do -1 so the array will have a valid size,
            further, the element size might be 0 e.g. for empty records, so use max(...,1)
            to avoid a division by zero }
-         self.create(0,(high(asizeint) div max(def.pointeddef.size,1))-1,ptrsinttype);
+         self.create(0,(high(asizeint) div max(def.pointeddef.size,1))-1,
+           def.converted_pointer_to_array_range_type);
          arrayoptions:=[ado_IsConvertedPointer];
          setelementdef(def.pointeddef);
       end;

@@ -445,7 +445,7 @@ implementation
            begin
               current_asmdata.getglobaldatalabel(r);
               gendmt:=r;
-              al_globals.concat(cai_align.create(const_align(sizeof(pint))));
+              al_globals.concat(cai_align.create(sizeof(pint)));
               al_globals.concat(Tai_label.Create(r));
               { entries for caching }
               al_globals.concat(Tai_const.Create_ptr(0));
@@ -675,7 +675,7 @@ implementation
                       packed
                      $endif FPC_REQUIRES_PROPER_ALIGNMENT
                       record
-                        FieldOffset: PtrUInt;
+                        FieldOffset: SizeUInt;
                         ClassTypeIndex: Word;
                         Name: ShortString;
                       end;
@@ -683,7 +683,7 @@ implementation
                     datatcb.begin_anonymous_record('$fpc_intern_fieldinfo_'+tostr(length(tfieldvarsym(sym).realname)),packrecords,1,
                       targetinfos[target_info.system]^.alignment.recordalignmin,
                       targetinfos[target_info.system]^.alignment.maxCrecordalign);
-                    datatcb.emit_tai(Tai_const.Create_pint(tfieldvarsym(sym).fieldoffset),ptruinttype);
+                    datatcb.emit_tai(Tai_const.Create_sizeint(tfieldvarsym(sym).fieldoffset),sizeuinttype);
                     classindex:=classtablelist.IndexOf(tfieldvarsym(sym).vardef);
                     if classindex=-1 then
                       internalerror(200611033);
@@ -833,7 +833,7 @@ implementation
         datatcb.begin_anonymous_record('',default_settings.packrecords,1,
           targetinfos[target_info.system]^.alignment.recordalignmin,
           targetinfos[target_info.system]^.alignment.maxCrecordalign);
-        datatcb.emit_tai(Tai_const.Create_pint(_class.ImplementedInterfaces.count),search_system_type('SIZEUINT').typedef);
+        datatcb.emit_tai(Tai_const.Create_sizeint(_class.ImplementedInterfaces.count),sizeuinttype);
         interfaceentrydef:=search_system_type('TINTERFACEENTRY').typedef;
         interfaceentrytypedef:=search_system_type('TINTERFACEENTRYTYPE').typedef;
         if _class.ImplementedInterfaces.count>0 then
@@ -930,7 +930,7 @@ implementation
             rec_tguid,
             sec_rodata,
             s,
-            const_align(sizeof(pint))));
+            sizeof(pint)));
           tcb.free;
           current_module.add_public_asmsym(sym);
         end;
@@ -1134,8 +1134,8 @@ implementation
 
          { determine the size with symtable.datasize, because }
          { size gives back 4 for classes                    }
-         tcb.emit_ord_const(tObjectSymtable(_class.symtable).datasize,ptrsinttype);
-         tcb.emit_ord_const(-int64(tObjectSymtable(_class.symtable).datasize),ptrsinttype);
+         tcb.emit_ord_const(tObjectSymtable(_class.symtable).datasize,sizesinttype);
+         tcb.emit_ord_const(-int64(tObjectSymtable(_class.symtable).datasize),sizesinttype);
 {$ifdef WITHDMT}
          if _class.classtype=ct_object then
            begin
@@ -1238,7 +1238,7 @@ implementation
          current_asmdata.asmlists[al_globals].concatlist(
            tcb.get_final_asmlist(
              sym,
-             vmtdef,sec_rodata,_class.vmt_mangledname,const_align(sizeof(pint))
+             vmtdef,sec_rodata,_class.vmt_mangledname,sizeof(pint)
            )
          );
          tcb.free;

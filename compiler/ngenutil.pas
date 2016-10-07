@@ -973,9 +973,9 @@ implementation
         targetinfos[target_info.system]^.alignment.recordalignmin,
         targetinfos[target_info.system]^.alignment.maxCrecordalign);
       { placeholder for tablecount }
-      tablecountplaceholder:=unitinits.emit_placeholder(sinttype);
+      tablecountplaceholder:=unitinits.emit_placeholder(aluuinttype);
       { initcount (initialised at run time }
-      unitinits.emit_ord_const(0,sinttype);
+      unitinits.emit_ord_const(0,aluuinttype);
       count:=0;
       hp:=tused_unit(usedunits.first);
       while assigned(hp) do
@@ -1034,7 +1034,7 @@ implementation
           inc(count);
         end;
       { fill in tablecount }
-      tablecountplaceholder.replace(tai_const.Create_aint(count),sinttype);
+      tablecountplaceholder.replace(tai_const.Create_aint(count),aluuinttype);
       tablecountplaceholder.free;
       { Add to data segment }
 
