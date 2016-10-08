@@ -299,13 +299,13 @@ implementation
                begin
                  { won't work for class operatos like Equal for generic record
                    related to bug #30534 and 24073, temporary commented }
-                 { if (def_from.typ<>def_to.typ) then
-                   begin
-                     { not compatible anyway }
-                     doconv:=tc_not_possible;
-                     compare_defs_ext:=te_incompatible;
-                     exit;
-                   end; }
+                 // if (def_from.typ<>def_to.typ) then
+                 //  begin
+                 //    { not compatible anyway }
+                 //    doconv:=tc_not_possible;
+                 //    compare_defs_ext:=te_incompatible;
+                 //    exit;
+                 //  end;
 
                  { one is definitely a constraint, for the other we don't
                    care right now }
