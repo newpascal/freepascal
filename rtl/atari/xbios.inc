@@ -1,8 +1,8 @@
 {
     This file is part of the Free Pascal run time library.
-    Copyright (c) 1999-2000 by the Free Pascal development team
+    Copyright (c) 2016 by Free Pascal development team
 
-    Interface and OS-dependent part of variant support
+    XBIOS related defines for Atari TOS
 
     See the file COPYING.FPC, included in this distribution,
     for details about the copyright.
@@ -13,26 +13,8 @@
 
  **********************************************************************}
 
-{$MODE ObjFPC}
 
-Unit varutils;
+{ The API description of this file is based on the information available
+  online at: http://toshyp.atari.org }
 
-Interface
-
-Uses sysutils;
-
-// Read definitions.
-
-{$i varutilh.inc}
-
-Implementation
-
-// Code common to all platforms.
-
-{$i cvarutil.inc}
-
-// Code common to non-win32 platforms.
-
-{$i varutils.inc}
-
-end.
+function xbios_random: longint; syscall 14 17;

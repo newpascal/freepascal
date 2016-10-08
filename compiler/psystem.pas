@@ -370,7 +370,7 @@ implementation
   {$endif i8086}
 {$endif x86}
         set_default_ptr_types;
-        openchararraytype:=carraydef.create(0,-1,ptrsinttype);
+        openchararraytype:=carraydef.create(0,-1,sizesinttype);
         tarraydef(openchararraytype).elementdef:=cansichartype;
         cfiletype:=cfiledef.createuntyped;
         cvarianttype:=cvariantdef.create(vt_normalvariant);
@@ -543,8 +543,8 @@ implementation
               type is not available. The rtti for pvmt will be written implicitly
               by thev tblarray below }
             systemunit.insert(ctypesym.create('$pvmt',pvmttype,true));
-            addfield(hrecst,cfieldvarsym.create('$length',vs_value,ptrsinttype,[],true));
-            addfield(hrecst,cfieldvarsym.create('$mlength',vs_value,ptrsinttype,[],true));
+            addfield(hrecst,cfieldvarsym.create('$length',vs_value,sizesinttype,[],true));
+            addfield(hrecst,cfieldvarsym.create('$mlength',vs_value,sizesinttype,[],true));
             addfield(hrecst,cfieldvarsym.create('$parent',vs_value,pvmttype,[],true));
             { it seems vmttype is used both for TP objects and Delphi classes,
               so the next entry could either be the first virtual method (vm1)

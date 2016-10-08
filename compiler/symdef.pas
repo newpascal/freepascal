@@ -255,6 +255,8 @@ interface
              Normally, this is sinttype, except on i8086, where it takes into account the
              special i8086 pointer types (near, far, huge). }
           function pointer_arithmetic_int_type:tdef;virtual;
+          {# the unsigned version of pointer_arithmetic_int_type. Used with inc/dec. }
+          function pointer_arithmetic_uint_type:tdef;virtual;
           {# returns the int type produced when subtracting two pointers of the given type.
              Normally, this is sinttype, except on i8086, where it takes into account the
              special i8086 pointer types (near, far, huge). }
@@ -3376,6 +3378,12 @@ implementation
       end;
 
 
+    function tpointerdef.pointer_arithmetic_uint_type:tdef;
+      begin
+        result:=ptruinttype;
+      end;
+
+
     function tpointerdef.pointer_subtraction_result_type:tdef;
       begin
         result:=ptrsinttype;
@@ -3633,7 +3641,7 @@ implementation
             { do not simply push/pop current_module.localsymtable, because
               that can have side-effects (e.g., it removes helpers) }
             symtablestack:=nil;
-            result:=carraydef.create(0,elems-1,ptrsinttype);
+            result:=carraydef.create(0,elems-1,sizesinttype);
             result.elementdef:=def;
             setup_reusable_def(def,result,res,oldsymtablestack);
             { res^.Data may still be nil -> don't overwrite result }

@@ -99,6 +99,8 @@ function gemdos_getdta: PDTA; syscall 1 47;
 
 function gemdos_dfree(buf: PDISKINFO; driveno: smallint): smallint; syscall 1 54;
 
+function gemdos_dcreate(const path: pchar): longint; syscall 1 57;
+function gemdos_ddelete(const path: pchar): longint; syscall 1 58;
 function gemdos_dsetpath(path: pchar): smallint; syscall 1 59;
 
 function gemdos_fcreate(fname: pchar; attr: smallint): smallint; syscall 1 60;
@@ -113,6 +115,8 @@ function gemdos_fattrib(filename: pchar; wflag: smallint; attrib: smallint): sma
 function gemdos_dgetpath(path: pchar; driveno: smallint): smallint; syscall 1 71;
 function gemdos_malloc(number: dword): pointer; syscall 1 72;
 function gemdos_free(block: pointer): dword; syscall 1 73;
+
+procedure gemdos_pterm(returncode: smallint); syscall 1 76;
 
 function gemdos_fsfirst(filename: pchar; attr: smallint): longint; syscall 1 78;
 function gemdos_fsnext: smallint; syscall 1 79;
