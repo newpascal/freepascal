@@ -291,17 +291,21 @@ implementation
                end;
 
              { either type has constraints }
-             if assigned(tstoreddef(def_from).genconstraintdata) or
-                 assigned(tstoreddef(def_to).genconstraintdata) then
+             if not (cdo_assign_operator_dec in cdoptions) and
+                 (
+                  assigned(tstoreddef(def_from).genconstraintdata) or
+                  assigned(tstoreddef(def_to).genconstraintdata)
+                 ) then
                begin
-                 if (cdo_assign_operator_dec in cdoptions) or
-                     (def_from.typ<>def_to.typ) then
+                 { won't work for class operatos like Equal for generic record
+                   related to bug #30534 and 24073, temporary commented }
+                 { if (def_from.typ<>def_to.typ) then
                    begin
                      { not compatible anyway }
                      doconv:=tc_not_possible;
                      compare_defs_ext:=te_incompatible;
                      exit;
-                   end;
+                   end; }
 
                  { one is definitely a constraint, for the other we don't
                    care right now }
