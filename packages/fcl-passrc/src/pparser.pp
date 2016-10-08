@@ -1057,13 +1057,13 @@ begin
       else
         ParseExcSyntaxError;
       end
-    else if CurToken=tkDotDot then // Type A = A..B;
+    else if (CurToken in [tkBraceOpen,tkDotDot]) then // Type A = B..C;
       K:=stkRange
     else
       ParseExcTokenError(';');
     UnGetToken;
     end
-  else if (CurToken=tkDotDot) then // A: B..C;
+  else if (CurToken in [tkBraceOpen,tkDotDot]) then // A: B..C;
     begin
     K:=stkRange;
     UnGetToken;
@@ -1225,7 +1225,7 @@ Const
   NoHintTokens = [tkProcedure,tkFunction];
 var
   PM : TPackMode;
-  CH , ok: Boolean; // Check hint ?
+  CH , isHelper,ok: Boolean; // Check hint ?
 begin
   Result := nil;
   // NextToken and check pack mode
@@ -1246,7 +1246,16 @@ begin
       tkInterface: Result := ParseClassDecl(Parent, NamePos, TypeName, okInterface);
       tkSpecialize: Result:=ParseSpecializeType(Parent,TypeName);
       tkClass: Result := ParseClassDecl(Parent, NamePos, TypeName, okClass, PM);
-      tkType: Result:=ParseAliasType(Parent,NamePos,TypeName);
+      tkType:
+        begin
+        NextToken;
+        isHelper:=CurTokenIsIdentifier('helper');
+        UnGetToken;
+        if isHelper then
+          Result:=ParseClassDecl(Parent,NamePos,TypeName,okTypeHelper,PM)
+        else
+          Result:=ParseAliasType(Parent,NamePos,TypeName);
+        end;
       // Always allowed
       tkIdentifier: Result:=ParseSimpleType(Parent,NamePos,TypeName,Full);
       tkCaret: Result:=ParsePointerType(Parent,NamePos,TypeName);
@@ -1259,7 +1268,7 @@ begin
       tkRecord:
         begin
         NextToken;
-        if (Curtoken=tkHelper) then
+        if CurTokenIsIdentifier('Helper') then
           begin
           UnGetToken;
           Result:=ParseClassDecl(Parent,NamePos,TypeName,okRecordHelper,PM);
@@ -1270,7 +1279,7 @@ begin
           Result := ParseRecordDecl(Parent,NamePos,TypeName,PM);
           end;
         end;
-      tkNumber,tkMinus:
+      tkNumber,tkMinus,tkChar:
         begin
         UngetToken;
         Result:=ParseRangeType(Parent,NamePos,TypeName,Full);
@@ -1552,7 +1561,7 @@ begin
       while CurToken in [tkDot] do
         begin
         NextToken;
-        if CurToken=tkIdentifier then
+        if CurToken in [tkIdentifier,tktrue,tkfalse] then // true and false are also identifiers
           begin
           AddToBinaryExprChain(Result,Last,
             CreatePrimitiveExpr(AParent,pekIdent,CurTokenString), eopSubIdent);
@@ -2532,7 +2541,12 @@ function TPasParser.CheckUseUnit(ASection: TPasSection; AUnitName: string
 
 begin
   if CompareText(AUnitName,CurModule.Name)=0 then
+    begin
+    // System is implicit, except when parsing system unit.
+    if CompareText(AUnitName,'System')=0 then
+      exit;
     ParseExc(nParserDuplicateIdentifier,SParserDuplicateIdentifier,[AUnitName]);
+    end;
   CheckDuplicateInUsesList(AUnitName,ASection.UsesList);
   if ASection.ClassType=TImplementationSection then
     CheckDuplicateInUsesList(AUnitName,CurModule.InterfaceSection.UsesList);
@@ -4030,7 +4044,7 @@ begin
       El:=TPasImplRaise(CreateElement(TPasImplRaise,'',CurBlock));
       CreateBlock(TPasImplRaise(El));
       NextToken;
-      If Curtoken=tkSemicolon then
+      If Curtoken in [tkEnd,tkSemicolon] then
         UnGetToken
       else
         begin
@@ -4348,6 +4362,7 @@ begin
         end;
       tkOperator,
       tkProcedure,
+      tkConstructor,
       tkFunction :
         begin
         if Not AllowMethods then
@@ -4498,17 +4513,32 @@ Var
   VarList: TFPList;
   Element: TPasElement;
   I : Integer;
+  isStatic : Boolean;
 
 begin
   VarList := TFPList.Create;
   try
     ParseInlineVarDecl(AType, VarList, AVisibility, False);
+    if CurToken=tkSemicolon then
+      begin
+      NextToken;
+      isStatic:=CurTokenIsIdentifier('static');
+      if isStatic then
+        ExpectToken(tkSemicolon)
+      else
+        UngetToken;
+      end;
     for i := 0 to VarList.Count - 1 do
       begin
       Element := TPasElement(VarList[i]);
       Element.Visibility := AVisibility;
-      if IsClassField and (Element is TPasVariable) then
-        TPasVariable(Element).VarModifiers:=TPasVariable(Element).VarModifiers+[vmClass];
+      if (Element is TPasVariable) then
+        begin
+        if IsClassField then
+          TPasVariable(Element).VarModifiers:=TPasVariable(Element).VarModifiers+[vmClass];
+        if isStatic then
+          TPasVariable(Element).VarModifiers:=TPasVariable(Element).VarModifiers+[vmStatic];
+        end;
       AType.Members.Add(Element);
       end;
   finally
@@ -4652,7 +4682,7 @@ begin
         break;
       UngetToken;
       ExpectToken(tkComma);
-      Element:=ParseType(AType,Scanner.CurSourcePos); // search interface.
+      Element:=ParseType(AType,Scanner.CurSourcePos,'',False); // search interface.
       if assigned(element) then
         AType.Interfaces.add(element);
       end;
@@ -4689,10 +4719,11 @@ function TPasParser.ParseClassDecl(Parent: TPasElement;
 
 Var
   ok: Boolean;
+  FT : TPasType;
 
 begin
   NextToken;
-
+  FT:=Nil;
   if (AObjKind = okClass) and (CurToken = tkOf) then
     begin
     Result := TPasClassOfType(CreateElement(TPasClassOfType, AClassName,
@@ -4702,17 +4733,24 @@ begin
     TPasClassOfType(Result).DestType := ParseType(Result,Scanner.CurSourcePos);
     exit;
     end;
-  if (CurToken = tkHelper) then
+  if (CurTokenIsIdentifier('Helper')) then
     begin
-    if Not (AObjKind in [okClass,okRecordHelper]) then
+    if Not (AObjKind in [okClass,okTypeHelper,okRecordHelper]) then
       ParseExc(nParserHelperNotAllowed,SParserHelperNotAllowed,[ObjKindNames[AObjKind]]);
-    if (AObjKind = okClass)  then
-      AObjKind:=okClassHelper;
+    Case AObjKind of
+     okClass:
+        AObjKind:=okClassHelper;
+     okTypeHelper:
+       begin
+       ExpectToken(tkFor);
+       FT:=ParseType(Parent,Scanner.CurSourcePos,'',False);
+       end
+    end;
     NextToken;
     end;
   Result := TPasClassType(CreateElement(TPasClassType, AClassName,
     Parent, NamePos));
-
+  TPasClassType(Result).HelperForType:=FT;
   ok:=false;
   try
     TPasClassType(Result).ObjKind := AObjKind;

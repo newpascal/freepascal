@@ -72,6 +72,8 @@ type
     procedure TestOneSpecializedClassInterface;
     Procedure TestOneField;
     Procedure TestOneFieldComment;
+    procedure TestOneFieldStatic;
+    Procedure TestOneHelperField;
     Procedure TestOneVarField;
     Procedure TestOneClassField;
     Procedure TestOneFieldVisibility;
@@ -510,6 +512,25 @@ begin
   ParseClass;
   AssertNotNull('Have 1 field',Field1);
   AssertMemberName('a');
+  AssertVisibility;
+end;
+
+procedure TTestClassType.TestOneFieldStatic;
+begin
+  AddMember('a : integer; static');
+  ParseClass;
+  AssertNotNull('Have 1 field',Field1);
+  AssertMemberName('a');
+  AssertVisibility;
+  AssertTrue('Have static field',vmStatic in TPasVariable(Field1).VarModifiers);
+end;
+
+procedure TTestClassType.TestOneHelperField;
+begin
+  AddMember('helper : integer');
+  ParseClass;
+  AssertNotNull('Have 1 field',Field1);
+  AssertMemberName('helper');
   AssertVisibility;
 end;
 
