@@ -1271,6 +1271,7 @@ implementation
               ifDispatch, }
             tcb.emit_ord_const(IntfFlags,u8inttype);
 
+            { write GUID }
             tcb.emit_guid_const(def.iidguid^);
 
             { write unit name }

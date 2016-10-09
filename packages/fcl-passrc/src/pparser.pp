@@ -295,7 +295,7 @@ type
     Function TokenIsCallingConvention(S : String; out CC : TCallingConvention) : Boolean; virtual;
     Function TokenIsProcedureModifier(Parent : TPasElement; S : String; Out Pm : TProcedureModifier) : Boolean; virtual;
     Function CheckHint(Element : TPasElement; ExpectSemiColon : Boolean) : TPasMemberHints;
-    function ParseParams(AParent : TPasElement;paramskind: TPasExprKind): TParamsExpr;
+    function ParseParams(AParent : TPasElement;paramskind: TPasExprKind; AllowFormatting : Boolean = False): TParamsExpr;
     function ParseExpIdent(AParent : TPasElement): TPasExpr;
     procedure DoParseClassType(AType: TPasClassType);
     function DoParseExpression(AParent: TPaselement;InitExpr: TPasExpr=nil): TPasExpr;
@@ -1028,13 +1028,15 @@ function TPasParser.ParseSimpleType(Parent: TPasElement;
   ): TPasType;
 
 Type
-  TSimpleTypeKind = (stkAlias,stkString,stkRange);
+  TSimpleTypeKind = (stkAlias,stkString,stkRange,stkSpecialize);
 
 Var
   Ref: TPasElement;
   K : TSimpleTypeKind;
   Name : String;
   SS : Boolean;
+  CT : TPasClassType;
+
 begin
   Name := CurTokenString;
   NextToken;
@@ -1059,6 +1061,8 @@ begin
       end
     else if (CurToken in [tkBraceOpen,tkDotDot]) then // Type A = B..C;
       K:=stkRange
+    else if (CurToken = tkLessThan) then // A = B<t>;
+      K:=stkSpecialize
     else
       ParseExcTokenError(';');
     UnGetToken;
@@ -1079,6 +1083,20 @@ begin
     stkString:
       begin
       Result:=ParseStringType(Parent,NamePos,TypeName);
+      end;
+    stkSpecialize:
+      begin
+      CT := TPasClassType(CreateElement(TPasClassType, TypeName, Parent, Scanner.CurSourcePos));
+      try
+        CT.ObjKind := okSpecialize;
+        CT.AncestorType := TPasUnresolvedTypeRef.Create(Name,Parent);
+        CT.IsShortDefinition:=True;
+        ReadGenericArguments(CT.GenericTemplateTypes,CT);
+        Result:=CT;
+        CT:=Nil;
+      Finally
+        FreeAndNil(CT);
+      end;
       end;
     stkRange:
       begin
@@ -1389,11 +1407,13 @@ begin
   Result:=(CurToken in EndExprToken) or IsCurTokenHint;
 end;
 
-function TPasParser.ParseParams(AParent: TPasElement;paramskind: TPasExprKind): TParamsExpr;
+function TPasParser.ParseParams(AParent: TPasElement; paramskind: TPasExprKind;
+  AllowFormatting: Boolean = False): TParamsExpr;
 var
   params  : TParamsExpr;
   p       : TPasExpr;
   PClose  : TToken;
+
 begin
   Result:=nil;
   if paramskind in [pekArrayParams, pekSet] then begin
@@ -1413,7 +1433,19 @@ begin
         p:=DoParseExpression(params);
         if not Assigned(p) then Exit; // bad param syntax
         params.AddParam(p);
-
+        if (CurToken=tkColon) then
+          if Not AllowFormatting then
+            ParseExcSyntaxError
+          else
+            begin
+            NextToken;
+            p.format1:=DoParseExpression(p);
+            if (CurToken=tkColon) then
+              begin
+              NextToken;
+              p.format2:=DoParseExpression(p);
+              end;
+            end;
         if not (CurToken in [tkComma, PClose]) then begin
           Exit;
         end;
@@ -1470,12 +1502,27 @@ begin
 end;
  
 function TPasParser.ParseExpIdent(AParent: TPasElement): TPasExpr;
+
+  Function IsWriteOrstr(P : TPasExpr) : boolean;
+
+  Var
+    N : String;
+  begin
+    Result:=P is TPrimitiveExpr;
+    if Result then
+      begin
+      N:=LowerCase(TPrimitiveExpr(P).Value);
+      // We should actually resolve this to system.NNN
+      Result:=(N='write') or (N='str') or (N='writeln');
+      end;
+  end;
 var
   Last    , Expr: TPasExpr;
   prm     : TParamsExpr;
   b       : TBinaryExpr;
   optk    : TToken;
   ok: Boolean;
+
 begin
   Result:=nil;
   case CurToken of
@@ -1578,7 +1625,7 @@ begin
           tkBraceOpen,tkSquaredBraceOpen:
             begin
             if CurToken=tkBraceOpen then
-              prm:=ParseParams(AParent,pekFuncParams)
+              prm:=ParseParams(AParent,pekFuncParams,isWriteOrStr(Last))
             else
               prm:=ParseParams(AParent,pekArrayParams);
             if not Assigned(prm) then Exit;
@@ -1734,22 +1781,24 @@ begin
           begin
           NextToken;
           x:=DoParseExpression(AParent);
-          if CurToken<>tkBraceClose then
+          if (CurToken<>tkBraceClose) then
             begin
             x.Release;
             Exit;
             end;
           NextToken;
-          //     DumpCurToken('Here 1');
-               // for the expression like  (TObject(m)).Free;
-               if (x<>Nil) and (CurToken=tkDot) then
-                 begin
-                 NextToken;
-          //       DumpCurToken('Here 2');
-                 x:=CreateBinaryExpr(AParent,x, ParseExpIdent(AParent), TokenToExprOp(tkDot));
-          //       DumpCurToken('Here 3');
-                 end;
-
+          // for expressions like (ppdouble)^^;
+          while (x<>Nil) and (CurToken=tkCaret) do
+            begin
+            NextToken;
+            x:=CreateUnaryExpr(AParent,x, TokenToExprOp(tkCaret));
+            end;
+          // for expressions like (TObject(m)).Free;
+          if (x<>Nil) and (CurToken=tkDot) then
+            begin
+            NextToken;
+            x:=CreateBinaryExpr(AParent,x, ParseExpIdent(AParent), TokenToExprOp(tkDot));
+            end;
           end
         else
           begin
@@ -3307,6 +3356,7 @@ Var
   PM : TProcedureModifier;
   Done: Boolean;
   ResultEl: TPasResultElement;
+  I : Integer;
 
 begin
   // Element must be non-nil. Removed all checks for not-nil.
@@ -3315,9 +3365,36 @@ begin
   case ProcType of
     ptFunction,ptClassFunction:
       begin
-      ExpectToken(tkColon);
-      ResultEl:=TPasFunctionType(Element).ResultEl;
-      ResultEl.ResultType := ParseType(ResultEl,Scanner.CurSourcePos);
+      NextToken;
+      if CurToken = tkColon then
+        begin
+        ResultEl:=TPasFunctionType(Element).ResultEl;
+        ResultEl.ResultType := ParseType(ResultEl,Scanner.CurSourcePos);
+        end
+      // In Delphi mode, the implementation in the implementation section can be without result as it was declared
+      // We actually check if the function exists in the interface section.
+      else if (po_delphi in Options) and Assigned(CurModule.ImplementationSection) then
+        begin
+        I:=-1;
+        if Assigned(CurModule.InterfaceSection) then
+          begin
+          I:=CurModule.InterfaceSection.Functions.Count-1;
+          While (I>=0) and (CompareText(TPasElement(CurModule.InterfaceSection.Functions[i]).Name,Parent.Name)<>0) do
+            Dec(I);
+          end;
+        if (I=-1) then
+          CheckToken(tkColon)
+        else
+          begin
+          CheckToken(tkSemiColon);
+          UngetToken;
+          end;
+        end
+      else
+        begin
+        // Raise error
+        CheckToken(tkColon);
+        end;
       end;
     ptOperator,ptClassOperator:
       begin
