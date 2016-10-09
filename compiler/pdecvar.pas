@@ -1689,15 +1689,24 @@ implementation
                if hdef.typ=undefineddef then
                  Message(parser_e_cant_use_type_parameters_here);
 
-             { Parse default field before ; }
+             { Parse default field before ";". Default field is allowed in two forms:
+               "strict default" and "default" (the first is more restrictive) }
              if (vd_record in options) and (sc.Count = 1) then
-               if idtoken = _DEFAULT then
-               begin
-                 consume(token);
-                 if assigned(trecordsymtable(recst).defaultfield) then
-                   Internalerror(201604170);
-                 fieldvs:=tfieldvarsym(sc[0]);
-                 trecordsymtable(recst).defaultfield := fieldvs;
+               if idtoken in [_DEFAULT, _STRICT] then
+                 begin
+                   if idtoken=_STRICT then
+                     begin
+                       consume(token);
+                       consume(_DEFAULT);
+                       trecordsymtable(recst).strictdefaultfield:=true;
+                     end
+                   else
+                     consume(token);
+
+                   if assigned(trecordsymtable(recst).defaultfield) then
+                     Internalerror(201604170);
+                   fieldvs:=tfieldvarsym(sc[0]);
+                   trecordsymtable(recst).defaultfield := fieldvs;
                end;
 
              { try to parse the hint directives }
@@ -1900,6 +1909,7 @@ implementation
                        (unionsymtable.defaultfield <> trecordsymtable(recst).defaultfield) then
                       Internalerror(201605010);
 
+                    trecordsymtable(recst).strictdefaultfield := unionsymtable.strictdefaultfield;
                     trecordsymtable(recst).defaultfield := unionsymtable.defaultfield;
                   end;
                 end;

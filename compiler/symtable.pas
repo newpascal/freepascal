@@ -140,7 +140,8 @@ interface
           { object/classes. In XE5 and newer is possible to use class operator }
           { for classes (like for Delphi .NET before) only for Delphi NEXTGEN  }
           managementoperators : tmanagementoperators;
-          defaultfield: tfieldvarsym;          
+          defaultfield: tfieldvarsym;
+          strictdefaultfield: boolean;
 
           constructor create(const n:string;usealign,recordminalign,recordmaxCalign:shortint);
           procedure insertunionst(unionst : trecordsymtable;offset : longint);
