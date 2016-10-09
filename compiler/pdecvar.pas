@@ -1704,7 +1704,7 @@ implementation
                      consume(token);
 
                    if assigned(trecordsymtable(recst).defaultfield) then
-                     Internalerror(201604170);
+                     Message(parser_e_only_one_default_property);
                    fieldvs:=tfieldvarsym(sc[0]);
                    trecordsymtable(recst).defaultfield := fieldvs;
                end;
