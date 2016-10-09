@@ -2364,7 +2364,7 @@ implementation
                                  erroroutp1:=false;
                                end
                              else
-                               if assigned(trecordsymtable(structh.symtable).defaultfield) then
+                               if has_default_field(structh) then
                                  begin
                                    srsym := trecordsymtable(structh.symtable).defaultfield;
                                    p1:=csubscriptnode.create(srsym,p1);
