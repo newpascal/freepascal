@@ -159,6 +159,7 @@ type
     Procedure TestReferencePointer;
     Procedure TestInvalidColon;
     Procedure TestTypeHelper;
+    Procedure TestSpecializationDelphi;
   end;
 
   { TTestRecordTypeParser }
@@ -3099,8 +3100,6 @@ end;
 procedure TTestTypeParser.TestRangeLowHigh;
 
 begin
-   TShortCut = Low(Word)..High(Word);
-
   DoParseRangeSet('low(TRange)..high(TRange)','');
 end;
 
@@ -3279,6 +3278,11 @@ end;
 procedure TTestTypeParser.TestTypeHelper;
 begin
   ParseType('Type Helper for AnsiString end',TPasClassType,'');
+end;
+
+procedure TTestTypeParser.TestSpecializationDelphi;
+begin
+  ParseType('TFPGList<integer>',TPasClassType,'');
 end;
 
 initialization
