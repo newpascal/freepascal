@@ -258,6 +258,9 @@ Var
   FPMakeBin,
   OOptions : string;
   InstallRepo: TFPRepository;
+  GlobalUnitDir,
+  LocalUnitDir: string;
+  BaseInstDir: string;
   i: Integer;
 
   procedure AddOption(const s:string);
@@ -321,8 +324,7 @@ begin
     AddOption('--debug')
   else if llInfo in LogLevels then
     AddOption('--verbose');
-  if P.RecompileBroken and
-     (P.FPMakeOptionsString<>'') then // Check for a empty FPMakeOptionString for packages being installed with an old fpmkunit
+  if (P.FPMakeOptionsString<>'') then
     begin
       // When the package is being reinstalled because of broken dependencies, use the same fpmake-options
       // as were used to compile the package in the first place.
@@ -368,10 +370,19 @@ begin
           InstallRepo := TFPRepository(GFPpkg.RepositoryList[i]);
           if (InstallRepo.RepositoryType = fprtInstalled) and Assigned(InstallRepo.DefaultPackagesStructure) then
             begin
-              CondAddOption('--searchpath', InstallRepo.DefaultPackagesStructure.GetBaseInstallDir);
+              BaseInstDir := InstallRepo.DefaultPackagesStructure.GetBaseInstallDir;
+              CondAddOption('--searchpath', BaseInstDir);
+              if LocalUnitDir='' then
+                LocalUnitDir := BaseInstDir
+              else if GlobalUnitDir='' then
+                GlobalUnitDir := BaseInstDir;
             end;
         end;
     end;
+  if GlobalUnitDir<>'' then
+    CondAddOption('--globalunitdir', GlobalUnitDir);
+  if LocalUnitDir<>'' then
+    CondAddOption('--localunitdir', LocalUnitDir);
 
   { Run FPMake }
   FPMakeBin:='fpmake'+ExeExt;

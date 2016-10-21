@@ -143,7 +143,7 @@ unit aoptbase;
   Function TAOptBase.RegInOp(Reg: TRegister; const op: toper): Boolean;
     Begin
       Case op.typ Of
-        Top_Reg: RegInOp := Reg = op.reg;
+        Top_Reg: RegInOp := SuperRegistersEqual(Reg,op.reg);
         Top_Ref: RegInOp := RegInRef(Reg, op.ref^);
         {$ifdef arm}
         Top_Shifterop: RegInOp := op.shifterop^.rs = Reg;
@@ -156,11 +156,10 @@ unit aoptbase;
 
   Function TAOptBase.RegInRef(Reg: TRegister; Const Ref: TReference): Boolean;
   Begin
-    Reg := RegMaxSize(Reg);
-    RegInRef := (Ref.Base = Reg)
-  {$ifdef cpurefshaveindexreg}
-    Or (Ref.Index = Reg)
-  {$endif cpurefshaveindexreg}
+    RegInRef := SuperRegistersEqual(Ref.Base,Reg)
+{$ifdef cpurefshaveindexreg}
+    Or SuperRegistersEqual(Ref.Index,Reg)
+{$endif cpurefshaveindexreg}
   End;
 
   Function TAOptBase.RegModifiedByInstruction(Reg: TRegister; p1: tai): Boolean;

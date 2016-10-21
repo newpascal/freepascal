@@ -156,9 +156,10 @@ interface
           { varargs parasyms }
           varargsparas : tvarargsparalist;
 
-          { separately specified resultdef for some compilerprocs (e.g. }
-          { you can't have a function with an "array of char" resultdef }
-          { the RTL) (JM)                                                }
+          { separately specified resultdef for some compilerprocs (e.g.
+            you can't have a function with an "array of char" resultdef
+            the RTL) (JM)
+          }
           typedef: tdef;
           callnodeflags : tcallnodeflags;
 
@@ -3733,7 +3734,8 @@ implementation
                 begin
                   { convert types to those of the prototype, this is required by functions like ror, rol, sar
                     some use however a dummy type (Typedfile) so this would break them }
-                  if not(tprocdef(procdefinition).extnumber in [fpc_in_Reset_TypedFile,fpc_in_Rewrite_TypedFile]) then
+                  if not(tprocdef(procdefinition).extnumber in [in_Reset_TypedFile,in_Rewrite_TypedFile,
+                                                                in_reset_typedfile_name,in_rewrite_typedfile_name]) then
                     begin
                       { bind parasyms to the callparanodes and insert hidden parameters }
                       bind_parasym;
