@@ -145,8 +145,13 @@ uses
                 case formaldef.typ of
                   recorddef:
                     case paradef.typ of
-                      floatdef,enumdef,orddef,stringdef,setdef,variantdef:
+                      floatdef,enumdef,orddef,stringdef,setdef,variantdef,filedef:
                         continue;
+                      arraydef:
+                        if ado_IsDynamicArray in tarraydef(paradef).arrayoptions then
+                          MessagePos(filepos,type_e_record_type_expected)
+                        else
+                          continue;
                       objectdef:
                         if tobjectdef(paradef).objecttype = odt_object then
                           continue
