@@ -944,8 +944,15 @@ unit cgcpu;
            end
          else
            begin
+             if needsext and (fromsize in [OS_8,OS_16]) then
+               begin
+                 //list.concat(tai_comment.create(strpnew('a_load_ref_reg: zero ext')));
+                 a_load_const_reg(list,OS_32,0,hreg);
+                 needsext:=false;
+               end;
              list.concat(taicpu.op_ref_reg(A_MOVE,opsize,href,hreg));
-             sign_extend(list,size,hreg);
+             if needsext then
+               sign_extend(list,size,hreg);
            end;
 
          if hreg<>register then
@@ -1185,13 +1192,12 @@ unit cgcpu;
                       end
                     else
                       { Fallback branch, plain 68000 for now }
-                      { FIX ME: this is slow as hell, but original 68000 doesn't have 32x32 -> 32bit MUL (KB) }
-                      { TODO: verify mul to shift+sub/add results and enable this }
-                      // if not optimize_const_mul_to_shift_sub_add(list, 5, a, size, reg) then
-                      if op = OP_MUL then
-                        call_rtl_mul_const_reg(list, size, a, reg,'fpc_mul_dword')
-                      else
-                        call_rtl_mul_const_reg(list, size, a, reg,'fpc_mul_longint');
+                      if not optimize_const_mul_to_shift_sub_add(list, 5, a, size, reg) then
+                        { FIX ME: this is slow as hell, but original 68000 doesn't have 32x32 -> 32bit MUL (KB) }
+                        if op = OP_MUL then
+                          call_rtl_mul_const_reg(list, size, a, reg,'fpc_mul_dword')
+                        else
+                          call_rtl_mul_const_reg(list, size, a, reg,'fpc_mul_longint');
                   end;
               end;
           OP_ROL,
