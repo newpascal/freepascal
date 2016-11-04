@@ -5,7 +5,7 @@ branches:
     - release
   except:
     - master
-    - fpc
+    - freepascal
 
 # Do not build on tags (GitHub only)
 skip_tags: true
@@ -14,7 +14,7 @@ skip_tags: true
 #    environment configuration    #
 #---------------------------------#
 
-# shallow_clone: true
+shallow_clone: true
 
 matrix:
   fast_finish: true
