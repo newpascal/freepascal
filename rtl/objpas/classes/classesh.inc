@@ -230,7 +230,8 @@ Type
     procedure Put(Index: Integer; Item: Pointer); {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
     procedure SetCapacity(NewCapacity: Integer);
     procedure SetCount(NewCount: Integer);
-    Procedure RaiseIndexError(Index: Integer);
+    Procedure RaiseIndexError(Index: Integer); deprecated;
+    Procedure CheckIndex(AIndex : Integer); {$ifdef CLASSESINLINE} inline;{$ENDIF}
   public
     Type
       TDirection = (FromBeginning, FromEnd);
@@ -763,6 +764,7 @@ type
     procedure SetCaseSensitive(b : boolean);
     procedure SetSortStyle(AValue: TStringsSortStyle);
   protected
+    Procedure CheckIndex(AIndex : Integer); inline;
     procedure ExchangeItems(Index1, Index2: Integer); virtual;
     procedure Changed; virtual;
     procedure Changing; virtual;

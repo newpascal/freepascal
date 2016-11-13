@@ -68,6 +68,7 @@ interface
         function LinePrefix: AnsiString;
         function LinePostfix: AnsiString;
         function LineFilter(const s: AnsiString): AnsiString;
+        function LineEnding(const deflineending: ShortString): ShortString;
       end;
 
       TExternalAssemblerOutputFile=class
@@ -156,6 +157,8 @@ interface
         function double2str(d : double) : string; virtual;
         function extended2str(e : extended) : string; virtual;
         Function DoPipe:boolean;
+
+        function CreateNewAsmWriter: TExternalAssemblerOutputFile; virtual;
       public
 
         {# Returns the complete path and executable name of the assembler
@@ -185,8 +188,8 @@ interface
         {# Constructs the command line for calling the assembler }
         function MakeCmdLine: TCmdStr; virtual;
       public
-        Constructor Create(info: pasminfo; smart: boolean);override;
-        Constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean);
+        Constructor Create(info: pasminfo; smart: boolean); override; final;
+        Constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean); virtual;
         procedure MakeObject;override;
         destructor Destroy; override;
 
@@ -565,34 +568,30 @@ Implementation
 
 
     Procedure TExternalAssemblerOutputFile.AsmLn;
+      var
+        newline: pshortstring;
+        newlineres: shortstring;
+        index: longint;
       begin
         MaybeAddLinePostfix;
-        if OutCnt>=AsmOutSize-2 then
-         AsmFlush;
         if (cs_link_on_target in current_settings.globalswitches) then
-          begin
-            OutBuf[OutCnt]:=target_info.newline[1];
-            inc(OutCnt);
-            inc(AsmSize);
-            if length(target_info.newline)>1 then
-             begin
-               OutBuf[OutCnt]:=target_info.newline[2];
-               inc(OutCnt);
-               inc(AsmSize);
-             end;
-          end
+          newline:=@target_info.newline
         else
+          newline:=@source_info.newline;
+        if assigned(decorator) then
           begin
-            OutBuf[OutCnt]:=source_info.newline[1];
-            inc(OutCnt);
-            inc(AsmSize);
-            if length(source_info.newline)>1 then
-             begin
-               OutBuf[OutCnt]:=source_info.newline[2];
-               inc(OutCnt);
-               inc(AsmSize);
-             end;
+            newlineres:=decorator.LineEnding(newline^);
+            newline:=@newlineres;
           end;
+        if OutCnt>=AsmOutSize-length(newline^) then
+         AsmFlush;
+        index:=1;
+        repeat
+          OutBuf[OutCnt]:=newline^[index];
+          inc(OutCnt);
+          inc(AsmSize);
+          inc(index);
+        until index>length(newline^);
       end;
 
 
@@ -737,27 +736,28 @@ Implementation
       end;
 
 
+    function TExternalAssembler.CreateNewAsmWriter: TExternalAssemblerOutputFile;
+      begin
+        result:=TExternalAssemblerOutputFile.Create(self);
+      end;
+
+
     Constructor TExternalAssembler.Create(info: pasminfo; smart: boolean);
       begin
-        inherited;
-        if not assigned(fwriter) then
-          begin
-            fwriter:=TExternalAssemblerOutputFile.Create(self);
-            ffreewriter:=true;
-          end;
-        if SmartAsm then
-          begin
-            path:=FixPath(ChangeFileExt(AsmFileName,target_info.smartext),false);
-            CreateSmartLinkPath(path);
-          end;
+        CreateWithWriter(info,CreateNewAsmWriter,true,smart);
       end;
 
 
     constructor TExternalAssembler.CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter,smart: boolean);
       begin
+        inherited Create(info,smart);
         fwriter:=wr;
         ffreewriter:=freewriter;
-        Create(info,smart);
+        if SmartAsm then
+          begin
+            path:=FixPath(ChangeFileExt(AsmFileName,target_info.smartext),false);
+            CreateSmartLinkPath(path);
+          end;
       end;
 
 

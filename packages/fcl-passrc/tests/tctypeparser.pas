@@ -129,6 +129,7 @@ type
     Procedure TestFileTypePlatform;
     Procedure TestRangeType;
     Procedure TestCharRangeType;
+    Procedure TestCharRangeType2;
     Procedure TestRangeTypeDeprecated;
     Procedure TestRangeTypePlatform;
     Procedure TestIdentifierRangeType;
@@ -234,6 +235,7 @@ type
     Procedure TestOnePlatformFieldDeprecated;
     Procedure TestOnePlatformFieldPlatform;
     Procedure TestOneConstOneField;
+    Procedure TestOneGenericField;
     Procedure TestTwoFields;
     procedure TestTwoFieldProtected;
     procedure TestTwoFieldStrictPrivate;
@@ -1776,6 +1778,16 @@ begin
   AssertField2([]);
 end;
 
+procedure TTestRecordTypeParser.TestOneGenericField;
+begin
+  TestFields(['Generic : Integer;'],'',False);
+  AssertEquals('Member 1 field type',TPasVariable,TObject(TheRecord.Members[0]).ClassType);
+  AssertEquals('Field 1 name','Generic',Field1.Name);
+  AssertNotNull('Have 1 Field type',Field1.VarType);
+  AssertEquals('Field 1 type',TPasUnresolvedTypeRef,Field1.VarType.ClassType);
+  AssertEquals('Field 1 type name','Integer',Field1.VarType.Name);
+end;
+
 procedure TTestRecordTypeParser.TestTwoFields;
 begin
   TestFields(['x : integer;','y : integer'],'',False);
@@ -3027,6 +3039,11 @@ end;
 procedure TTestTypeParser.TestCharRangeType;
 begin
   DoTestRangeType('#1','#4','');
+end;
+
+procedure TTestTypeParser.TestCharRangeType2;
+begin
+  DoTestRangeType('''A''','''B''','');
 end;
 
 procedure TTestTypeParser.TestRangeTypeDeprecated;

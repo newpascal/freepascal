@@ -43,6 +43,9 @@ interface
           function simplify(forinline : boolean): tnode;override;
           function docompare(p: tnode): boolean; override;
 
+          { returns a node tree where the inc/dec are replaced by add/sub }
+          function getaddsub_for_incdec : tnode;
+
           { pack and unpack are changed into for-loops by the compiler }
           function first_pack_unpack: tnode; virtual;
 
@@ -114,7 +117,7 @@ implementation
     uses
       verbose,globals,systems,constexp,
       globtype,cutils,fmodule,
-      symconst,symdef,symsym,symcpu,symtable,paramgr,defutil,symbase,
+      symconst,symdef,symsym,symcpu,symtable,paramgr,defcmp,defutil,symbase,
       pass_1,
       ncal,ncon,ncnv,nadd,nld,nbas,nflw,nmem,nmat,nutils,
       nobjc,objcdef,
@@ -2314,21 +2317,53 @@ implementation
               in_pred_x,
               in_succ_x:
                 begin
-                  if (left.nodetype=ordconstn) then
-                    begin
-                      if (inlinenumber=in_succ_x) then
-                        vl:=tordconstnode(left).value+1
-                      else
-                        vl:=tordconstnode(left).value-1;
-                      if is_integer(left.resultdef) then
-                      { the type of the original integer constant is irrelevant,
-                        it should be automatically adapted to the new value
-                        (except when inlining) }
-                        result:=create_simplified_ord_const(vl,resultdef,forinline)
-                      else
-                        { check the range for enums, chars, booleans }
-                        result:=cordconstnode.create(vl,left.resultdef,not(nf_internal in flags))
-                    end
+                  case left.nodetype of
+                    ordconstn:
+                      begin
+                        if inlinenumber=in_succ_x then
+                          vl:=tordconstnode(left).value+1
+                        else
+                          vl:=tordconstnode(left).value-1;
+                        if is_integer(left.resultdef) then
+                        { the type of the original integer constant is irrelevant,
+                          it should be automatically adapted to the new value
+                          (except when inlining) }
+                          result:=create_simplified_ord_const(vl,resultdef,forinline)
+                        else
+                          { check the range for enums, chars, booleans }
+                          result:=cordconstnode.create(vl,left.resultdef,not(nf_internal in flags))
+                      end;
+                    addn,
+                    subn:
+                      begin
+                        { fold succ/pred in child add/sub nodes with a constant if possible:
+                           - no overflow/range checking
+                           - equal types
+                        }
+                        if ([cs_check_overflow,cs_check_range]*current_settings.localswitches)=[] then
+                          begin
+                            if inlinenumber=in_succ_x then
+                              vl:=1
+                            else
+                              vl:=-1;
+                            if (taddnode(left).left.nodetype=ordconstn) and equal_defs(resultdef,taddnode(left).left.resultdef) then
+                              begin
+                                tordconstnode(taddnode(left).left).value:=tordconstnode(taddnode(left).left).value+vl;
+                                result:=left;
+                                left:=nil;
+                              end
+                            else if (taddnode(left).right.nodetype=ordconstn) and equal_defs(resultdef,taddnode(left).right.resultdef) then
+                              begin
+                                if left.nodetype=subn then
+                                  tordconstnode(taddnode(left).right).value:=tordconstnode(taddnode(left).right).value-vl
+                                else
+                                  tordconstnode(taddnode(left).right).value:=tordconstnode(taddnode(left).right).value+vl;
+                                result:=left;
+                                left:=nil;
+                              end;
+                          end;
+                      end;
+                  end;
                 end;
               in_low_x,
               in_high_x:
@@ -2897,7 +2932,8 @@ implementation
                      begin
                        if (resultdef.typ=enumdef) and
                           (tenumdef(resultdef).has_jumps) and
-                          not(m_delphi in current_settings.modeswitches) then
+                          not(m_delphi in current_settings.modeswitches) and
+                          not(nf_internal in flags) then
                          CGMessage(type_e_succ_and_pred_enums_with_assign_not_possible);
                      end
                    else
@@ -3462,6 +3498,7 @@ implementation
                     hp:=caddnode.create(addn,left,hp)
                   else
                     hp:=caddnode.create(subn,left,hp);
+
                   { assign result of addition }
                   if not(is_integer(resultdef)) then
                     inserttypeconv(hp,corddef.create(
@@ -3475,6 +3512,9 @@ implementation
                       true))
                   else
                     inserttypeconv(hp,resultdef);
+
+                  if nf_internal in flags then
+                    include(hp.flags,nf_internal);
 
                   { avoid any possible errors/warnings }
                   inserttypeconv_internal(hp,resultdef);
@@ -3847,12 +3887,127 @@ implementation
       end;
 
 
-     function tinlinenode.first_IncDec: tnode;
+     function tinlinenode.getaddsub_for_incdec : tnode;
        var
          hp,hpp,resultnode  : tnode;
          tempnode: ttempcreatenode;
          newstatement: tstatementnode;
          newblock: tblocknode;
+       begin
+         newblock := internalstatements(newstatement);
+         { extra parameter? }
+         if assigned(tcallparanode(left).right) then
+           begin
+             { Yes, use for add node }
+             hpp := tcallparanode(tcallparanode(left).right).left;
+             tcallparanode(tcallparanode(left).right).left := nil;
+             if assigned(tcallparanode(tcallparanode(left).right).right) then
+               CGMessage(parser_e_illegal_expression);
+           end
+         else
+           begin
+             { no, create constant 1 }
+             hpp := cordconstnode.create(1,tcallparanode(left).left.resultdef,false);
+           end;
+         typecheckpass(hpp);
+
+         { make sure we don't call functions part of the left node twice (and generally }
+         { optimize the code generation)                                                }
+         { Storing address is not always an optimization: alignment of left is not known
+           at this point, so we must assume the worst and use an unaligned pointer.
+           This results in larger and slower code on alignment-sensitive targets.
+           Therefore the complexity condition below is questionable, maybe just filtering
+           out calls with "= NODE_COMPLEXITY_INF" is sufficient.
+           Value of 3 corresponds to subscript nodes, i.e. record field. }
+         if node_complexity(tcallparanode(left).left) > 3 then
+           begin
+             tempnode := ctempcreatenode.create(voidpointertype,voidpointertype.size,tt_persistent,true);
+             addstatement(newstatement,tempnode);
+             addstatement(newstatement,cassignmentnode.create(ctemprefnode.create(tempnode),
+               caddrnode.create_internal(tcallparanode(left).left.getcopy)));
+             hp := cderefnode.create(ctemprefnode.create(tempnode));
+             inserttypeconv_internal(hp,tcallparanode(left).left.resultdef);
+           end
+         else
+           begin
+             hp := tcallparanode(left).left.getcopy;
+             tempnode := nil;
+           end;
+
+         resultnode := hp.getcopy;
+         { avoid type errors from the addn/subn }
+         if not is_integer(resultnode.resultdef) then
+           begin
+             inserttypeconv_internal(hp,sinttype);
+             inserttypeconv_internal(hpp,sinttype);
+           end;
+
+         { addition/substraction depending on inc/dec }
+         if inlinenumber = in_inc_x then
+           hpp := caddnode.create_internal(addn,hp,hpp)
+         else
+           hpp := caddnode.create_internal(subn,hp,hpp);
+
+         { assign result of addition }
+
+         { inherit internal flag }
+         if not(is_integer(resultnode.resultdef)) then
+           begin
+             if nf_internal in flags then
+               inserttypeconv_internal(hpp,corddef.create(
+{$ifdef cpu64bitaddr}
+                 s64bit,
+{$else cpu64bitaddr}
+                 s32bit,
+{$endif cpu64bitaddr}
+                 get_min_value(resultnode.resultdef),
+                 get_max_value(resultnode.resultdef),
+                 true))
+             else
+               inserttypeconv(hpp,corddef.create(
+{$ifdef cpu64bitaddr}
+                 s64bit,
+{$else cpu64bitaddr}
+                 s32bit,
+{$endif cpu64bitaddr}
+                 get_min_value(resultnode.resultdef),
+                 get_max_value(resultnode.resultdef),
+                 true))
+           end
+         else
+           begin
+             if nf_internal in flags then
+               inserttypeconv_internal(hpp,resultnode.resultdef)
+             else
+               inserttypeconv(hpp,resultnode.resultdef);
+           end;
+
+         { avoid any possible warnings }
+         inserttypeconv_internal(hpp,resultnode.resultdef);
+
+         { get varstates right }
+         node_reset_flags(hpp,[nf_pass1_done,nf_modify,nf_write]);
+         do_typecheckpass(hpp);
+
+         addstatement(newstatement,cassignmentnode.create(resultnode,hpp));
+
+         { force pass 1, so copied tries get first pass'ed as well and flags like nf_write, nf_call_unique
+           get set right }
+         node_reset_flags(newstatement.statement,[nf_pass1_done]);
+         { firstpass it }
+         firstpass(tnode(newstatement.left));
+
+         { deallocate the temp }
+         if assigned(tempnode) then
+           addstatement(newstatement,ctempdeletenode.create(tempnode));
+         { firstpass it }
+         firstpass(tnode(newblock));
+         { return new node }
+         result := newblock;
+       end;
+
+
+     function tinlinenode.first_IncDec: tnode;
        begin
          expectloc:=LOC_VOID;
          result:=nil;
@@ -3869,94 +4024,8 @@ implementation
              or (tcallparanode(left).left.resultdef.typ=enumdef)
 {$endif}
             then
-           { convert to simple add (JM) }
-           begin
-             newblock := internalstatements(newstatement);
-             { extra parameter? }
-             if assigned(tcallparanode(left).right) then
-               begin
-                 { Yes, use for add node }
-                 hpp := tcallparanode(tcallparanode(left).right).left;
-                 tcallparanode(tcallparanode(left).right).left := nil;
-                 if assigned(tcallparanode(tcallparanode(left).right).right) then
-                   CGMessage(parser_e_illegal_expression);
-               end
-             else
-               begin
-                 { no, create constant 1 }
-                 hpp := cordconstnode.create(1,tcallparanode(left).left.resultdef,false);
-               end;
-             typecheckpass(hpp);
-
-             { make sure we don't call functions part of the left node twice (and generally }
-             { optimize the code generation)                                                }
-             { Storing address is not always an optimization: alignment of left is not known
-               at this point, so we must assume the worst and use an unaligned pointer.
-               This results in larger and slower code on alignment-sensitive targets.
-               Therefore the complexity condition below is questionable, maybe just filtering
-               out calls with "= NODE_COMPLEXITY_INF" is sufficient.
-               Value of 3 corresponds to subscript nodes, i.e. record field. }
-             if node_complexity(tcallparanode(left).left) > 3 then
-               begin
-                 tempnode := ctempcreatenode.create(voidpointertype,voidpointertype.size,tt_persistent,true);
-                 addstatement(newstatement,tempnode);
-                 addstatement(newstatement,cassignmentnode.create(ctemprefnode.create(tempnode),
-                   caddrnode.create_internal(tcallparanode(left).left.getcopy)));
-                 hp := cderefnode.create(ctemprefnode.create(tempnode));
-                 inserttypeconv_internal(hp,tcallparanode(left).left.resultdef);
-               end
-             else
-               begin
-                 hp := tcallparanode(left).left.getcopy;
-                 tempnode := nil;
-               end;
-
-             resultnode := hp.getcopy;
-             { avoid type errors from the addn/subn }
-             if not is_integer(resultnode.resultdef) then
-               begin
-                 inserttypeconv_internal(hp,sinttype);
-                 inserttypeconv_internal(hpp,sinttype);
-               end;
-
-             { addition/substraction depending on inc/dec }
-             if inlinenumber = in_inc_x then
-               hpp := caddnode.create(addn,hp,hpp)
-             else
-               hpp := caddnode.create(subn,hp,hpp);
-             { assign result of addition }
-             if not(is_integer(resultnode.resultdef)) then
-               inserttypeconv(hpp,corddef.create(
-{$ifdef cpu64bitaddr}
-                 s64bit,
-{$else cpu64bitaddr}
-                 s32bit,
-{$endif cpu64bitaddr}
-                 get_min_value(resultnode.resultdef),
-                 get_max_value(resultnode.resultdef),
-                 true))
-             else
-               inserttypeconv(hpp,resultnode.resultdef);
-
-             { avoid any possible warnings }
-             inserttypeconv_internal(hpp,resultnode.resultdef);
-
-             addstatement(newstatement,cassignmentnode.create(resultnode,hpp));
-
-             { force pass 1, so copied tries get first pass'ed as well and flags like nf_write, nf_call_unique
-               get set right }
-             node_reset_flags(newstatement.statement,[nf_pass1_done]);
-             { firstpass it }
-             firstpass(tnode(newstatement.left));
-
-             { deallocate the temp }
-             if assigned(tempnode) then
-               addstatement(newstatement,ctempdeletenode.create(tempnode));
-             { firstpass it }
-             firstpass(tnode(newblock));
-             { return new node }
-             result := newblock;
-           end;
+             { convert to simple add (JM) }
+             result:=getaddsub_for_incdec
        end;
 
 

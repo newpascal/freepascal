@@ -168,7 +168,7 @@ implementation
 
     uses
        systems,
-       cgobj,tgobj,
+       cgobj,hlcgobj,tgobj,
        defutil,verbose;
 
     { true if the location in paraloc can be reused as localloc }
@@ -435,7 +435,14 @@ implementation
                   if (vo_has_explicit_paraloc in parasym.varoptions) and (paraloc^.loc = LOC_REGISTER) then
                     newparaloc^.register:=paraloc^.register
                   else
-                    newparaloc^.register:=cg.getintregister(list,paraloc^.size);
+                    begin
+                      {$ifdef cpu_uses_separate_address_registers}
+                      if hlcg.def2regtyp(paraloc^.def) = R_ADDRESSREGISTER then
+                        newparaloc^.register:=hlcg.getaddressregister(list,paraloc^.def)
+                      else
+                      {$endif}
+                        newparaloc^.register:=cg.getintregister(list,paraloc^.size);
+                    end;
                 end;
               LOC_FPUREGISTER :
                 newparaloc^.register:=cg.getfpuregister(list,paraloc^.size);
