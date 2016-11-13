@@ -14,7 +14,7 @@ skip_tags: true
 #    environment configuration    #
 #---------------------------------#
 
-shallow_clone: true
+#shallow_clone: true
 
 matrix:
   fast_finish: true
