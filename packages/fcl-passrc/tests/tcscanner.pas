@@ -82,6 +82,7 @@ type
     procedure TestString;
     procedure TestNumber;
     procedure TestChar;
+    procedure TestCharString;
     procedure TestBraceOpen;
     procedure TestBraceClose;
     procedure TestMul;
@@ -209,6 +210,7 @@ type
     Procedure TestDefine11;
     Procedure TestDefine12;
     Procedure TestDefine13;
+    Procedure TestDefine14;
     Procedure TestInclude;
     Procedure TestInclude2;
     Procedure TestUnDefine1;
@@ -514,6 +516,11 @@ begin
   TestToken(pscanner.tkString,'''A string''');
 end;
 
+procedure TTestScanner.TestCharString;
+
+begin
+  TestToken(pscanner.tkChar,'''A''');
+end;
 
 procedure TTestScanner.TestNumber;
 
@@ -1394,6 +1401,26 @@ begin
   FScanner.SkipComments:=True;
   FScanner.SkipWhiteSpace:=True;
   TestTokens([tkin],'{$IFDEF ALWAYS} }; ą è {$ELSE} in {$ENDIF}');
+end;
+
+procedure TTestScanner.TestDefine14;
+Const
+   Source = '{$ifdef NEVER_DEFINED}' +sLineBreak+
+            'type'+sLineBreak+
+            '  TNPEventModel = ('+sLineBreak+
+            '  NPEventModelCarbon = 0,'+sLineBreak+
+            '  NPEventModelCocoa = 1'+sLineBreak+
+            '}; // yes, this is an error... except this code should never be included.'+sLineBreak+
+            'ą'+sLineBreak+
+            '|'+sLineBreak+
+            '{$endif}'+sLineBreak+
+            ''+sLineBreak+
+            'begin'+sLineBreak+
+            'end.'+sLineBreak;
+begin
+  NewSource(Source,True);
+  While FScanner.fetchToken<>tkEOF do
+
 end;
 
 procedure TTestScanner.TestInclude;

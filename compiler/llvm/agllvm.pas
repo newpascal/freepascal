@@ -33,10 +33,20 @@ interface
     type
       TLLVMInstrWriter = class;
 
-      TLLVMModuleInlineAssemblyDecorator = class(TObject,IExternalAssemblerOutputFileDecorator)
+      TLLVMBaseInlineAssemblyDecorator = class
+        function LineFilter(const s: AnsiString): AnsiString;
+      end;
+
+      TLLVMModuleInlineAssemblyDecorator = class(TLLVMBaseInlineAssemblyDecorator,IExternalAssemblerOutputFileDecorator)
        function LinePrefix: AnsiString;
        function LinePostfix: AnsiString;
-       function LineFilter(const s: AnsiString): AnsiString;
+       function LineEnding(const deflineending: ShortString): ShortString;
+      end;
+
+      TLLVMFunctionInlineAssemblyDecorator = class(TLLVMBaseInlineAssemblyDecorator,IExternalAssemblerOutputFileDecorator)
+       function LinePrefix: AnsiString;
+       function LinePostfix: AnsiString;
+       function LineEnding(const deflineending: ShortString): ShortString;
       end;
 
       TLLVMAssember=class(texternalassembler)
@@ -52,7 +62,7 @@ interface
         procedure WriteOrdConst(hp: tai_const);
         procedure WriteTai(const replaceforbidden: boolean; const do_line: boolean; var InlineLevel: cardinal; var asmblock: boolean; var hp: tai);
        public
-        constructor create(info: pasminfo; smart: boolean); override;
+        constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean); override;
         function MakeCmdLine: TCmdStr; override;
         procedure WriteTree(p:TAsmList);override;
         procedure WriteAsmList;override;
@@ -137,24 +147,11 @@ implementation
          extended2str:=hs
       end;
 
-
 {****************************************************************************}
-{               Decorator for module-level inline assembly                   }
+{            Common decorator functionality for inline assembly              }
 {****************************************************************************}
 
-    function TLLVMModuleInlineAssemblyDecorator.LinePrefix: AnsiString;
-      begin
-        result:='module asm "';
-      end;
-
-
-    function TLLVMModuleInlineAssemblyDecorator.LinePostfix: AnsiString;
-      begin
-        result:='"';
-      end;
-
-
-    function TLLVMModuleInlineAssemblyDecorator.LineFilter(const s: AnsiString): AnsiString;
+    function TLLVMBaseInlineAssemblyDecorator.LineFilter(const s: AnsiString): AnsiString;
       var
         i: longint;
       begin
@@ -173,7 +170,54 @@ implementation
               result:=result+s[i];
             end;
           end;
+        end;
+
+
+{****************************************************************************}
+{               Decorator for module-level inline assembly                   }
+{****************************************************************************}
+
+    function TLLVMModuleInlineAssemblyDecorator.LinePrefix: AnsiString;
+      begin
+        result:='module asm "';
       end;
+
+
+    function TLLVMModuleInlineAssemblyDecorator.LinePostfix: AnsiString;
+      begin
+        result:='"';
+      end;
+
+
+    function TLLVMModuleInlineAssemblyDecorator.LineEnding(const deflineending: ShortString): ShortString;
+      begin
+        result:=deflineending
+      end;
+
+
+{****************************************************************************}
+{              Decorator for function-level inline assembly                  }
+{****************************************************************************}
+
+
+    function TLLVMFunctionInlineAssemblyDecorator.LinePrefix: AnsiString;
+      begin
+        result:='';
+      end;
+
+
+    function TLLVMFunctionInlineAssemblyDecorator.LinePostfix: AnsiString;
+      begin
+        result:='';
+      end;
+
+
+    function TLLVMFunctionInlineAssemblyDecorator.LineEnding(const deflineending: ShortString): ShortString;
+      begin
+        result:='\0A';
+      end;
+
+
 
 
  {****************************************************************************}
@@ -1210,7 +1254,7 @@ implementation
       end;
 
 
-    constructor TLLVMAssember.create(info: pasminfo; smart: boolean);
+    constructor TLLVMAssember.CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean);
       begin
         inherited;
         InstrWriter:=TLLVMInstrWriter.create(self);

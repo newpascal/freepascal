@@ -3264,7 +3264,8 @@ begin
     P:=TPasProcedure(Parent);
   if Assigned(P) then
     P.AddModifier(pm);
-  if (pm=pmExternal) then
+  Case pm of
+  pmExternal:
     begin
     NextToken;
     if CurToken in [tkString,tkIdentifier] then
@@ -3297,8 +3298,8 @@ begin
       end
     else
       UngetToken;
-    end
-  else if (pm = pmPublic) then
+    end;
+  pmPublic:
     begin
     NextToken;
     { Should be token Name,
@@ -3320,16 +3321,16 @@ begin
       if (CurToken <> tkSemicolon) then
         ParseExcTokenError(TokenInfos[tkSemicolon]);
       end;
-    end
-  else if (pm=pmForward) then
+    end;
+  pmForward:
     begin
     if (Parent.Parent is TInterfaceSection) then
        begin
        ParseExc(nParserForwardNotInterface,SParserForwardNotInterface);
        UngetToken;
        end;
-    end
-  else if (pm=pmMessage) then
+    end;
+  pmMessage:
     begin
     Repeat
       NextToken;
@@ -3343,6 +3344,13 @@ begin
     until CurToken = tkSemicolon;
     UngetToken;
     end;
+  pmDispID:
+    begin
+    TPasProcedure(Parent).DispIDExpr:=DoParseExpression(Parent,Nil);
+    if CurToken = tkSemicolon then
+      UngetToken;
+    end;
+  end; // Case
 end;
 
 // Next token is expected to be a "(", ";" or for a function ":". The caller
@@ -3636,6 +3644,11 @@ begin
       Result.WriteAccessorName := GetAccessorName(Result,Result.WriteAccessor);
       NextToken;
       end;
+    if CurTokenIsIdentifier('READONLY') then
+      begin
+      Result.DispIDReadOnly:=True;
+      NextToken;
+      end;
     if CurTokenIsIdentifier('DISPID') then
       begin
       NextToken;
@@ -3895,6 +3908,16 @@ begin
       end else if (CurBlock is TPasImplWhileDo) then
       begin
         //if .. then while .. do smt else ..
+        CloseBlock;
+        UngetToken;
+      end else if (CurBlock is TPasImplForLoop) then
+      begin
+        //if .. then for .. do smt else ..
+        CloseBlock;
+        UngetToken;
+      end else if (CurBlock is TPasImplWithDo) then
+      begin
+        //if .. then with .. do smt else ..
         CloseBlock;
         UngetToken;
       end else if (CurBlock is TPasImplRaise) then
@@ -4160,7 +4183,7 @@ begin
       El:=TPasImplRaise(CreateElement(TPasImplRaise,'',CurBlock));
       CreateBlock(TPasImplRaise(El));
       NextToken;
-      If Curtoken in [tkEnd,tkSemicolon] then
+      If Curtoken in [tkElse,tkEnd,tkSemicolon] then
         UnGetToken
       else
         begin
@@ -4490,6 +4513,7 @@ begin
         else
           ARec.Members.Add(Proc);
         end;
+      tkGeneric, // Counts as field name
       tkIdentifier :
         begin
 //        If (po_delphi in Scanner.Options) then

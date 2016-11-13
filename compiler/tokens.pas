@@ -195,10 +195,10 @@ type
     _SYSTEM,
     _WINAPI,
     _ASMNAME,
+    _BASEREG,
     _CPPDECL,
     _DEFAULT,
     _DYNAMIC,
-    _EAXBASE,
     _EXPORTS,
     _FINALLY,
     _FORWARD,
@@ -219,6 +219,8 @@ type
     _VIRTUAL,
     _ABSOLUTE,
     _ABSTRACT,
+    _BASELAST,
+    _BASENONE,
     _BASESYSV,
     _CONSTREF,
     _CONTAINS,
@@ -252,6 +254,7 @@ type
     _SUBTRACT,
     _SYSVBASE,
     _ASSEMBLER,
+    _BASEFIRST,
     _BITPACKED,
     _BITWISEOR,
     _HARDFLOAT,
@@ -269,7 +272,6 @@ type
     _PUBLISHED,
     _REFERENCE,
     _SOFTFLOAT,
-    _STACKBASE,
     _THREADVAR,
     _WRITEONLY,
     _BITWISEAND,
@@ -528,10 +530,10 @@ const
       (str:'SYSTEM'        ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'WINAPI'        ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'ASMNAME'       ;special:false;keyword:[m_none];op:NOTOKEN),
+      (str:'BASEREG'       ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on Amiga-likes }
       (str:'CPPDECL'       ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'DEFAULT'       ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'DYNAMIC'       ;special:false;keyword:[m_none];op:NOTOKEN),
-      (str:'EAXBASE'       ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on AROS }
       (str:'EXPORTS'       ;special:false;keyword:alllanguagemodes-[m_iso,m_extpas];op:NOTOKEN),
       (str:'FINALLY'       ;special:false;keyword:[m_except];op:NOTOKEN),
       (str:'FORWARD'       ;special:false;keyword:[m_none];op:NOTOKEN),
@@ -552,6 +554,8 @@ const
       (str:'VIRTUAL'       ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'ABSOLUTE'      ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'ABSTRACT'      ;special:false;keyword:[m_none];op:NOTOKEN),
+      (str:'BASELAST'      ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on Amiga-likes }
+      (str:'BASENONE'      ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on Amiga-likes }
       (str:'BASESYSV'      ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on MorphOS }
       (str:'CONSTREF'      ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'CONTAINS'      ;special:false;keyword:[m_none];op:NOTOKEN),
@@ -585,6 +589,7 @@ const
       (str:'SUBTRACT'      ;special:false;keyword:[m_none];op:NOTOKEN), { delphi operator name }
       (str:'SYSVBASE'      ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on MorphOS }
       (str:'ASSEMBLER'     ;special:false;keyword:[m_none];op:NOTOKEN),
+      (str:'BASEFIRST'     ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on Amiga-likes }
       (str:'BITPACKED'     ;special:false;keyword:alllanguagemodes-[m_iso,m_extpas];op:NOTOKEN),
       (str:'BITWISEOR'     ;special:false;keyword:[m_none];op:NOTOKEN), { delphi operator name }
       (str:'HARDFLOAT'     ;special:false;keyword:[m_none];op:NOTOKEN),
@@ -602,7 +607,6 @@ const
       (str:'PUBLISHED'     ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'REFERENCE'     ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'SOFTFLOAT'     ;special:false;keyword:[m_none];op:NOTOKEN),
-      (str:'STACKBASE'     ;special:false;keyword:[m_none];op:NOTOKEN), { Syscall variation on AROS }
       (str:'THREADVAR'     ;special:false;keyword:alllanguagemodes-[m_iso,m_extpas];op:NOTOKEN),
       (str:'WRITEONLY'     ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'BITWISEAND'    ;special:false;keyword:[m_none];op:NOTOKEN), { delphi operator name }

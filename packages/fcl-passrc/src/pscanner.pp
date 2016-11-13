@@ -1315,7 +1315,10 @@ begin
             Inc(TokenStr);
           end;
           Inc(TokenStr);
-          Result := tkString;
+          if ((TokenStr - TokenStart)=3) then // 'z'
+            Result := tkChar
+          else
+            Result := tkString;
         end;
     else
       Break;
@@ -1641,6 +1644,7 @@ var
   i: TToken;
   OldLength, SectionLength, NestingLevel, Index: Integer;
 begin
+  result:=tkLineEnding;
   if TokenStr = nil then
     if not FetchLine then
     begin
@@ -2005,7 +2009,7 @@ begin
           begin
             if not(po_delphi in Options) and (TokenStr[0] = '{') then
               Inc(NestingLevel)
-            else if TokenStr[0] = '}' then
+            else if (TokenStr[0] = '}') and not PPIsSkipping then
               Dec(NestingLevel);
             Inc(TokenStr);
           end;
