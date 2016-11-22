@@ -111,7 +111,7 @@ end;
 
 function BADDR(bval: PtrInt): Pointer; Inline;
 begin
-  {$if defined(AROS) and (not defined(AROS_FLAVOUR_BINCOMPAT))}
+  {$if defined(AROS)}  // deactivated for now //and (not defined(AROS_FLAVOUR_BINCOMPAT))} 
   BADDR := Pointer(bval);
   {$else}
   BADDR:=Pointer(bval Shl 2);
@@ -120,7 +120,7 @@ end;
 
 function BSTR2STRING(s : Pointer): PChar; Inline;
 begin
-  {$if defined(AROS) and (not defined(AROS_FLAVOUR_BINCOMPAT))}
+  {$if defined(AROS)}  // deactivated for now //and (not defined(AROS_FLAVOUR_BINCOMPAT))}
   BSTR2STRING:=PChar(s);
   {$else}
   BSTR2STRING:=PChar(BADDR(PtrInt(s)))+1;
@@ -129,7 +129,7 @@ end;
 
 function BSTR2STRING(s : PtrInt): PChar; Inline;
 begin
-  {$if defined(AROS) and (not defined(AROS_FLAVOUR_BINCOMPAT))}
+  {$if defined(AROS)}  // deactivated for now //and (not defined(AROS_FLAVOUR_BINCOMPAT))}
   BSTR2STRING:=PChar(s);
   {$else}
   BSTR2STRING:=PChar(BADDR(s))+1;
@@ -804,27 +804,42 @@ var
 begin
   { No wildcards allowed in these things }
   if (pos('?',path)<>0) or (pos('*',path)<>0) or (path='') then
-    FSearch:=''
-  else begin
-    repeat
-      p1:=pos(';',dirlist);
-      if p1<>0 then begin
-        newdir:=Copy(dirlist,1,p1-1);
-        Delete(dirlist,1,p1);
-      end else begin
-        newdir:=dirlist;
-        dirlist:='';
-      end;
-      if (newdir<>'') and (not (newdir[length(newdir)] in ['/',':'])) then
-        newdir:=newdir+'/';
-      FindFirst(newdir+path,anyfile,tmpSR);
-      if doserror=0 then
-        newdir:=newdir+path
-      else
-        newdir:='';
-    until (dirlist='') or (newdir<>'');
-    FSearch:=newdir;
+  begin
+    FSearch:='';
+    exit;
   end;
+  { check if the file specified exists }
+  findfirst(path,anyfile and not(directory), tmpSR);
+  if doserror=0 then
+  begin
+    findclose(tmpSR);
+    fsearch:=path;
+    exit;
+  end;
+  findclose(tmpSR);
+
+  repeat
+    p1:=pos(';',dirlist);
+    if p1<>0 then 
+    begin
+      newdir:=Copy(dirlist,1,p1-1);
+      Delete(dirlist,1,p1);
+    end 
+    else 
+    begin
+      newdir:=dirlist;
+      dirlist:='';
+    end;
+    if (newdir<>'') and (not (newdir[length(newdir)] in [DirectorySeparator, DriveSeparator])) then 
+      newdir:=newdir+DirectorySeparator;
+    FindFirst(newdir+path,anyfile and not(directory),tmpSR);
+    if doserror=0 then
+      newdir:=newdir+path
+    else
+      newdir:='';
+    findclose(tmpSR);
+  until (dirlist='') or (newdir<>'');
+  FSearch:=newdir;
 end;
 
 

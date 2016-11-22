@@ -49,7 +49,10 @@ Unit heapmgr;
         p, prev: PHeapBlock;
         AllocSize, RestSize: ptruint;
       begin
-        AllocSize := align(size+sizeof(pointer), sizeof(pointer));
+        if size<MinBlock then
+          AllocSize := MinBlock
+        else
+          AllocSize := align(size, sizeof(pointer));
 
         p := Blocks;
         prev := nil;
@@ -253,6 +256,18 @@ Unit heapmgr;
         InternalFreeMem(AAddress, ASize);
       end;
 
+    { avoid that programs crash due to a heap status request }
+    function SysGetFPCHeapStatus : TFPCHeapStatus;
+      begin
+        FillChar(Result,SizeOf(Result),0);
+      end;
+
+    { avoid that programs crash due to a heap status request }
+    function SysGetHeapStatus : THeapStatus;
+      begin
+        FillChar(Result,SizeOf(Result),0);
+      end;
+
     const
       MyMemoryManager: TMemoryManager = (
         NeedLock: false;  // Obsolete
@@ -265,8 +280,8 @@ Unit heapmgr;
         InitThread: nil;
         DoneThread: nil;
         RelocateHeap: nil;
-        GetHeapStatus: nil;
-        GetFPCHeapStatus: nil;
+        GetHeapStatus: @SysGetHeapStatus;
+        GetFPCHeapStatus: @SysGetFPCHeapStatus;
       );
 
 var

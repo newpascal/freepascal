@@ -508,6 +508,7 @@ implementation
        IF_TSX    = $00200000;
        IF_RAND   = $00200000;
        IF_XSAVE  = $00200000;
+       IF_PREFETCHWT1 = $00200000;
 
        IF_PLEVEL = $0F000000;  { mask for processor level }
        IF_8086   = $00000000;  { 8086 instruction  }
@@ -2902,30 +2903,21 @@ implementation
           if needed_VEX_Extension then
           begin
             // VEX-Prefix-Length = 3 Bytes
-            bytes[0]:=$C4;
-            objdata.writebytes(bytes,1);
-
             {$ifdef x86_64}
               VEXmmmmm := VEXmmmmm or ((not(rex) and $07) shl 5);  // set REX.rxb
+              VEXvvvv  := VEXvvvv or ((rex and $08) shl 7);        // set REX.w
             {$else}
               VEXmmmmm := VEXmmmmm or (7 shl 5);  //
             {$endif x86_64}
 
-              bytes[0] := VEXmmmmm;
-              objdata.writebytes(bytes,1);
-
-            {$ifdef x86_64}
-              VEXvvvv  := VEXvvvv OR ((rex and $08) shl 7);   // set REX.w
-            {$endif x86_64}
-            bytes[0] := VEXvvvv;
-            objdata.writebytes(bytes,1);
+            bytes[0]:=$C4;
+            bytes[1]:=VEXmmmmm;
+            bytes[2]:=VEXvvvv;
+            objdata.writebytes(bytes,3);
           end
           else
           begin
             // VEX-Prefix-Length = 2 Bytes
-            bytes[0]:=$C5;
-            objdata.writebytes(bytes,1);
-
             {$ifdef x86_64}
               if rex and $04 = 0 then
             {$endif x86_64}
@@ -2933,8 +2925,9 @@ implementation
               VEXvvvv := VEXvvvv or (1 shl 7);
             end;
 
-            bytes[0] := VEXvvvv;
-            objdata.writebytes(bytes,1);
+            bytes[0]:=$C5;
+            bytes[1]:=VEXvvvv;
+            objdata.writebytes(bytes,2);
           end;
         end
         else
@@ -3286,48 +3279,20 @@ implementation
                   are not needed }
               end;
             &362..&364: ; // VEX flags =>> nothing todo
-            &366: begin
-                   if needed_VEX then
-                   begin
-                     if ops = 4 then
-                     begin
-                       if (oper[2]^.typ=top_reg) then
-                       begin
-                         if (oper[2]^.ot and otf_reg_xmm <> 0) or
-                            (oper[2]^.ot and otf_reg_ymm <> 0) then
-                         begin
-                           bytes[0] := ((getsupreg(oper[2]^.reg) and 15) shl 4);
-                           objdata.writebytes(bytes,1);
-                         end
-                         else Internalerror(2014032001);
-                       end
-                       else Internalerror(2014032002);
-                     end
-                     else Internalerror(2014032003);
-                   end
-                   else Internalerror(2014032004);
-                 end;
-            &367: begin
-                   if needed_VEX then
-                   begin
-                     if ops = 4 then
-                     begin
-                       if (oper[3]^.typ=top_reg) then
-                       begin
-                         if (oper[3]^.ot and otf_reg_xmm <> 0) or
-                            (oper[3]^.ot and otf_reg_ymm <> 0) then
-                         begin
-                           bytes[0] := ((getsupreg(oper[3]^.reg) and 15) shl 4);
-                           objdata.writebytes(bytes,1);
-                         end
-                         else Internalerror(2014032005);
-                       end
-                       else Internalerror(2014032006);
-                     end
-                     else Internalerror(2014032007);
-                   end
-                   else Internalerror(2014032008);
-                 end;
+            &366, &367:
+              begin
+                opidx:=c-&364;  { 0366->operand 2, 0367->operand 3 }
+                if needed_VEX and
+                  (ops=4) and
+                  (oper[opidx]^.typ=top_reg) and
+                  (oper[opidx]^.ot and (otf_reg_xmm or otf_reg_ymm)<>0) then
+                  begin
+                    bytes[0] := ((getsupreg(oper[opidx]^.reg) and 15) shl 4);
+                    objdata.writebytes(bytes,1);
+                  end
+                else
+                  Internalerror(2014032001);
+              end;
             &370..&372: ; // VEX flags =>> nothing todo
             &37:
               begin
@@ -3609,9 +3574,9 @@ implementation
             if current_settings.fputype in fpu_avx_instructionsets then
               case getsubreg(r) of
                 R_SUBMMD:
-                  result:=taicpu.op_ref_reg(A_VMOVSD,reg2opsize(r),tmpref,r);
+                  result:=taicpu.op_ref_reg(A_VMOVSD,S_NO,tmpref,r);
                 R_SUBMMS:
-                  result:=taicpu.op_ref_reg(A_VMOVSS,reg2opsize(r),tmpref,r);
+                  result:=taicpu.op_ref_reg(A_VMOVSS,S_NO,tmpref,r);
                 R_SUBQ,
                 R_SUBMMWHOLE:
                   result:=taicpu.op_ref_reg(A_VMOVQ,S_NO,tmpref,r);
@@ -3621,9 +3586,9 @@ implementation
             else
               case getsubreg(r) of
                 R_SUBMMD:
-                  result:=taicpu.op_ref_reg(A_MOVSD,reg2opsize(r),tmpref,r);
+                  result:=taicpu.op_ref_reg(A_MOVSD,S_NO,tmpref,r);
                 R_SUBMMS:
-                  result:=taicpu.op_ref_reg(A_MOVSS,reg2opsize(r),tmpref,r);
+                  result:=taicpu.op_ref_reg(A_MOVSS,S_NO,tmpref,r);
                 R_SUBQ,
                 R_SUBMMWHOLE:
                   result:=taicpu.op_ref_reg(A_MOVQ,S_NO,tmpref,r);
@@ -3667,9 +3632,9 @@ implementation
             if current_settings.fputype in fpu_avx_instructionsets then
               case getsubreg(r) of
                 R_SUBMMD:
-                  result:=taicpu.op_reg_ref(A_VMOVSD,reg2opsize(r),r,tmpref);
+                  result:=taicpu.op_reg_ref(A_VMOVSD,S_NO,r,tmpref);
                 R_SUBMMS:
-                  result:=taicpu.op_reg_ref(A_VMOVSS,reg2opsize(r),r,tmpref);
+                  result:=taicpu.op_reg_ref(A_VMOVSS,S_NO,r,tmpref);
                 R_SUBQ,
                 R_SUBMMWHOLE:
                   result:=taicpu.op_reg_ref(A_VMOVQ,S_NO,r,tmpref);
@@ -3679,9 +3644,9 @@ implementation
             else
               case getsubreg(r) of
                 R_SUBMMD:
-                  result:=taicpu.op_reg_ref(A_MOVSD,reg2opsize(r),r,tmpref);
+                  result:=taicpu.op_reg_ref(A_MOVSD,S_NO,r,tmpref);
                 R_SUBMMS:
-                  result:=taicpu.op_reg_ref(A_MOVSS,reg2opsize(r),r,tmpref);
+                  result:=taicpu.op_reg_ref(A_MOVSS,S_NO,r,tmpref);
                 R_SUBQ,
                 R_SUBMMWHOLE:
                   result:=taicpu.op_reg_ref(A_MOVQ,S_NO,r,tmpref);

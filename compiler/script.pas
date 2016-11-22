@@ -236,7 +236,11 @@ begin
      Add('echo Assembling %THEFILE%');
    end;
   Add(maybequoted(command)+' '+Options);
+  {$ifdef hasUnix}
   Add('if errorlevel 1 goto asmend');
+  {$else}
+  Add('if %ERRORLEVEL% EQU 1 goto asmend');
+  {$endif}
 end;
 
 
@@ -249,6 +253,11 @@ begin
    end;
   Add(maybequoted(command)+' '+Options);
   Add('if errorlevel 1 goto linkend');
+  {$ifdef hasUnix}
+  Add('if errorlevel 1 goto linkend');
+  {$else}
+  Add('if %ERRORLEVEL% EQU 1 goto linkend');
+  {$endif}
 end;
 
 
@@ -260,7 +269,11 @@ end;
 
 Procedure TAsmScriptDos.AddDeleteDirCommand (Const FileName : TCmdStr);
 begin
+ {$ifdef hasUnix}
  Add('Rmdir ' + MaybeQuoted (ScriptFixFileName (FileName)));
+ {$else}
+ Add('RMDIR /S /Q ' + MaybeQuoted (ScriptFixFileName (FileName)));
+ {$endif}
 end;
 
 
@@ -361,7 +374,11 @@ begin
   if FileName<>'' then
    Add('echo Assembling '+ScriptFixFileName(FileName));
   Add(maybequoted(command)+' '+Options);
+  {$ifdef hasUnix}
   Add('if [ $? != 0 ]; then DoExitAsm '+ScriptFixFileName(FileName)+'; fi');
+  {$else}
+  Add('if %ERRORLEVEL% NEQ 0 call:DoExitAsm '+ScriptFixFileName(FileName));
+  {$endif}
 end;
 
 
@@ -369,12 +386,18 @@ Procedure TAsmScriptUnix.AddLinkCommand (Const Command, Options, FileName : TCmd
 begin
   if FileName<>'' then
    Add('echo Linking '+ScriptFixFileName(FileName));
+  {$ifdef hasUnix}
   Add('OFS=$IFS');
   Add('IFS="');
   Add('"');
+  {$endif}
   Add(maybequoted(command)+' '+Options);
+  {$ifdef hasUnix}
   Add('if [ $? != 0 ]; then DoExitLink '+ScriptFixFileName(FileName)+'; fi');
   Add('IFS=$OFS');
+  {$else}
+  Add('if %ERRORLEVEL% NEQ 0 call:DoExitLink '+ScriptFixFileName(FileName));
+  {$endif}
 end;
 
 
@@ -386,12 +409,18 @@ end;
 
 Procedure TAsmScriptUnix.AddDeleteDirCommand (Const FileName : TCmdStr);
 begin
+ {$ifdef hasUnix}
  Add('rmdir ' + MaybeQuoted (ScriptFixFileName(FileName)));
+ {$else}
+ Add('RMDIR /S /Q ' + MaybeQuoted (ScriptFixFileName(FileName)));
+ {$endif}
+
 end;
 
 
 Procedure TAsmScriptUnix.WriteToDisk;
 Begin
+  {$ifdef hasUnix}
   AddStart('{ echo "An error occurred while linking $1"; exit 1; }');
   AddStart('DoExitLink ()');
   AddStart('{ echo "An error occurred while assembling $1"; exit 1; }');
@@ -400,6 +429,15 @@ Begin
    AddStart('#!/boot/beos/bin/sh');
   {$else}
    AddStart('#!/bin/sh');
+  {$endif}
+  {$else}
+  Add('EXIT /B %ERRORLEVEL%');
+  Add(':DoExitLink');
+  Add('echo An error occurred while linking %*');
+  Add('EXIT /B 1');
+  Add(':DoExitAsm');
+  Add('echo An error occurred while assembling %*');
+  Add('EXIT /B 1');
   {$endif}
   inherited WriteToDisk;
 end;
@@ -420,7 +458,9 @@ begin
   if FileName<>'' then
     Add('Echo Assembling '+ScriptFixFileName(FileName));
   Add(maybequoted(command)+' '+Options);
+  {$ifdef hasUnix}
   Add('Exit If "{Status}" != 0');
+  {$endif}
 end;
 
 
@@ -429,6 +469,7 @@ begin
   if FileName<>'' then
     Add('Echo Linking '+ScriptFixFileName(FileName));
   Add(maybequoted(command)+' '+Options);
+  {$ifdef hasUnix}
   Add('Exit If "{Status}" != 0');
 
   {Add resources}
@@ -437,6 +478,7 @@ begin
       Add('Rez -append "{RIncludes}"SIOW.r -o '+ ScriptFixFileName(FileName));
       Add('Exit If "{Status}" != 0');
     end;
+  {$endif}
 end;
 
 
