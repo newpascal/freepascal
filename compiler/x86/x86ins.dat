@@ -2224,7 +2224,7 @@ xmmreg,mmxrm         \331\2\x0F\x2A\110             KATMAI,SSE,MMX
 mmxreg,mem64          \331\2\x0F\x2D\110              KATMAI,SSE,MMX
 mmxreg,xmmreg         \331\2\x0F\x2D\110              KATMAI,SSE,MMX
 
-[CVTSI2SS,cvtsi2ssM]
+[CVTSI2SS,cvtsi2ssX]
 (Ch_Wop2, Ch_Rop1, Ch_None)
 xmmreg,rm32           \333\321\2\x0F\x2A\110      KATMAI,SSE
 xmmreg,rm64           \333\321\2\x0F\x2A\110      KATMAI,SSE,X86_64
@@ -2305,8 +2305,10 @@ mem,xmmreg            \2\x0F\x2B\101                  KATMAI,SSE
 
 [MOVSS]
 (Ch_Wop2, Ch_Rop1, Ch_None)
-xmmreg,xmmrm          \333\2\x0F\x10\110              KATMAI,SSE
-xmmrm,xmmreg          \333\2\x0F\x11\101              KATMAI,SSE
+xmmreg,xmmreg         \333\2\x0F\x10\110              KATMAI,SSE
+xmmreg,mem32          \333\2\x0F\x10\110              KATMAI,SSE
+xmmreg,xmmreg         \333\2\x0F\x11\101              KATMAI,SSE
+mem32,xmmreg          \333\2\x0F\x11\101              KATMAI,SSE
 
 [MOVUPS]
 (Ch_All, Ch_None, Ch_None)
@@ -2761,7 +2763,7 @@ reg64,mem64 	        \334\320\2\x0F\x2D\110        WILLAMETTE,SSE2,X86_64
 xmmreg,xmmreg           \334\2\x0F\x5A\110              WILLAMETTE,SSE2 ;,SQ
 xmmreg,mem64            \334\2\x0F\x5A\110              WILLAMETTE,SSE2 ;,SQ
 
-[CVTSI2SD,cvtsi2sdM]
+[CVTSI2SD,cvtsi2sdX]
 (Ch_Wop2, Ch_Rop1, Ch_None)
 xmmreg,rm32             \334\2\x0F\x2A\110        	WILLAMETTE,SSE2
 xmmreg,rm64             \326\334\321\2\x0F\x2A\110      WILLAMETTE,SSE2,X86_64
@@ -3652,15 +3654,15 @@ reg64,xmmreg                         \334\362\363\370\1\x2D\110           AVX,SA
 xmmreg,xmmreg,mem64                  \334\362\370\1\x5A\75\120            AVX,SANDYBRIDGE
 xmmreg,xmmreg,xmmreg                 \334\362\370\1\x5A\75\120            AVX,SANDYBRIDGE
 
-[VCVTSI2SD,vcvtsi2sdM]
+[VCVTSI2SD,vcvtsi2sdX]
 (Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,rm32                   \334\362\370\1\x2A\75\120            AVX,SANDYBRIDGE,SD
-xmmreg,xmmreg,rm64                   \334\362\363\370\1\x2A\75\120        AVX,SANDYBRIDGE
+xmmreg,xmmreg,rm64                   \334\362\363\370\1\x2A\75\120        AVX,SANDYBRIDGE,X86_64
 
-[VCVTSI2SS,vcvtsi2ssM]
+[VCVTSI2SS,vcvtsi2ssX]
 (Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,rm32                   \333\362\370\1\x2A\75\120            AVX,SANDYBRIDGE,SD
-xmmreg,xmmreg,rm64                   \333\362\363\370\1\x2A\75\120        AVX,SANDYBRIDGE
+xmmreg,xmmreg,rm64                   \333\362\363\370\1\x2A\75\120        AVX,SANDYBRIDGE,X86_64
 
 [VCVTSS2SD]
 (Ch_Wop3, Ch_Rop2, Ch_Rop1)
@@ -3934,8 +3936,12 @@ mem128,xmmreg                        \362\370\1\x2B\101                   AVX,SA
 
 [VMOVQ]
 (Ch_Wop2, Ch_Rop1, Ch_None)
-rm64,xmmreg                          \361\362\363\370\1\x7E\101           AVX,SANDYBRIDGE
-xmmreg,rm64                          \361\362\363\370\1\x6E\110           AVX,SANDYBRIDGE
+xmmreg,xmmreg                        \362\333\370\1\x7E\110               AVX,SANDYBRIDGE
+xmmreg,mem64                         \362\333\370\1\x7E\110               AVX,SANDYBRIDGE
+xmmreg,xmmreg                        \362\361\370\1\xD6\101               AVX,SANDYBRIDGE
+mem64,xmmreg                         \362\361\370\1\xD6\101               AVX,SANDYBRIDGE
+rm64,xmmreg                          \362\361\363\370\1\x7E\101           AVX,SANDYBRIDGE,X86_64
+xmmreg,rm64                          \362\361\363\370\1\x6E\110           AVX,SANDYBRIDGE,X86_64
 
 [VMOVSD]
 ; the three ops must be handle by the compiler internally
@@ -3959,9 +3965,9 @@ ymmreg,ymmrm                         \333\362\364\370\1\x12\110           AVX,SA
 ; the three ops must be handle by the compiler internally
 (Ch_Wop2, Ch_Rop1, Ch_None)
 xmmreg,xmmreg,xmmreg                 \333\362\370\1\x10\75\120            AVX,SANDYBRIDGE
-xmmreg,mem64                         \333\362\370\1\x10\110               AVX,SANDYBRIDGE
+xmmreg,mem32                         \333\362\370\1\x10\110               AVX,SANDYBRIDGE
 xmmreg,xmmreg,xmmreg                 \333\362\370\1\x11\75\102            AVX,SANDYBRIDGE
-mem64,xmmreg                         \333\362\370\1\x11\101               AVX,SANDYBRIDGE
+mem32,xmmreg                         \333\362\370\1\x11\101               AVX,SANDYBRIDGE
 
 [VMOVUPD]
 (Ch_Wop2, Ch_Rop1, Ch_None)
@@ -5417,4 +5423,11 @@ reg16|32|64                          \320\2\x0F\xC7\207                   RAND
 [XGETBV]
 (Ch_WEAX, Ch_WEDX, Ch_RECX)
 void                  \3\x0F\x01\xD0                                      XSAVE
+
+;*******************************************************************************
+;********** PREFETCHWT1 ********************************************************
+;*******************************************************************************
+[PREFETCHWT1,prefetchwt1X]
+(Ch_All, Ch_None, Ch_None)
+mem                   \2\x0F\x0D\202                                      PREFETCHWT1
 

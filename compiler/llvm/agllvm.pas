@@ -33,17 +33,15 @@ interface
     type
       TLLVMInstrWriter = class;
 
-      TLLVMBaseInlineAssemblyDecorator = class
-        function LineFilter(const s: AnsiString): AnsiString;
-      end;
-
-      TLLVMModuleInlineAssemblyDecorator = class(TLLVMBaseInlineAssemblyDecorator,IExternalAssemblerOutputFileDecorator)
+      TLLVMModuleInlineAssemblyDecorator = class(IExternalAssemblerOutputFileDecorator)
+       function LineFilter(const s: AnsiString): AnsiString;
        function LinePrefix: AnsiString;
        function LinePostfix: AnsiString;
        function LineEnding(const deflineending: ShortString): ShortString;
       end;
 
-      TLLVMFunctionInlineAssemblyDecorator = class(TLLVMBaseInlineAssemblyDecorator,IExternalAssemblerOutputFileDecorator)
+      TLLVMFunctionInlineAssemblyDecorator = class(IExternalAssemblerOutputFileDecorator)
+       function LineFilter(const s: AnsiString): AnsiString;
        function LinePrefix: AnsiString;
        function LinePostfix: AnsiString;
        function LineEnding(const deflineending: ShortString): ShortString;
@@ -51,6 +49,7 @@ interface
 
       TLLVMAssember=class(texternalassembler)
       protected
+        ffuncinlasmdecorator: TLLVMFunctionInlineAssemblyDecorator;
         fdecllevel: longint;
 
         procedure WriteExtraHeader;virtual;
@@ -66,6 +65,7 @@ interface
         function MakeCmdLine: TCmdStr; override;
         procedure WriteTree(p:TAsmList);override;
         procedure WriteAsmList;override;
+        procedure WriteFunctionInlineAsmList(list: tasmlist);
         destructor destroy; override;
        protected
         InstrWriter: TLLVMInstrWriter;
@@ -86,6 +86,7 @@ interface
         fstr: TSymStr;
 
         function getopstr(const o:toper; refwithalign: boolean) : TSymStr;
+        procedure WriteAsmRegisterAllocationClobbers(list: tasmlist);
       end;
 
 
@@ -93,7 +94,7 @@ implementation
 
     uses
       SysUtils,
-      cutils,cfileutl,
+      cutils,cclasses,cfileutl,
       fmodule,verbose,
       objcasm,
       aasmcnst,symconst,symdef,symtable,
@@ -148,10 +149,10 @@ implementation
       end;
 
 {****************************************************************************}
-{            Common decorator functionality for inline assembly              }
+{               Decorator for module-level inline assembly                   }
 {****************************************************************************}
 
-    function TLLVMBaseInlineAssemblyDecorator.LineFilter(const s: AnsiString): AnsiString;
+    function TLLVMModuleInlineAssemblyDecorator.LineFilter(const s: AnsiString): AnsiString;
       var
         i: longint;
       begin
@@ -172,10 +173,6 @@ implementation
           end;
         end;
 
-
-{****************************************************************************}
-{               Decorator for module-level inline assembly                   }
-{****************************************************************************}
 
     function TLLVMModuleInlineAssemblyDecorator.LinePrefix: AnsiString;
       begin
@@ -198,6 +195,35 @@ implementation
 {****************************************************************************}
 {              Decorator for function-level inline assembly                  }
 {****************************************************************************}
+
+
+    function TLLVMFunctionInlineAssemblyDecorator.LineFilter(const s: AnsiString): AnsiString;
+      var
+        i: longint;
+      begin
+        result:='';
+        for i:=1 to length(s) do
+          begin
+            case s[i] of
+              { escape dollars }
+              '$':
+                 result:=result+'$$';
+              { ^ is used as placeholder for a single dollar (reference to
+                 argument to the inline assembly) }
+              '^':
+                 result:=result+'$';
+              #0..#31,
+              #127..#255,
+              '"','\':
+                result:=result+
+                        '\'+
+                        chr((ord(s[i]) shr 4)+ord('0'))+
+                        chr((ord(s[i]) and $f)+ord('0'));
+            else
+              result:=result+s[i];
+            end;
+          end;
+        end;
 
 
     function TLLVMFunctionInlineAssemblyDecorator.LinePrefix: AnsiString;
@@ -274,17 +300,17 @@ implementation
       end;
 
 
-   function getparas(const o: toper): ansistring;
+   function getparas(const paras: tfplist): ansistring;
      var
        i: longint;
        para: pllvmcallpara;
      begin
        result:='(';
-       for i:=0 to o.paras.count-1 do
+       for i:=0 to paras.count-1 do
          begin
            if i<>0 then
              result:=result+', ';
-           para:=pllvmcallpara(o.paras[i]);
+           para:=pllvmcallpara(paras[i]);
            result:=result+llvmencodetypename(para^.def);
            if para^.valueext<>lve_none then
              result:=result+llvmvalueextension2str[para^.valueext];
@@ -405,7 +431,7 @@ implementation
            end;
          top_para:
            begin
-             result:=getparas(o);
+             result:=getparas(o.paras);
            end;
          top_tai:
            begin
@@ -431,12 +457,31 @@ implementation
      end;
 
 
+   procedure TLLVMInstrWriter.WriteAsmRegisterAllocationClobbers(list: tasmlist);
+     var
+       hp: tai;
+     begin
+       hp:=tai(list.first);
+       while assigned(hp) do
+         begin
+           if (hp.typ=ait_regalloc) and
+              (tai_regalloc(hp).ratype=ra_alloc) then
+             begin
+               owner.writer.AsmWrite(',~{');
+               owner.writer.AsmWrite(std_regname(tai_regalloc(hp).reg));
+               owner.writer.AsmWrite('}');
+             end;
+           hp:=tai(hp.next);
+         end;
+     end;
+
+
   procedure TLLVMInstrWriter.WriteInstruction(hp: tai);
     var
       op: tllvmop;
       tmpstr,
       sep: TSymStr;
-      i, opstart: byte;
+      i, opstart: longint;
       nested: boolean;
       opdone,
       done: boolean;
@@ -461,6 +506,26 @@ implementation
              owner.writer.AsmWrite(llvmencodetypedecl(taillvm(hp).oper[0]^.def));
              done:=true;
            end;
+        la_asmblock:
+          begin
+            owner.writer.AsmWrite('call void asm sideeffect "');
+            owner.WriteFunctionInlineAsmList(taillvm(hp).oper[0]^.asmlist);
+            owner.writer.AsmWrite('","');
+            { we pass all accessed local variables as in/out address parameters,
+              since we don't analyze the assembly code to determine what exactly
+              happens to them; this is also compatible with the regular code
+              generators, which always place local place local variables
+              accessed from assembly code in memory }
+            for i:=0 to taillvm(hp).oper[1]^.paras.Count-1 do
+              begin
+                owner.writer.AsmWrite('=*m,');
+              end;
+            owner.writer.AsmWrite('~{memory},~{fpsr},~{flags}');
+            WriteAsmRegisterAllocationClobbers(taillvm(hp).oper[0]^.asmlist);
+            owner.writer.AsmWrite('"');
+            owner.writer.AsmWrite(getparas(taillvm(hp).oper[1]^.paras));
+            done:=true;
+          end;
         la_load,
         la_getelementptr:
           begin
@@ -529,12 +594,19 @@ implementation
           end;
         la_blockaddress:
           begin
+            owner.writer.AsmWrite('i8* blockaddress(');
             owner.writer.AsmWrite(getopstr(taillvm(hp).oper[0]^,false));
-            owner.writer.AsmWrite(' = blockaddress(');
-            owner.writer.AsmWrite(getopstr(taillvm(hp).oper[1]^,false));
-            owner.writer.AsmWrite(',');
-            owner.writer.AsmWrite(getopstr(taillvm(hp).oper[2]^,false));
-            owner.writer.AsmWrite(')');
+            { getopstr would add a "label" qualifier, which blockaddress does
+              not want }
+            owner.writer.AsmWrite(',%');
+            with taillvm(hp).oper[1]^ do
+              begin
+                if (typ<>top_ref) or
+                   (ref^.refaddr<>addr_full) then
+                  internalerror(2016112001);
+                owner.writer.AsmWrite(ref^.symbol.name);
+              end;
+            nested:=true;
             done:=true;
           end;
         la_alloca:
@@ -627,6 +699,7 @@ implementation
     destructor TLLVMAssember.Destroy;
       begin
         InstrWriter.free;
+        ffuncinlasmdecorator.free;
         inherited destroy;
       end;
 
@@ -1295,11 +1368,28 @@ implementation
                 a.WriteTree(current_asmdata.asmlists[hal]);
                 writer.decorator:=nil;
                 decorator.free;
+                a.free;
               end;
             writer.AsmWriteLn(asminfo^.comment+'End asmlist '+AsmlistTypeStr[hal]);
           end;
 
         writer.AsmLn;
+      end;
+
+
+    procedure TLLVMAssember.WriteFunctionInlineAsmList(list: tasmlist);
+      var
+        a: TExternalAssembler;
+      begin
+        if not assigned(ffuncinlasmdecorator) then
+          ffuncinlasmdecorator:=TLLVMFunctionInlineAssemblyDecorator.create;
+        if assigned(writer.decorator) then
+          internalerror(2016110201);
+        writer.decorator:=ffuncinlasmdecorator;
+        a:=GetExternalGnuAssemblerWithAsmInfoWriter(asminfo,writer);
+        a.WriteTree(list);
+        a.free;
+        writer.decorator:=nil;
       end;
 
 

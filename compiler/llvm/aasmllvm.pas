@@ -104,12 +104,15 @@ interface
         constructor getelementptr_reg_size_ref_size_const(dst:tregister;ptrsize:tdef;const ref:treference;indextype:tdef;index1:ptrint;indirect:boolean);
         constructor getelementptr_reg_tai_size_const(dst:tregister;const ai:tai;indextype:tdef;index1:ptrint;indirect:boolean);
 
-        constructor blockaddress(dstreg: tregister; fun, lab: tasmsymbol);
+        constructor blockaddress(fun, lab: tasmsymbol);
 
         { e.g. dst = call retsize name (paras) }
         constructor call_size_name_paras(callpd: tdef; dst: tregister;retsize: tdef;name:tasmsymbol;paras: tfplist);
         { e.g. dst = call retsize reg (paras) }
         constructor call_size_reg_paras(callpd: tdef; dst: tregister;retsize: tdef;reg:tregister;paras: tfplist);
+
+        { inline function-level assembler code and parameters }
+        constructor asm_paras(asmlist: tasmlist; paras: tfplist);
 
         procedure loadoper(opidx: longint; o: toper); override;
         procedure clearop(opidx: longint); override;
@@ -124,6 +127,7 @@ interface
         procedure loadcond(opidx: longint; _cond: topcmp);
         procedure loadfpcond(opidx: longint; _fpcond: tllvmfpcmp);
         procedure loadparas(opidx: longint; _paras: tfplist);
+        procedure loadasmlist(opidx: longint; _asmlist: tasmlist);
 
         { register spilling code }
         function spilling_get_operation_type(opnr: longint): topertype;override;
@@ -320,6 +324,8 @@ uses
             end;
           top_tai:
             oper[opidx]^.ai.free;
+          top_asmlist:
+            oper[opidx]^.asmlist.free;
         end;
         inherited;
       end;
@@ -443,6 +449,18 @@ uses
               end;
             typ:=top_para;
           end;
+      end;
+
+
+    procedure taillvm.loadasmlist(opidx: longint; _asmlist: tasmlist);
+      begin
+        allocate_oper(opidx+1);
+        with oper[opidx]^ do
+         begin
+           clearop(opidx);
+           asmlist:=_asmlist;
+           typ:=top_asmlist;
+         end;
       end;
 
 
@@ -1006,13 +1024,12 @@ uses
         loadconst(index+1,index1);
       end;
 
-    constructor taillvm.blockaddress(dstreg: tregister; fun, lab: tasmsymbol);
+    constructor taillvm.blockaddress(fun, lab: tasmsymbol);
       begin
         create_llvm(la_blockaddress);
-        ops:=3;
-        loadreg(0,dstreg);
-        loadsymbol(1,fun,0);
-        loadsymbol(2,lab,0);
+        ops:=2;
+        loadsymbol(0,fun,0);
+        loadsymbol(1,lab,0);
       end;
 
 
@@ -1042,6 +1059,15 @@ uses
         loaddef(2,callpd);
         loadreg(3,reg);
         loadparas(4,paras);
+      end;
+
+
+    constructor taillvm.asm_paras(asmlist: tasmlist; paras: tfplist);
+      begin
+        create_llvm(la_asmblock);
+        ops:=2;
+        loadasmlist(0,asmlist);
+        loadparas(1,paras);
       end;
 
 end.
