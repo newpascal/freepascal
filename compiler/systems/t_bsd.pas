@@ -147,8 +147,8 @@ begin
        begin
          if not(target_info.system in systems_darwin) then
            begin
-             ExeCmd[1]:='ld $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -L. -o $EXE $CATRES';
-             DllCmd[1]:='ld $TARGET $EMUL $OPT -shared -L. -o $EXE $CATRES'
+             ExeCmd[1]:='ld $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -L. -o $EXE $CATRES $FILELIST ';
+             DllCmd[1]:='ld $TARGET $EMUL $OPT -shared -L. -o $EXE $CATRES $FILELIST'
            end
          else
            begin
@@ -167,16 +167,16 @@ begin
                programs with problems that require Valgrind will have more
                than 60KB of data (first 4KB of address space is always invalid)
              }
-               ExeCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -multiply_defined suppress -L. -o $EXE $CATRES';
+               ExeCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -multiply_defined suppress -L. -o $EXE $CATRES $FILELIST';
              if not(cs_gdb_valgrind in current_settings.globalswitches) then
                ExeCmd[1]:=ExeCmd[1]+' -pagezero_size 0x10000';
 {$else ndef cpu64bitaddr}
-             ExeCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -multiply_defined suppress -L. -o $EXE $CATRES';
+             ExeCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -multiply_defined suppress -L. -o $EXE $CATRES $FILELIST';
 {$endif ndef cpu64bitaddr}
              if (apptype<>app_bundle) then
-               DllCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $GCSECTIONS -dynamic -dylib -multiply_defined suppress -L. -o $EXE $CATRES'
+               DllCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $GCSECTIONS -dynamic -dylib -multiply_defined suppress -L. -o $EXE $CATRES $FILELIST'
              else
-               DllCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $GCSECTIONS -dynamic -bundle -multiply_defined suppress -L. -o $EXE $CATRES'
+               DllCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $GCSECTIONS -dynamic -bundle -multiply_defined suppress -L. -o $EXE $CATRES $FILELIST'
            end
        end
      else
@@ -388,6 +388,7 @@ end;
 Function TLinkerBSD.WriteResponseFile(isdll:boolean) : Boolean;
 Var
   linkres      : TLinkRes;
+  FilesList    : TLinkRes;
   i            : longint;
   cprtobj,
   gprtobj,
@@ -589,15 +590,37 @@ begin
              LinkRes.AddFileName(s);
    end;
   { main objectfiles }
+
+  { Generate appfiles.txt file if needed }
+  { Always needed on Windows, due to the limitation of 8196 characters for command line }
+  if LdSupportsNoResponseFile then
+  begin
+    FilesList:=TLinkRes.Create(outputexedir+'appfiles.txt',not LdSupportsNoResponseFile);
   while not ObjectFiles.Empty do
    begin
      s:=ObjectFiles.GetFirst;
      if s<>'' then
-      if LdSupportsNoResponseFile then
-        LinkRes.AddFileName(s)
+      begin
+         // osxcross can only handle '/'
+         repeat
+           i:=Pos('\',s);
+           if i>0 then s[i]:='/';
+         until i=0;
+        FilesList.Add(s);
+      end;
+    end;
+    FilesList.writetodisk;
+    FilesList.Free;
+  end
       else
-        LinkRes.AddFileName(maybequoted(s));
+  begin
+    while not ObjectFiles.Empty do
+    begin
+      s:=ObjectFiles.GetFirst;
+      if s<>'' then LinkRes.AddFileName(maybequoted(s));
    end;
+  end;
+
   if not LdSupportsNoResponseFile then
    LinkRes.Add(')');
 
@@ -784,6 +807,9 @@ begin
   Replace(cmdstr,'$EMUL',EmulStr);
   Replace(cmdstr,'$CATRES',CatFileContent(outputexedir+Info.ResName));
   Replace(cmdstr,'$RES',maybequoted(outputexedir+Info.ResName));
+  if LdSupportsNoResponseFile
+     then Replace(cmdstr,'$FILELIST','-filelist '+maybequoted(outputexedir+'appfiles.txt'))
+     else Replace(cmdstr,'$FILELIST','');
   Replace(cmdstr,'$STATIC',StaticStr);
   Replace(cmdstr,'$STRIP',StripStr);
   Replace(cmdstr,'$GCSECTIONS',GCSectionsStr);
@@ -813,8 +839,10 @@ begin
         linkscript.AddLinkCommand(extdbgbinstr,extdbgcmdstr,'');
       linkscript.WriteToDisk;
       BinStr:=linkscript.fn;
+      {$ifdef hasUnix}
       if not path_absolute(BinStr) then
         BinStr:='./'+BinStr;
+      {$endif}
       CmdStr:='';
     end;
 
@@ -835,6 +863,9 @@ begin
          linkscript.free
        end;
    end;
+
+  { Remove appfiles.txt }
+  if (success) and (LdSupportsNoResponseFile) then DeleteFile(outputexedir+'appfiles.txt');
 
   MakeExecutable:=success;   { otherwise a recursive call to link method }
 end;
@@ -902,6 +933,9 @@ begin
   Replace(cmdstr,'$TARGET',targetstr);
   Replace(cmdstr,'$EMUL',EmulStr);
   Replace(cmdstr,'$CATRES',CatFileContent(outputexedir+Info.ResName));
+  if LdSupportsNoResponseFile
+     then Replace(cmdstr,'$FILELIST','-filelist '+maybequoted(outputexedir+'appfiles.txt'))
+     else Replace(cmdstr,'$FILELIST','');
   Replace(cmdstr,'$RES',maybequoted(outputexedir+Info.ResName));
   Replace(cmdstr,'$INIT',InitStr);
   Replace(cmdstr,'$FINI',FiniStr);
@@ -947,8 +981,10 @@ begin
         linkscript.AddLinkCommand(extdbgbinstr,extdbgcmdstr,'');
       linkscript.WriteToDisk;
       BinStr:=linkscript.fn;
+      {$ifdef hasUnix}
       if not path_absolute(BinStr) then
         BinStr:='./'+BinStr;
+      {$endif}
       CmdStr:='';
     end;
 
@@ -978,6 +1014,9 @@ begin
       if (target_info.system in systems_darwin) then
         DeleteFile(outputexedir+'linksyms.fpc');
     end;
+
+  { Remove appfiles.txt }
+  if (success) and (LdSupportsNoResponseFile) then DeleteFile(outputexedir+'appfiles.txt');
 
   MakeSharedLibrary:=success;   { otherwise a recursive call to link method }
 end;
