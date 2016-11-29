@@ -966,7 +966,7 @@
           getinterfacetable:=PVmt(Self)^.vIntfTable;
         end;
 
-      class function TObject.UnitName : ansistring;
+      class function TObject.UnitName : {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}ansistring{$else FPC_HAS_FEATURE_ANSISTRINGS}shortstring{$endif FPC_HAS_FEATURE_ANSISTRINGS};
         type
           // from the typinfo unit
           TClassTypeInfo = {$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}packed{$endif}record
@@ -993,6 +993,17 @@
             result:='';
         end;
 
+      class function TObject.QualifiedClassName: ansistring;
+        var
+          uname: ansistring;
+        begin
+          uname := UnitName; //TODO: change 'UnitName' to 'UnitScope' as soon as RTL implement it
+          if uname='' then
+            result:=ClassName
+          else
+            result:=Concat(uname, '.', ClassName);
+        end;
+
       function TObject.Equals(Obj: TObject) : boolean;
         begin
           result:=Obj=Self;
@@ -1003,7 +1014,7 @@
           result:=PtrInt(Self);
         end;
 
-      function TObject.ToString: ansistring;
+      function TObject.ToString: {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}ansistring{$else FPC_HAS_FEATURE_ANSISTRINGS}shortstring{$endif FPC_HAS_FEATURE_ANSISTRINGS};
         begin
           result:=ClassName;
         end;

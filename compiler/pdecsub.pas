@@ -775,11 +775,12 @@ implementation
             error : boolean;
             genname,
             ugenname : tidstring;
+            module : tmodule;
           begin
             result:=false;
             if not assigned(genericparams) then
               exit;
-            specializename:='';
+            specializename:='$';
             prettyname:='';
             error:=false;
             for i:=0 to genericparams.count-1 do
@@ -798,7 +799,10 @@ implementation
                     error:=true;
                     continue;
                   end;
-                specializename:=specializename+'$'+ttypesym(typesrsym).typedef.fulltypename;
+                module:=find_module_from_symtable(ttypesym(typesrsym).typedef.owner);
+                if not assigned(module) then
+                  internalerror(2016112803);
+                specializename:=specializename+'_$'+hexstr(module.moduleid,8)+'$$'+ttypesym(typesrsym).typedef.unique_id_str;
                 if i>0 then
                   prettyname:=prettyname+',';
                 prettyname:=prettyname+ttypesym(typesrsym).prettyname;
@@ -882,7 +886,14 @@ implementation
                   (ttypesym(srsym).typedef.typ=objectdef) then
                  ImplIntf:=find_implemented_interface(tobjectdef(astruct),tobjectdef(ttypesym(srsym).typedef));
                if ImplIntf=nil then
-                 Message(parser_e_interface_id_expected)
+                 begin
+                   Message(parser_e_interface_id_expected);
+                   { error recovery }
+                   consume(_ID);
+                   if try_to_consume(_EQ) then
+                     consume(_ID);
+                   exit;
+                 end
                else
                  { in case of a generic or specialized interface we need to use the
                    name of the def instead of the symbol, so that always the correct
@@ -1411,11 +1422,11 @@ implementation
               if pd.parast.symtablelevel>normal_function_level then
                 Message(parser_e_no_local_operator);
               if isclassmethod then
-              begin
-                include(pd.procoptions,po_classmethod);
-                { any class operator is also static }
-                include(pd.procoptions,po_staticmethod);
-              end;
+                begin
+                  include(pd.procoptions,po_classmethod);
+                  { any class operator is also static }
+                  include(pd.procoptions,po_staticmethod);
+                end;
               if token<>_ID then
                 begin
                    if not(m_result in current_settings.modeswitches) then

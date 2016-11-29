@@ -310,6 +310,7 @@ uses
         tmpparampos : tfileposinfo;
         namepart : string;
         prettynamepart : ansistring;
+        module : tmodule;
       begin
         result:=true;
         if genericdeflist=nil then
@@ -325,8 +326,12 @@ uses
         if assigned(parsedtype) then
           begin
             genericdeflist.Add(parsedtype);
-            specializename:='$'+parsedtype.fulltypename;
-            prettyname:=parsedtype.typesym.prettyname;
+            module:=find_module_from_symtable(parsedtype.owner);
+            if not assigned(module) then
+              internalerror(2016112801);
+            namepart:='_$'+hexstr(module.moduleid,8)+'$$'+parsedtype.unique_id_str;
+            specializename:='$'+namepart;
+            prettyname:=parsedtype.fullownerhierarchyname(true)+parsedtype.typesym.prettyname;
             if assigned(poslist) then
               begin
                 New(parampos);
@@ -336,7 +341,7 @@ uses
           end
         else
           begin
-            specializename:='';
+            specializename:='$';
             prettyname:='';
           end;
         while not (token in [_GT,_RSHARPBRACKET]) do
@@ -368,22 +373,23 @@ uses
                     else if (typeparam.resultdef.typ<>errordef) then
                       begin
                         genericdeflist.Add(typeparam.resultdef);
+                        module:=find_module_from_symtable(typeparam.resultdef.owner);
+                        if not assigned(module) then
+                          internalerror(2016112802);
+                        namepart:='_$'+hexstr(module.moduleid,8)+'$$'+typeparam.resultdef.unique_id_str;
                         { we use the full name of the type to uniquely identify it }
                         if (symtablestack.top.symtabletype=parasymtable) and
                             (symtablestack.top.defowner.typ=procdef) and
                             (typeparam.resultdef.owner=symtablestack.top) then
                           begin
                             { special handling for specializations inside generic function declarations }
-                            namepart:=tdef(symtablestack.top.defowner).unique_id_str;
-                            namepart:='genproc'+namepart+'_'+tdef(symtablestack.top.defowner).fullownerhierarchyname+'_'+tprocdef(symtablestack.top.defowner).procsym.realname+'_'+typeparam.resultdef.typename;
-                            prettynamepart:=tdef(symtablestack.top.defowner).fullownerhierarchyname+tprocdef(symtablestack.top.defowner).procsym.prettyname;
+                            prettynamepart:=tdef(symtablestack.top.defowner).fullownerhierarchyname(true)+tprocdef(symtablestack.top.defowner).procsym.prettyname;
                           end
                         else
                           begin
-                            namepart:=typeparam.resultdef.fulltypename;
-                            prettynamepart:=typeparam.resultdef.fullownerhierarchyname;
+                            prettynamepart:=typeparam.resultdef.fullownerhierarchyname(true);
                           end;
-                        specializename:=specializename+'$'+namepart;
+                        specializename:=specializename+namepart;
                         if not first then
                           prettyname:=prettyname+',';
                         prettyname:=prettyname+prettynamepart+typeparam.resultdef.typesym.prettyname;
@@ -717,6 +723,7 @@ uses
         ufinalspecializename : tidstring;
         prettyname : ansistring;
         generictypelist : tfphashobjectlist;
+        srsymtable,
         specializest : tsymtable;
         hashedid : thashedidstring;
         tempst : tglobalsymtable;
@@ -890,7 +897,17 @@ uses
           begin
             hashedid.id:=ufinalspecializename;
 
-            srsym:=tsym(specializest.findwithhash(hashedid));
+            if specializest.symtabletype=objectsymtable then
+              begin
+                { search also in parent classes }
+                if not assigned(current_genericdef) or (current_genericdef.typ<>objectdef) then
+                  internalerror(2016112901);
+                if not searchsym_in_class(tobjectdef(current_genericdef),tobjectdef(current_genericdef),ufinalspecializename,srsym,srsymtable,[]) then
+                  srsym:=nil;
+              end
+            else
+              srsym:=tsym(specializest.findwithhash(hashedid));
+
             if assigned(srsym) then
               begin
                 retrieve_genericdef_or_procsym(srsym,result,psym);
@@ -947,7 +964,10 @@ uses
                 { First a new sym so we can reuse this specialization and
                   references to this specialization can be handled }
                 if genericdef.typ=procdef then
-                  srsym:=cprocsym.create(finalspecializename)
+                  if assigned(psym) then
+                    srsym:=psym
+                  else
+                    srsym:=cprocsym.create(finalspecializename)
                 else
                   srsym:=ctypesym.create(finalspecializename,generrordef,true);
                 { insert the symbol only if we don't know already that we have

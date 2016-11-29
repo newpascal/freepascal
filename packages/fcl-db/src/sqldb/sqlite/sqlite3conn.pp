@@ -501,9 +501,13 @@ begin
                end;
       ftUnknown : DatabaseErrorFmt('Unknown or unsupported data type %s of column %s', [FD, FN]);
     end; // Case
-    // is column declared as NOT NULL ? (table name parameter (3rd) must be not nil)
+    // check if SQLite is compiled with SQLITE_ENABLE_COLUMN_METADATA
+    if Assigned(sqlite3_column_origin_name) then
+      CN := sqlite3_column_origin_name(st,i)
+    else
+      CN := nil;
     // check only for physical table columns (not computed)
-    CN := sqlite3_column_origin_name(st,i);
+    // is column declared as NOT NULL ? (table name parameter (3rd) must be not nil)
     if not (Assigned(CN) and (sqlite3_table_column_metadata(fhandle, sqlite3_column_database_name(st,i), sqlite3_column_table_name(st,i), CN, nil, nil, @NotNull, nil, nil) = SQLITE_OK)) then
       NotNull := 0;
     FieldDefs.Add(FN, FT, size1, size2, NotNull=1, false, i+1, CP_UTF8);
@@ -886,8 +890,8 @@ end;
 procedure TSQLite3Connection.UpdateIndexDefs(IndexDefs: TIndexDefs; TableName: string);
 var
   artableinfo, arindexlist, arindexinfo: TArrayStringArray;
-  il,ii: integer;
-  IndexName: string;
+  i,il,ii: integer;
+  DbName, IndexName: string;
   IndexOptions: TIndexOptions;
   PKFields, IXFields: TStrings;
 
@@ -908,14 +912,27 @@ begin
   IXFields:=TStringList.Create;
   IXFields.Delimiter:=';';
 
+  //check for multipart unquoted identifier: DatabaseName.TableName
+  if Pos('"',TableName) = 0 then
+    i := Pos('.',TableName)
+  else
+    i := 0;
+  if i>0 then
+    begin
+    DbName := Copy(TableName,1,i);
+    Delete(TableName,1,i);
+    end
+  else
+    DbName := '';
+
   //primary key fields; 5th column "pk" is zero for columns that are not part of PK
-  artableinfo := stringsquery('PRAGMA table_info('+TableName+');');
+  artableinfo := stringsquery('PRAGMA '+DbName+'table_info('+TableName+');');
   for ii:=low(artableinfo) to high(artableinfo) do
     if (high(artableinfo[ii]) >= 5) and (artableinfo[ii][5] >= '1') then
       PKFields.Add(artableinfo[ii][1]);
 
   //list of all table indexes
-  arindexlist:=stringsquery('PRAGMA index_list('+TableName+');');
+  arindexlist:=stringsquery('PRAGMA '+DbName+'index_list('+TableName+');');
   for il:=low(arindexlist) to high(arindexlist) do
     begin
     IndexName:=arindexlist[il][1];

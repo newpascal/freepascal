@@ -37,6 +37,7 @@ interface
         function first_ln_real: tnode; override;}
         function first_cos_real: tnode; override;
         function first_sin_real: tnode; override;
+        function first_int_real: tnode; override;
 
         procedure second_abs_real; override;
         procedure second_sqr_real; override;
@@ -45,6 +46,7 @@ interface
         procedure second_ln_real; override;}
         procedure second_cos_real; override;
         procedure second_sin_real; override;
+        procedure second_int_real; override;
         {procedure second_prefetch; override;
         procedure second_abs_long; override;}
       private
@@ -144,7 +146,7 @@ implementation
                 expectloc:=LOC_FPUREGISTER;
               fpu_soft,fpu_coldfire:
                 begin
-                  result:=inherited first_sin_real;
+                  result:=inherited first_cos_real;
                   exit;
                 end;
               else
@@ -153,6 +155,23 @@ implementation
             first_cos_real:=nil;
           end;
       end;
+
+    function t68kinlinenode.first_int_real : tnode;
+      begin
+        if (cs_fp_emulation in current_settings.moduleswitches) then
+          result:=inherited first_int_real
+        else
+          begin
+            case current_settings.fputype of
+              fpu_68881,fpu_coldfire:
+                expectloc:=LOC_FPUREGISTER;
+              else
+                internalerror(2016112701);
+            end;
+            first_int_real:=nil;
+          end;
+      end;
+
 
     procedure t68kinlinenode.second_abs_real;
       begin
@@ -191,14 +210,20 @@ implementation
 
     procedure t68kinlinenode.second_sin_real;
       begin
-        //current_asmdata.CurrAsmList.concat(tai_comment.create(strpnew('second_sqrt_real called!')));
+        //current_asmdata.CurrAsmList.concat(tai_comment.create(strpnew('second_sin_real called!')));
         second_do_operation(A_FSIN);
       end;
 
     procedure t68kinlinenode.second_cos_real;
       begin
-        //current_asmdata.CurrAsmList.concat(tai_comment.create(strpnew('second_sqrt_real called!')));
+        //current_asmdata.CurrAsmList.concat(tai_comment.create(strpnew('second_cos_real called!')));
         second_do_operation(A_FCOS);
+      end;
+
+    procedure t68kinlinenode.second_int_real;
+      begin
+        //current_asmdata.CurrAsmList.concat(tai_comment.create(strpnew('second_int_real called!')));
+        second_do_operation(A_FINTRZ);
       end;
 
     procedure t68kinlinenode.second_do_operation(op: TAsmOp);
