@@ -1476,10 +1476,9 @@ begin
 
   Fjs.WriteLn(Format('public static class %s extends %s.system.Set<%s,%s> {', [d.Name, JavaPackage, d.Name, d.ElType.Name]));
   Fjs.IncI;
-  Fjs.WriteLn(Format('protected byte Size() { return %d; }', [d.Size]));
-  Fjs.WriteLn(Format('protected int Base() { return %d; }', [d.Base]));
-  Fjs.WriteLn(Format('protected int ElMax() { return %d; }', [d.ElMax]));
-  Fjs.WriteLn(Format('protected int Ord(%s Element) { return Element.Ord(); }', [d.ElType.Name]));
+  Fjs.WriteLn(Format('@Override protected byte Size() { return %d; }', [d.Size]));
+  Fjs.WriteLn(Format('@Override protected int Base() { return %d; }', [d.Base]));
+  Fjs.WriteLn(Format('@Override protected int ElMax() { return %d; }', [d.ElMax]));
   Fjs.WriteLn(Format('public %s() { }', [d.Name]));
   Fjs.WriteLn(Format('public %s(%s... Elements) { super(Elements); }', [d.Name, d.ElType.Name]));
   Fjs.WriteLn(Format('public %0:s(%0:s... Elements) { super(Elements); }', [d.Name]));
@@ -1880,23 +1879,28 @@ begin
       Fjs.WriteLn;
 
       // Base class for Set
-      Fjs.WriteLn('public static class Set<TS extends Set<?,?>,TE extends Enum> {');
+      Fjs.WriteLn('private static abstract class BaseSet {');
       Fjs.IncI;
       Fjs.WriteLn('protected int Value = 0;');
-      Fjs.WriteLn('protected byte Size() { return 0; }');
-      Fjs.WriteLn('protected int Base() { return 0; }');
-      Fjs.WriteLn('protected int ElMax() { return 0; }');
-      Fjs.WriteLn('protected int Ord(TE Element) { return 0; }');
-      Fjs.WriteLn('protected int GetMask(TE Element) {');
-      Fjs.IncI;
-      Fjs.WriteLn('return 1 << (Ord(Element) - Base());');
+      Fjs.WriteLn('protected abstract byte Size();');
+      Fjs.WriteLn('protected abstract int Base();');
+      Fjs.WriteLn('protected abstract int ElMax();');
+      Fjs.WriteLn('public BaseSet() { }');
       Fjs.DecI;
       Fjs.WriteLn('}');
+
+      Fjs.WriteLn('public static abstract class Set<TS extends BaseSet,TE extends Enum> extends BaseSet {');
+      Fjs.IncI;
+      Fjs.WriteLn('protected int GetMask(TE Element) { return 1 << (Element.Ord() - Base()); }');
       Fjs.WriteLn('public Set() { }');
+      Fjs.WriteLn('@SuppressWarnings({"unchecked", "varargs"})');
       Fjs.WriteLn('public Set(TE... Elements) { Include(Elements); }');
+      Fjs.WriteLn('@SuppressWarnings({"unchecked", "varargs"})');
       Fjs.WriteLn('public Set(TS... Elements) { for (TS e : Elements) Include(e); }');
+      Fjs.WriteLn('@SuppressWarnings({"unchecked", "varargs"})');
       Fjs.WriteLn('public void Include(TE... Elements) { for (TE e: Elements) Value = Value | GetMask(e); }');
       Fjs.WriteLn('public void Include(TS s) { Value=Value | s.Value; }');
+      Fjs.WriteLn('@SuppressWarnings({"unchecked", "varargs"})');
       Fjs.WriteLn('public void Exclude(TE... Elements) { for (TE e: Elements) Value = Value & ~GetMask(e); }');
       Fjs.WriteLn('public void Exclude(TS s) { Value=Value & ~s.Value; }');
       Fjs.WriteLn('public void Assign(TS s) { Value=s.Value; }');
@@ -1904,7 +1908,7 @@ begin
       Fjs.WriteLn('public boolean Has(TE Element) { return (Value & GetMask(Element)) != 0; }');
       Fjs.WriteLn('public boolean IsEmpty() { return Value == 0; }');
       Fjs.WriteLn('public boolean equals(TS s) { return Value == s.Value; }');
-      Fjs.WriteLn('public boolean equals(TE Element) { return Value == Ord(Element); }');
+      Fjs.WriteLn('public boolean equals(TE Element) { return Value == Element.Ord(); }');
       Fjs.WriteLn('public boolean equals(int Element) { return Value == Element; }');
       Fjs.DecI;
       Fjs.WriteLn('}');
@@ -2232,7 +2236,7 @@ begin
           btString, btWideString:
             Result:=Format('_StringToJString(_env, _JNIString(%s))', [Result]);
           btBoolean:
-            Result:=Format('jboolean(LongBool(%s))', [Result]);
+            Result:=Format('(jboolean(%s) and 1)', [Result]);
           btChar:
             Result:=Format('jchar(widechar(%s))', [Result]);
           btWideChar:
@@ -2738,6 +2742,7 @@ begin
 
     Fps.WriteLn;
     Fps.WriteLn('uses');
+    Fps.WriteLn('{$ifdef unix} cthreads, {$endif}', 1);
     s:='';
     for i:=0 to p.Units.Count - 1 do begin
       ProcessRules(p.Units[i]);
@@ -2748,10 +2753,15 @@ begin
         continue;
       if s <> '' then
         s:=s + ', ';
+      if Length(s) >= 100 then begin
+        Fps.WriteLn(s, 1);
+        s:='';
+      end;
       s:=s + p.Units[i].Name;
     end;
-    Fps.WriteLn(s + ',', 1);
-    Fps.WriteLn('{$ifndef FPC} Windows, {$endif} {$ifdef unix} cthreads, {$endif} SysUtils, SyncObjs, jni;', 1);
+    if s <> '' then
+      Fps.WriteLn(s + ',', 1);
+    Fps.WriteLn('{$ifndef FPC} Windows, {$endif} SysUtils, SyncObjs, jni;', 1);
 
     // Types
     Fps.WriteLn;

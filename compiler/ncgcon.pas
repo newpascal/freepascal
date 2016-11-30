@@ -111,7 +111,7 @@ implementation
 {$endif ARM}
 
       begin
-        location_reset_ref(location,LOC_CREFERENCE,def_cgsize(resultdef),const_align(resultdef.alignment));
+        location_reset_ref(location,LOC_CREFERENCE,def_cgsize(resultdef),const_align(resultdef.alignment),[]);
         lastlabel:=nil;
         realait:=floattype2ait[tfloatdef(resultdef).floattype];
 {$ifdef ARM}
@@ -144,10 +144,6 @@ implementation
                     aitrealconst_s32bit :
                       begin
                         current_asmdata.asmlists[al_typedconsts].concat(tai_realconst.create_s32real(ts32real(value_real)));
-                        { range checking? }
-                        if floating_point_range_check_error and
-                           (tai_realconst(current_asmdata.asmlists[al_typedconsts].last).value.s32val=MathInf.Value) then
-                          Message(parser_e_range_check_error);
                       end;
 
                     aitrealconst_s64bit :
@@ -158,31 +154,16 @@ implementation
                         else
 {$endif ARM}
                           current_asmdata.asmlists[al_typedconsts].concat(tai_realconst.create_s64real(ts64real(value_real)));
-
-                        { range checking? }
-                        if floating_point_range_check_error and
-                           (tai_realconst(current_asmdata.asmlists[al_typedconsts].last).value.s64val=MathInf.Value) then
-                          Message(parser_e_range_check_error);
                      end;
 
                     aitrealconst_s80bit :
                       begin
                         current_asmdata.asmlists[al_typedconsts].concat(tai_realconst.create_s80real(value_real,tfloatdef(resultdef).size));
-
-                        { range checking? }
-                        if floating_point_range_check_error and
-                           (tai_realconst(current_asmdata.asmlists[al_typedconsts].last).value.s80val=MathInf.Value) then
-                          Message(parser_e_range_check_error);
                       end;
 {$ifdef cpufloat128}
                     aitrealconst_s128bit :
                       begin
                         current_asmdata.asmlists[al_typedconsts].concat(tai_realconst.create_s128real(value_real));
-
-                        { range checking? }
-                        if floating_point_range_check_error and
-                           (tai_realconst(current_asmdata.asmlists[al_typedconsts].last).value.s128val=MathInf.Value) then
-                          Message(parser_e_range_check_error);
                       end;
 {$endif cpufloat128}
 
@@ -393,7 +374,7 @@ implementation
            end
          else
            begin
-             location_reset_ref(location, LOC_CREFERENCE, def_cgsize(resultdef), const_align(strpointerdef.size));
+             location_reset_ref(location, LOC_CREFERENCE, def_cgsize(resultdef), const_align(strpointerdef.size), []);
              location.reference.symbol:=lab_str;
            end;
       end;
@@ -405,7 +386,7 @@ implementation
       begin
         reference_reset_symbol(href, lab_str,
           ctai_typedconstbuilder.get_string_symofs(tstringdef(resultdef).stringtype, winlikewidestring),
-          const_align(strpointerdef.size));
+          const_align(strpointerdef.size),[]);
         hlcg.a_loadaddr_ref_reg(current_asmdata.CurrAsmList, elementdef, strpointerdef, href, location.register)
       end;
 
@@ -445,7 +426,7 @@ implementation
       var
          entry       : PHashSetItem;
       begin
-        location_reset_ref(location,LOC_CREFERENCE,OS_NO,const_align(8));
+        location_reset_ref(location,LOC_CREFERENCE,OS_NO,const_align(8),[]);
         { const already used ? }
         if not assigned(lab_set) then
           begin
@@ -522,7 +503,7 @@ implementation
          entry       : PHashSetItem;
          datatcb     : ttai_typedconstbuilder;
       begin
-        location_reset_ref(location,LOC_CREFERENCE,OS_NO,const_align(16));
+        location_reset_ref(location,LOC_CREFERENCE,OS_NO,const_align(16),[]);
         lastlabel:=nil;
         { const already used ? }
         if not assigned(lab_set) then

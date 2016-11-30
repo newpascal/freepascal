@@ -52,6 +52,7 @@ interface
           procedure second_prefetch; virtual;
           procedure second_round_real; virtual;
           procedure second_trunc_real; virtual;
+          procedure second_int_real; virtual;
           procedure second_abs_long; virtual;
           procedure second_rox_sar; virtual;
           procedure second_bsfbsr; virtual;
@@ -121,6 +122,8 @@ implementation
               second_round_real;
             in_trunc_real:
               second_trunc_real;
+            in_int_real:
+              second_int_real;
             in_sqr_real:
               second_sqr_real;
             in_sqrt_real:
@@ -247,7 +250,9 @@ implementation
              lendef:=u32inttype
            else
              lendef:=ossinttype;
-           hlcg.reference_reset_base(href,left.resultdef,left.location.register,-lendef.size,lendef.alignment);
+           { volatility of the ansistring/widestring refers to the volatility of the
+             string pointer, not of the string data }
+           hlcg.reference_reset_base(href,left.resultdef,left.location.register,-lendef.size,lendef.alignment,[]);
            { if the string pointer is nil, the length is 0 -> reuse the register
              that originally held the string pointer for the length, so that we
              can keep the original nil/0 as length in that case }
@@ -485,6 +490,11 @@ implementation
         internalerror(20020718);
       end;
 
+    procedure tcginlinenode.second_int_real;
+      begin
+        internalerror(2016112702);
+      end;
+
     procedure tcginlinenode.second_sqr_real;
       begin
         internalerror(20020718);
@@ -593,7 +603,7 @@ implementation
         end
       else
         begin
-          location_reset_ref(location,LOC_REFERENCE,OS_ADDR,sizeof(pint));
+          location_reset_ref(location,LOC_REFERENCE,OS_ADDR,sizeof(pint),[]);
           location.reference.base:=frame_reg;
         end;
     end;
@@ -606,14 +616,14 @@ implementation
           begin
             location_reset(location,LOC_REGISTER,OS_ADDR);
             location.register:=cg.getaddressregister(current_asmdata.currasmlist);
-            reference_reset_base(frame_ref,NR_STACK_POINTER_REG,{current_procinfo.calc_stackframe_size}tg.lasttemp,sizeof(pint));
+            reference_reset_base(frame_ref,NR_STACK_POINTER_REG,{current_procinfo.calc_stackframe_size}tg.lasttemp,sizeof(pint),[]);
             cg.a_load_ref_reg(current_asmdata.currasmlist,OS_ADDR,OS_ADDR,frame_ref,location.register);
           end
         else
           begin
             location_reset(location,LOC_REGISTER,OS_ADDR);
             location.register:=cg.getaddressregister(current_asmdata.currasmlist);
-            reference_reset_base(frame_ref,current_procinfo.framepointer,sizeof(pint),sizeof(pint));
+            reference_reset_base(frame_ref,current_procinfo.framepointer,sizeof(pint),sizeof(pint),[]);
             cg.a_load_ref_reg(current_asmdata.currasmlist,OS_ADDR,OS_ADDR,frame_ref,location.register);
           end;
       end;

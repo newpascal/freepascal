@@ -192,6 +192,21 @@ procedure DivMod(Dividend: LongInt; Divisor: Word; var Result, Remainder: SmallI
 procedure DivMod(Dividend: DWord; Divisor: DWord; var Result, Remainder: DWord);
 procedure DivMod(Dividend: LongInt; Divisor: LongInt; var Result, Remainder: LongInt);
 
+{ Floating point modulo}
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function FMod(const a, b: Single): Single;inline;overload;
+{$endif FPC_HAS_TYPE_SINGLE}
+
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function FMod(const a, b: Double): Double;inline;overload;
+{$endif FPC_HAS_TYPE_DOUBLE}
+
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function FMod(const a, b: Extended): Extended;inline;overload;
+{$endif FPC_HAS_TYPE_EXTENDED}
+
+operator mod(const a,b:float) c:float;inline;
+
 // Sign functions
 Type
   TValueSign = -1..1;
@@ -732,7 +747,7 @@ function radtocycle(rad : float) : float;inline;
 Function DegNormalize(deg : single) : single; 
 
 begin
-  Result:=Deg-Trunc(Deg/360)*360;
+  Result:=Deg-Int(Deg/360)*360;
   If Result<0 then Result:=Result+360;
 end;
 {$ENDIF}
@@ -740,7 +755,7 @@ end;
 Function DegNormalize(deg : double) : double; inline;
 
 begin
-  Result:=Deg-Trunc(Deg/360)*360;
+  Result:=Deg-Int(Deg/360)*360;
   If (Result<0) then Result:=Result+360;
 end;
 {$ENDIF}
@@ -748,7 +763,7 @@ end;
 Function DegNormalize(deg : extended) : extended; inline;
 
 begin
-  Result:=Deg-Trunc(Deg/360)*360;
+  Result:=Deg-Int(Deg/360)*360;
   If Result<0 then Result:=Result+360;
 end;
 {$ENDIF}
@@ -2364,7 +2379,7 @@ begin
   if Dividend < 0 then
     begin
       { Use DivMod with >=0 dividend }
-	  Dividend:=-Dividend;
+      Dividend:=-Dividend;
       { The documented behavior of Pascal's div/mod operators and DivMod
         on negative dividends is to return Result closer to zero and
         a negative Remainder. Which means that we can just negate both
@@ -2374,12 +2389,38 @@ begin
     end
   else
     begin
-	  Result:=Dividend Div Divisor;
+      Result:=Dividend Div Divisor;
       Remainder:=Dividend-(Result*Divisor);
-	end;
+    end;
 end;
 {$endif FPC_MATH_HAS_DIVMOD}
 
+{ Floating point modulo}
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function FMod(const a, b: Single): Single;inline;overload;
+begin
+  result:= a-b * Int(a/b);
+end;
+{$endif FPC_HAS_TYPE_SINGLE}
+
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function FMod(const a, b: Double): Double;inline;overload;
+begin
+  result:= a-b * Int(a/b);
+end;
+{$endif FPC_HAS_TYPE_DOUBLE}
+
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function FMod(const a, b: Extended): Extended;inline;overload;
+begin
+  result:= a-b * Int(a/b);
+end;
+{$endif FPC_HAS_TYPE_EXTENDED}
+
+operator mod(const a,b:float) c:float;inline;
+begin
+  c:= a-b * Int(a/b);
+end;
 
 function ifthen(val:boolean;const iftrue:integer; const iffalse:integer= 0) :integer;
 begin
@@ -2512,9 +2553,9 @@ var
 begin
   RV := IntPower(10, -Digits);
   if AValue < 0 then
-    Result := Trunc((AValue*RV) - 0.5)/RV
+    Result := Int((AValue*RV) - 0.5)/RV
   else
-    Result := Trunc((AValue*RV) + 0.5)/RV;
+    Result := Int((AValue*RV) + 0.5)/RV;
 end;
 {$endif}
 
@@ -2527,9 +2568,9 @@ var
 begin
   RV := IntPower(10, -Digits);
   if AValue < 0 then
-    Result := Trunc((AValue*RV) - 0.5)/RV
+    Result := Int((AValue*RV) - 0.5)/RV
   else
-    Result := Trunc((AValue*RV) + 0.5)/RV;
+    Result := Int((AValue*RV) + 0.5)/RV;
 end;
 {$endif}
 
@@ -2542,9 +2583,9 @@ var
 begin
   RV := IntPower(10, -Digits);
   if AValue < 0 then
-    Result := Trunc((AValue*RV) - 0.5)/RV
+    Result := Int((AValue*RV) - 0.5)/RV
   else
-    Result := Trunc((AValue*RV) + 0.5)/RV;
+    Result := Int((AValue*RV) + 0.5)/RV;
 end;
 {$endif}
 

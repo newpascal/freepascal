@@ -114,7 +114,7 @@ interface
           function  needs_inittable : boolean;override;
           function  rtti_mangledname(rt:trttitype):TSymStr;override;
           function  OwnerHierarchyName: string; override;
-          function  fullownerhierarchyname:TSymStr;override;
+          function  fullownerhierarchyname(skipprocparams:boolean):TSymStr;override;
           function  needs_separate_initrtti:boolean;override;
           function  in_currentunit: boolean;
           { regvars }
@@ -583,7 +583,7 @@ interface
 
        tprocnameoption = (pno_showhidden, pno_proctypeoption, pno_paranames,
          pno_ownername, pno_noclassmarker, pno_noleadingdollar,
-         pno_mangledname);
+         pno_mangledname, pno_noparams);
        tprocnameoptions = set of tprocnameoption;
        tproccopytyp = (pc_normal,
                        { always creates a top-level function, removes all
@@ -1892,16 +1892,17 @@ implementation
         until tmp=nil;
       end;
 
-    function tstoreddef.fullownerhierarchyname: TSymStr;
+    function tstoreddef.fullownerhierarchyname(skipprocparams:boolean): TSymStr;
       var
         lastowner: tsymtable;
         tmp: tdef;
+        pno: tprocnameoptions;
       begin
 {$ifdef symansistr}
-        if _fullownerhierarchyname<>'' then
+        if not skipprocparams and (_fullownerhierarchyname<>'') then
           exit(_fullownerhierarchyname);
 {$else symansistr}
-        if assigned(_fullownerhierarchyname) then
+        if not skipprocparams and assigned(_fullownerhierarchyname) then
           exit(_fullownerhierarchyname^);
 {$endif symansistr}
         { the def can only reside inside structured types or
@@ -1921,16 +1922,23 @@ implementation
             result:=tabstractrecorddef(tmp).objrealname^+'.'+result
           else
             if tmp.typ=procdef then
-              result:=tprocdef(tmp).customprocname([pno_paranames,pno_proctypeoption])+'.'+result;
+              begin
+                pno:=[pno_paranames,pno_proctypeoption];
+                if skipprocparams then
+                  include(pno,pno_noparams);
+                result:=tprocdef(tmp).customprocname(pno)+'.'+result;
+              end;
         until tmp=nil;
         { add the unit name }
         if assigned(lastowner) and
            assigned(lastowner.realname) then
           result:=lastowner.realname^+'.'+result;
+        if not skipprocparams then
+          { don't store the name in this case }
 {$ifdef symansistr}
-        _fullownerhierarchyname:=result;
+          _fullownerhierarchyname:=result;
 {$else symansistr}
-        _fullownerhierarchyname:=stringdup(result);
+          _fullownerhierarchyname:=stringdup(result);
 {$endif symansistr}
       end;
 
@@ -5774,7 +5782,9 @@ implementation
                   if (pno_ownername in pno) and
                      assigned(struct) then
                     s:=s+struct.RttiName+'.';
-                  s:=s+arraytokeninfo[t].str+typename_paras(pno);
+                  s:=s+arraytokeninfo[t].str;
+                  if not (pno_noparams in pno) then
+                    s:=s+typename_paras(pno);
                   break;
                 end;
           end
@@ -5815,7 +5825,9 @@ implementation
             if (pno_noleadingdollar in pno) and
                (rn[1]='$') then
               delete(rn,1,1);
-            s:=s+rn+typename_paras(pno);
+            s:=s+rn;
+            if not (pno_noparams in pno) then
+              s:=s+typename_paras(pno);
           end;
         if not(proctypeoption in [potype_constructor,potype_destructor,
              potype_class_constructor,potype_class_destructor]) and
@@ -6404,9 +6416,13 @@ implementation
 
     function tprocvardef.size : asizeint;
       begin
-         if ((po_methodpointer in procoptions) or
-             is_nested_pd(self)) and
-            not(po_addressonly in procoptions) then
+         { we return false for is_addressonly for a block (because it's not a
+           simple pointer to a function), but they are handled as implicit
+           pointers to a datastructure that contains everything ->
+           voidpointertype.size instead of voidcodepointertype.size }
+         if po_is_block in procoptions then
+           size:=voidpointertype.size
+         else if not is_addressonly then
            begin
              if is_nested_pd(self) then
                size:=voidcodepointertype.size+parentfpvoidpointertype.size
