@@ -3403,8 +3403,7 @@ const
             - proc declared in interface of unit (or in class/record/object)
               and defined in implementation; here the fwpd might contain
               constraints while currpd must only contain undefineddefs
-            - forward declaration in implementation; this case is not supported
-              right now }
+            - forward declaration in implementation }
           foundretdef:=false;
           for i:=0 to fwpd.genericparas.count-1 do
             begin
@@ -3427,7 +3426,7 @@ const
             exit;
           if not foundretdef then
             begin
-              if tstoreddef(fwpd.returndef).is_specialization and tstoreddef(currpd.returndef).is_specialization then
+              if (df_specialization in tstoreddef(fwpd.returndef).defoptions) and (df_specialization in tstoreddef(currpd.returndef).defoptions) then
                 { for specializations we're happy with equal defs instead of exactly the same defs }
                 result:=equal_defs(fwpd.returndef,currpd.returndef)
               else
