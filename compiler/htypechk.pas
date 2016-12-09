@@ -79,7 +79,6 @@ interface
         procedure collect_overloads_in_struct(structdef:tabstractrecorddef;ProcdefOverloadList:TFPObjectList;searchhelpers,anoninherited:boolean;spezcontext:tspecializationcontext);
         procedure collect_overloads_in_units(ProcdefOverloadList:TFPObjectList; objcidcall,explicitunit: boolean;spezcontext:tspecializationcontext);
         procedure create_candidate_list(ignorevisibility,allowdefaultparas,objcidcall,explicitunit,searchhelpers,anoninherited:boolean;spezcontext:tspecializationcontext);
-        procedure calc_distance(st_root:tsymtable;objcidcall: boolean);
         function  proc_add(st:tsymtable;pd:tprocdef;objcidcall: boolean):pcandidate;
         function  maybe_specialize(var pd:tprocdef;spezcontext:tspecializationcontext):boolean;
       public
@@ -2595,69 +2594,9 @@ implementation
               end;
           end;
 
-        calc_distance(st,objcidcall);
-
         ProcdefOverloadList.Free;
       end;
 
-    procedure tcallcandidates.calc_distance(st_root: tsymtable; objcidcall: boolean);
-      var
-        pd:tprocdef;
-        candidate:pcandidate;
-        st: tsymtable;
-      begin
-        st:=nil;
-        if (st_root = nil) or (st_root.defowner = nil) or (st_root.defowner.typ <> objectdef) then
-          st := st_root
-        else
-          repeat
-            candidate := FCandidateProcs;
-
-            while candidate <> nil do
-              begin
-                pd:=candidate^.data;
-                if pd.owner = st_root then
-                begin
-                  st:=st_root;
-                  break;
-                end;
-                candidate := candidate^.next;
-              end;
-            if st=nil then
-              begin
-                if st_root.defowner=nil then
-                  Internalerror(201605301);
-
-                if tobjectdef(st_root.defowner).childof = nil then
-                  begin
-                    st:=st_root;
-                    break;
-                  end;
-
-                st_root:=tobjectdef(st_root.defowner).childof.symtable;
-              end;
-          until st<>nil;
-
-        candidate:=FCandidateProcs;
-        while candidate <> nil do
-          begin
-            pd:=candidate^.data;
-            { Give a small penalty for overloaded methods not in
-              defined the current class/unit }
-            {  when calling Objective-C methods via id.method, then the found
-               procsym will be inside an arbitrary ObjectSymtable, and we don't
-               want togive the methods of that particular objcclass precedence over
-               other methods, so instead check against the symtable in which this
-               objcclass is defined }
-            if objcidcall then
-              st:=st.defowner.owner;
-
-            if (st<>pd.owner) then
-              candidate^.ordinal_distance:=candidate^.ordinal_distance+1.0;
-
-          candidate:=candidate^.next;
-        end;
-      end;
 
     function tcallcandidates.proc_add(st:tsymtable;pd:tprocdef;objcidcall: boolean):pcandidate;
       var
@@ -2686,6 +2625,17 @@ implementation
                dec(result^.firstparaidx,defaultparacnt);
              end;
          end;
+        { Give a small penalty for overloaded methods not in
+          defined the current class/unit }
+        {  when calling Objective-C methods via id.method, then the found
+           procsym will be inside an arbitrary ObjectSymtable, and we don't
+           want togive the methods of that particular objcclass precedence over
+           other methods, so instead check against the symtable in which this
+           objcclass is defined }
+        if objcidcall then
+          st:=st.defowner.owner;
+        if (st<>pd.owner) then
+          result^.ordinal_distance:=result^.ordinal_distance+1.0;
       end;
 
 
