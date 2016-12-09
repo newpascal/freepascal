@@ -747,7 +747,7 @@ implementation
           optstr:=optstr+' -enable-unsafe-fp-math -enable-fp-mad -fp-contract=fast';
         { smart linking }
         if cs_create_smart in current_settings.moduleswitches then
-          optstr:=optstr+' -fdata-sections -fcode-sections';
+          optstr:=optstr+' -data-sections -function-sections';
         { pic }
         if cs_create_pic in current_settings.moduleswitches then
           optstr:=optstr+' -relocation-model=pic'
@@ -831,8 +831,7 @@ implementation
 
     procedure TLLVMAssember.WriteRealConst(hp: tai_realconst; do_line: boolean);
       begin
-        if do_line and
-           (fdecllevel=0) then
+        if fdecllevel=0 then
           begin
             case tai_realconst(hp).realtyp of
               aitrealconst_s32bit:
@@ -849,19 +848,20 @@ implementation
               else
                 internalerror(2014050604);
             end;
+            internalerror(2016120202);
           end;
         case hp.realtyp of
           aitrealconst_s32bit:
-            writer.AsmWriteln(llvmdoubletostr(hp.value.s32val));
+            writer.AsmWrite(llvmdoubletostr(hp.value.s32val));
           aitrealconst_s64bit:
             writer.AsmWriteln(llvmdoubletostr(hp.value.s64val));
 {$if defined(cpuextended) and defined(FPC_HAS_TYPE_EXTENDED)}
           aitrealconst_s80bit:
-            writer.AsmWriteln(llvmextendedtostr(hp.value.s80val));
+            writer.AsmWrite(llvmextendedtostr(hp.value.s80val));
 {$endif defined(cpuextended)}
           aitrealconst_s64comp:
             { handled as int64 most of the time in llvm }
-            writer.AsmWriteln(tostr(round(hp.value.s64compval)));
+            writer.AsmWrite(tostr(round(hp.value.s64compval)));
           else
             internalerror(2014062401);
         end;
@@ -873,7 +873,7 @@ implementation
         consttyp: taiconst_type;
       begin
         if fdecllevel=0 then
-          writer.AsmWrite(asminfo^.comment+' const ');
+          internalerror(2016120203);
         consttyp:=hp.consttype;
         case consttyp of
           aitconst_got,
@@ -916,8 +916,11 @@ implementation
                 writer.AsmWrite('zeroinitializer')
               else
                 writer.AsmWrite(tostr(hp.value));
+{
+              // activate in case of debugging IE 2016120203
               if fdecllevel=0 then
                 writer.AsmLn;
+}
             end;
           else
             internalerror(200704251);
@@ -939,7 +942,7 @@ implementation
                writer.AsmWrite(' internal');
              AB_GLOBAL,
              AB_INDIRECT:
-               writer.AsmWrite('');
+               ;
              AB_WEAK_EXTERNAL:
                writer.AsmWrite(' extern_weak');
              AB_PRIVATE_EXTERN:
@@ -1113,7 +1116,7 @@ implementation
           ait_string :
             begin
               if fdecllevel=0 then
-                writer.AsmWrite(asminfo^.comment);
+                internalerror(2016120201);
               writer.AsmWrite('c"');
               for i:=1 to tai_string(hp).len do
                begin
@@ -1129,7 +1132,7 @@ implementation
                  end;
                  writer.AsmWrite(s);
                end;
-              writer.AsmWriteLn('"');
+              writer.AsmWrite('"');
             end;
 
           ait_label :
@@ -1193,6 +1196,8 @@ implementation
                   writer.AsmWrite(' =');
                   if ldf_weak in taillvmdecl(hp).flags then
                     writer.AsmWrite(' weak');
+                  if ldf_appending in taillvmdecl(hp).flags then
+                    writer.AsmWrite(' appending');
                   WriteLinkageVibilityFlags(taillvmdecl(hp).namesym.bind);
                   writer.AsmWrite(' ');
                   if (ldf_tls in taillvmdecl(hp).flags) then
@@ -1240,9 +1245,16 @@ implementation
                         writer.AsmWrite('"');
                       end;
                   end;
-                  { alignment }
-                  writer.AsmWrite(', align ');
-                  writer.AsmWriteln(tostr(taillvmdecl(hp).alignment));
+                  { sections whose name starts with 'llvm.' are for LLVM
+                    internal use and don't have an alignment }
+                  if pos('llvm.',taillvmdecl(hp).secname)<>1 then
+                    begin
+                      { alignment }
+                      writer.AsmWrite(', align ');
+                      writer.AsmWriteln(tostr(taillvmdecl(hp).alignment));
+                    end
+                  else
+                    writer.AsmLn;
                 end;
             end;
           ait_llvmalias:
