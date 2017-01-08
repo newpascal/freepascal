@@ -1123,7 +1123,7 @@ implementation
              strictly related to RecordRTTI procedure in rtti.inc (directly 
              related to RTTIRecordRttiInfoToInitInfo function) }
            if (rt=initrtti) then
-             tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype);
+             tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype)
            else
              begin
                { point to more optimal init table }
