@@ -35,6 +35,9 @@ unit ag68kvasm;
 
   type
     tm68kvasm = class(Tm68kGNUassembler)
+    protected
+      function sectionattrs(atype:TAsmSectiontype):string; override;
+    public
       constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean); override;
       function MakeCmdLine: TCmdStr; override;
     end;
@@ -60,6 +63,24 @@ unit ag68kvasm;
         InstrWriter := Tm68kInstrWriter.create(self);
       end;
 
+    function tm68kvasm.sectionattrs(atype:TAsmSectiontype):string;
+      begin
+        case atype of
+          sec_code, sec_fpc, sec_init, sec_fini:
+            result:='acrx';
+          sec_data:
+            result:='adrw';
+          sec_rodata, sec_rodata_norel:
+            result:='adr';
+          sec_bss, sec_threadvar:
+            result:='aurw';
+          sec_stab, sec_stabstr:
+            result:='dr';
+          else
+            result:='';
+        end;
+      end;
+
     function tm68kvasm.MakeCmdLine: TCmdStr;
       var
         objtype: string;
@@ -67,8 +88,10 @@ unit ag68kvasm;
         result:=asminfo^.asmcmd;
 
         case target_info.system of
-          system_m68k_amiga: objtype:='-Fhunk';
-          system_m68k_atari: objtype:='-Fvobj'; // fix me?
+          { a.out doesn't support named sections }
+          system_m68k_amiga: objtype:='-Felf';
+          { atari never had a standard object format, a.out is limited, vasm/vlink author recommends vobj }
+          system_m68k_atari: objtype:='-Fvobj';
           system_m68k_linux: objtype:='-Felf';
         else
           internalerror(2016052601);

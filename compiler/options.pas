@@ -1997,6 +1997,11 @@ begin
                            include(init_settings.moduleswitches,cs_support_macro);
                        'o' : //an alternative to -Mtp
                          SetCompileMode('TP',true);
+                       'r' :
+                         If UnsetBool(More, j, opt, false) then
+                           exclude(init_settings.globalswitches,cs_transparent_file_names)
+                         else
+                           include(init_settings.globalswitches,cs_transparent_file_names);
 {$ifdef gpc_mode}
                        'p' : //an alternative to -Mgpc
                          SetCompileMode('GPC',true);
@@ -2301,6 +2306,8 @@ begin
                       end;
                     'p':
                       begin
+{$push}
+{$warn 6018 off} { Unreachable code due to compile time evaluation }
                         if (target_info.system in systems_embedded) and
                                                          ControllerSupport then
                           begin
@@ -2311,6 +2318,7 @@ begin
                           end
                         else
                           IllegalPara(opt);
+{$pop}
                       end;
                     'P':
                       begin
@@ -3080,9 +3088,10 @@ begin
   else
     features:=features+target_unsup_features;
 
-{$ifdef hasamiga}
-   { enable vlink as default linker on Amiga/MorphOS, but not for cross compilers (for now) }
-   if target_info.system in [system_m68k_amiga,system_powerpc_amiga,system_powerpc_morphos] then
+{$if defined(atari) or defined(hasamiga)}
+   { enable vlink as default linker on Atari, Amiga, and MorphOS, but not for cross compilers (for now) }
+   if target_info.system in [system_m68k_amiga,system_m68k_atari,
+                             system_powerpc_amiga,system_powerpc_morphos] then
      include(init_settings.globalswitches,cs_link_vlink);
 {$endif}
 end;
@@ -4108,21 +4117,24 @@ begin
     if i in features then
       def_system_macro('FPC_HAS_FEATURE_'+featurestr[i]);
 
-   if ControllerSupport and (target_info.system in systems_embedded) and
-     (init_settings.controllertype<>ct_none) then
-     begin
-       with embedded_controllers[init_settings.controllertype] do
-         begin
-           set_system_macro('FPC_FLASHBASE',tostr(flashbase));
-           set_system_macro('FPC_FLASHSIZE',tostr(flashsize));
-           set_system_macro('FPC_SRAMBASE',tostr(srambase));
-           set_system_macro('FPC_SRAMSIZE',tostr(sramsize));
-           set_system_macro('FPC_EEPROMBASE',tostr(eeprombase));
-           set_system_macro('FPC_EEPROMSIZE',tostr(eepromsize));
-           set_system_macro('FPC_BOOTBASE',tostr(bootbase));
-           set_system_macro('FPC_BOOTSIZE',tostr(bootsize));
-         end;
-     end;
+{$push}
+{$warn 6018 off} { Unreachable code due to compile time evaluation }
+  if ControllerSupport and (target_info.system in systems_embedded) and
+    (init_settings.controllertype<>ct_none) then
+    begin
+      with embedded_controllers[init_settings.controllertype] do
+        begin
+          set_system_macro('FPC_FLASHBASE',tostr(flashbase));
+          set_system_macro('FPC_FLASHSIZE',tostr(flashsize));
+          set_system_macro('FPC_SRAMBASE',tostr(srambase));
+          set_system_macro('FPC_SRAMSIZE',tostr(sramsize));
+          set_system_macro('FPC_EEPROMBASE',tostr(eeprombase));
+          set_system_macro('FPC_EEPROMSIZE',tostr(eepromsize));
+          set_system_macro('FPC_BOOTBASE',tostr(bootbase));
+          set_system_macro('FPC_BOOTSIZE',tostr(bootsize));
+        end;
+    end;
+{$pop}
 
   option.free;
   Option:=nil;

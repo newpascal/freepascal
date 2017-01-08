@@ -1315,7 +1315,7 @@ begin
   else
     begin
     if StringCodePage(AValue) <> FCodePage then
-      SetCodePage(AValue, FCodePage, True);
+      SetCodePage(AValue, FCodePage, FCodePage<>CP_NONE);
     if DataSize <= dsMaxStringSize then
       begin
       if FTransliterate then
@@ -3217,7 +3217,7 @@ procedure TMemoField.SetAsAnsiString(const AValue: AnsiString);
 var s: RawByteString;
 begin
   s := AValue;
-  SetCodePage(s, FCodePage, True);
+  SetCodePage(s, FCodePage, FCodePage<>CP_NONE);
   inherited SetAsAnsiString(s);
 end;
 
@@ -3232,10 +3232,12 @@ begin
 end;
 
 function TMemoField.GetAsUTF8String: UTF8String;
+var s: RawByteString;
 begin
-  Result := inherited GetAsAnsiString;
-  SetCodePage(RawByteString(Result), FCodePage, False);
-  SetCodePage(RawByteString(Result), CP_UTF8, True);
+  s := inherited GetAsAnsiString;
+  SetCodePage(s, FCodePage, False);
+  SetCodePage(s, CP_UTF8, True);
+  Result := s;
 end;
 
 procedure TMemoField.SetAsUTF8String(const AValue: UTF8String);
@@ -3483,7 +3485,7 @@ procedure TFields.Changed;
 
 begin
   // Removed FDataSet.Active check, needed for Persistent fields (see bug ID 30954)
-  if (FDataSet <> nil) and not (csDestroying in FDataSet.ComponentState)  then
+  if (FDataSet <> nil) and not (csDestroying in FDataSet.ComponentState) then
     FDataSet.DataEvent(deFieldListChange, 0);
   If Assigned(FOnChange) then
     FOnChange(Self);

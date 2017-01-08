@@ -75,8 +75,8 @@ const
   otUWord     = 3;
   otSLong     = 4;
   otULong     = 5;
-  otSLongLong = 6;
-  otULongLong = 7;
+  otSQWord    = 6;
+  otUQWord    = 7;
 
   ftSingle   = 0;
   ftDouble   = 1;
@@ -105,6 +105,10 @@ const
   pfReference= 16;
   pfOut      = 32;
   pfConstRef = 64;
+  pfHidden   = 128;
+  pfHigh     = 256;
+  pfSelf     = 512;
+  pfVmt      = 1024;
 
   unknown_level         = 0;
   main_program_level    = 1;

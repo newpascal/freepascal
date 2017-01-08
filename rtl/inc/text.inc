@@ -210,7 +210,7 @@ Begin
 {$endif FPC_HAS_FEATURE_ANSISTRINGS}
 {$endif FPC_HAS_CPSTRING}
   FileFunc(TextRec(t).OpenFunc)(TextRec(t));
-  { reset the mode to closed when an error has occured }
+  { reset the mode to closed when an error has occurred }
   if InOutRes<>0 then
    TextRec(t).mode:=fmClosed;
 End;
@@ -651,6 +651,23 @@ begin
   assign(t,chr((nr mod 16)+65));
 {$endif FPC_HAS_FEATURE_COMMANDARGS}
 end;
+
+
+Procedure fpc_textinit_filename_iso(var t : Text;nr : DWord;const filename : string);compilerproc;
+begin
+{$ifdef FPC_HAS_FEATURE_COMMANDARGS}
+  if paramstr(nr)='' then
+    assign(t,filename+'.txt')
+  else
+    assign(t,paramstr(nr));
+{$else FPC_HAS_FEATURE_COMMANDARGS}
+  { primitive workaround for targets supporting no command line arguments,
+    invent some file name, try to avoid complex procedures like concating strings which might
+    pull-in bigger parts of the rtl }
+  assign(t,chr((nr mod 16)+65));
+{$endif FPC_HAS_FEATURE_COMMANDARGS}
+end;
+
 
 
 Procedure fpc_textclose_iso(var t : Text);compilerproc;

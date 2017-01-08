@@ -178,11 +178,18 @@ implementation
               location_copy(location,left.location);
               newsize:=def_cgsize(resultdef);
               { change of size? change sign only if location is LOC_(C)REGISTER? Then we have to sign/zero-extend }
-              if (tcgsize2size[newsize]<>tcgsize2size[left.location.size]) or
+              if (tcgsize2size[newsize]>tcgsize2size[left.location.size]) or
                  ((newsize<>left.location.size) and (location.loc in [LOC_REGISTER,LOC_CREGISTER])) then
                 hlcg.location_force_reg(current_asmdata.CurrAsmList,location,left.resultdef,resultdef,true)
               else
-                location.size:=newsize;
+                begin
+                  location.size:=newsize;
+                  if (location.loc in [LOC_REFERENCE,LOC_CREFERENCE]) then
+                    begin
+                      inc(location.reference.offset,TCGSize2Size[left.location.size]-TCGSize2Size[location.size]);
+                      location.reference.alignment:=newalignment(location.reference.alignment,TCGSize2Size[left.location.size]-TCGSize2Size[location.size]);
+                    end;
+                end;
               exit;
            end;
 
@@ -280,13 +287,13 @@ implementation
                    { unsigned }
                    cg.a_load_const_reg(current_asmdata.CurrAsmList,OS_32,0,location.register64.reghi);
                end
-            else
-              begin
-                location.register:=cg.getintregister(current_asmdata.CurrAsmList,newsize);
-                cg.g_flags2reg(current_asmdata.CurrAsmList,newsize,resflags,location.register);
-                if (is_cbool(resultdef)) then
-                  cg.a_op_reg_reg(current_asmdata.CurrAsmList,OP_NEG,newsize,location.register,location.register);
-              end
+             else
+               begin
+                 location.register:=cg.getintregister(current_asmdata.CurrAsmList,newsize);
+                 cg.g_flags2reg(current_asmdata.CurrAsmList,newsize,resflags,location.register);
+                 if (is_cbool(resultdef)) then
+                   cg.a_op_reg_reg(current_asmdata.CurrAsmList,OP_NEG,newsize,location.register,location.register);
+               end
            end;
       end;
 

@@ -139,6 +139,10 @@ unit paramgr;
           function parseparaloc(parasym : tparavarsym;const s : string) : boolean;virtual;
           function parsefuncretloc(p : tabstractprocdef; const s : string) : boolean;virtual;
 
+          { Convert a list of CGParaLocation entries to a RTTIParaLoc array that
+            can be written by ncgrtti }
+          function cgparalocs_to_rttiparalocs(paralocs:pcgparalocation):trttiparalocs;
+
           { allocate room for parameters on the stack in the entry code? }
           function use_fixed_stack: boolean;
           { whether stack pointer can be changed in the middle of procedure }
@@ -157,6 +161,11 @@ unit paramgr;
             for which the def is paradef and the integer length is restlen.
             fullsize is true if restlen equals the full paradef size }
           function get_paraloc_def(paradef: tdef; restlen: aint; fullsize: boolean): tdef;
+
+          { convert a single CGParaLocation to a RTTIParaLoc; the method *might*
+            be overriden by targets to provide backwards compatibility with
+            older versions in case register indices changed }
+          function cgparaloc_to_rttiparaloc(paraloc:pcgparalocation):trttiparaloc;virtual;
        end;
 
 
@@ -433,7 +442,10 @@ implementation
               LOC_REGISTER :
                 begin
                   if (vo_has_explicit_paraloc in parasym.varoptions) and (paraloc^.loc = LOC_REGISTER) then
-                    newparaloc^.register:=paraloc^.register
+                    if getregtype(paraloc^.register) = R_ADDRESSREGISTER then
+                      newparaloc^.register:=cg.getaddressregister(list)
+                    else
+                      newparaloc^.register:=cg.getintregister(list,paraloc^.size)
                   else
                     begin
                       {$ifdef cpu_uses_separate_address_registers}
@@ -619,8 +631,8 @@ implementation
           is always returned in param.
           Furthermore, any managed type is returned in param, in order to avoid
           its finalization on exception at callee side. }
-        if (tf_safecall_exceptions in target_info.flags) and
-           (pd.proccalloption=pocall_safecall) or
+        if ((tf_safecall_exceptions in target_info.flags) and
+            (pd.proccalloption=pocall_safecall)) or
            (
              (pd.proctypeoption=potype_constructor)and
              (
@@ -664,6 +676,71 @@ implementation
           InternalError(2013060101);
         pd.init_paraloc_info(callerside);
         cgpara:=tparavarsym(pd.paras[nr-1]).paraloc[callerside].getcopy;
+      end;
+
+
+    function tparamanager.cgparalocs_to_rttiparalocs(paralocs:pcgparalocation):trttiparalocs;
+      var
+        c : longint;
+        tmploc : pcgparalocation;
+      begin
+        c:=0;
+        tmploc:=paralocs;
+        while assigned(tmploc) do
+          begin
+            inc(c);
+            tmploc:=tmploc^.next;
+          end;
+
+        setlength(result,c);
+
+        c:=0;
+        tmploc:=paralocs;
+        while assigned(tmploc) do
+          begin
+            result[c]:=cgparaloc_to_rttiparaloc(tmploc);
+            inc(c);
+            tmploc:=tmploc^.next;
+          end;
+      end;
+
+
+    function tparamanager.cgparaloc_to_rttiparaloc(paraloc:pcgparalocation):trttiparaloc;
+      var
+        reg : tregisterrec;
+      begin
+        if paraloc^.Loc=LOC_REFERENCE then
+          begin
+            reg:=tregisterrec(paraloc^.reference.index);
+            result.offset:=paraloc^.reference.offset;
+            result.loctype:=$80;
+          end
+        else
+          begin
+            reg:=tregisterrec(paraloc^.register);
+            { use sign extension }
+            result.offset:=paraloc^.shiftval;
+            result.loctype:=$00;
+          end;
+        case reg.regtype of
+          R_INTREGISTER,
+          R_FPUREGISTER,
+          R_MMXREGISTER,
+          R_MMREGISTER,
+          R_SPECIALREGISTER,
+          R_ADDRESSREGISTER:
+            begin
+              result.loctype:=result.loctype or ord(reg.regtype);
+              result.regsub:=ord(reg.subreg);
+              result.regindex:=reg.supreg;
+            end;
+          else
+            begin
+              { no need to adjust loctype }
+              result.regsub:=0;
+              result.regindex:=0;
+            end;
+        end;
       end;
 
 

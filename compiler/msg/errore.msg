@@ -3007,7 +3007,7 @@ link_e_com_program_uses_segment_relocations=09207_E_Cannot create a .COM file, b
 % might be caused by the use of the Seg() function or by the SEG assembler
 % directive (either in pascal's built-in inline assembler, or in an externally
 % linked assembly module).
-link_w_program_uses_checkpointer=09208_W_Program "$1" uses experimental CheckPointer function
+link_w_program_uses_checkpointer=09208_W_Program "$1" uses experimental CheckPointer option
 %\end{description}
 # EndOfTeX
 
@@ -3554,7 +3554,7 @@ package_u_ppl_filename=13029_U_PPL filename $1
 #
 option_logo=11023_[
 Free Pascal Compiler version $FPCFULLVERSION [$FPCDATE] for $FPCCPU
-Copyright (c) 1993-2016 by Florian Klaempfl and others
+Copyright (c) 1993-2017 by Florian Klaempfl and others
 ]
 
 #
@@ -3857,6 +3857,7 @@ F*2P<x>_Set target CPU (aarch64,arm,avr,i386,i8086,jvm,m68k,mips,mipsel,powerpc,
 **3SIcorba_CORBA compatible interface
 **2Sm_Support macros like C (global)
 **2So_Same as -Mtp
+**2Sr_Transparent file names in ISO mode
 **2Ss_Constructor name must be init (destructor must be done)
 **2Sv_Support vector processing (use CPU vector extensions if available)
 **2Sx_Enable exception keywords (default in Delphi/ObjFPC modes)
