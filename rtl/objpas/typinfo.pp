@@ -317,6 +317,7 @@ unit typinfo;
       record
         Terminator: Pointer;
         Size: Integer;
+        ManagementOp: Pointer;
         ManagedFieldCount: Integer;
         { ManagedFields: array[0..ManagedFieldCount - 1] of TInitManagedField ; }
       end;
