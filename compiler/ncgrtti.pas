@@ -1135,12 +1135,13 @@ implementation
 
            tcb.emit_ord_const(def.size,u32inttype);
 
-           if (trecordsymtable(def.symtable).managementoperators=[]) then
-             tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype)
-           else
-             tcb.emit_tai(Tai_const.Createname(
-               internaltypeprefixName[itp_init_record_operators]+def.rtti_mangledname(rt),
-               AT_DATA_FORCEINDIRECT,0),voidpointertype);
+           if (rt=initrtti) then
+             if (trecordsymtable(def.symtable).managementoperators=[]) then
+               tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype)
+             else
+               tcb.emit_tai(Tai_const.Createname(
+                 internaltypeprefixName[itp_init_record_operators]+def.rtti_mangledname(rt),
+                 AT_DATA_FORCEINDIRECT,0),voidpointertype);
 
            fields_write_rtti_data(tcb,def,rt);
            tcb.end_anonymous_record;
@@ -1310,8 +1311,6 @@ implementation
                 (see TObject.CleanupInstance) }
             tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype);
             tcb.emit_ord_const(def.size, u32inttype);
-            { inittable terminator for vmt vInitTable }
-            tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype);
             { pointer to management operators }
             tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype);
             { enclosing record takes care of alignment }
