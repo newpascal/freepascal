@@ -56,7 +56,7 @@ unit typinfo;
                       mkClassProcedure,mkClassFunction,mkClassConstructor,
                       mkClassDestructor,mkOperatorOverload);
        TParamFlag     = (pfVar,pfConst,pfArray,pfAddress,pfReference,pfOut,pfConstRef
-                         {$ifndef VER3_0},pfHidden,pfHigh,pfSelf,pfVmt{$endif VER3_0}
+                         {$ifndef VER3_0},pfHidden,pfHigh,pfSelf,pfVmt,pfResult{$endif VER3_0}
                          );
        TParamFlags    = set of TParamFlag;
        TIntfFlag      = (ifHasGuid,ifDispInterface,ifDispatch,ifHasStrGUID);
@@ -71,6 +71,36 @@ unit typinfo;
                     ccCppdecl, ccFar16, ccOldFPCCall, ccInternProc,
                     ccSysCall, ccSoftFloat, ccMWPascal);
 
+{$push}
+{$scopedenums on}
+       TSubRegister = (
+         None,
+         Lo,
+         Hi,
+         Word,
+         DWord,
+         QWord,
+         FloatSingle,
+         FloatDouble,
+         FloatQuad,
+         MultiMediaSingle,
+         MultiMediaDouble,
+         MultiMediaWhole,
+         MultiMediaX,
+         MultiMediaY
+       );
+
+       TRegisterType = (
+         Invalid,
+         Int,
+         FP,
+         MMX,
+         MultiMedia,
+         Special,
+         Address
+       );
+{$pop}
+
 {$MINENUMSIZE DEFAULT}
 
    const
@@ -83,36 +113,7 @@ unit typinfo;
       TTypeKinds = set of TTypeKind;
       ShortStringBase = string[255];
 
-{$push}
-{$scopedenums on}
-      TSubRegister = (
-        None,
-        Lo,
-        Hi,
-        Word,
-        DWord,
-        QWord,
-        FloatSingle,
-        FloatDouble,
-        FloatQuad,
-        MultiMediaSingle,
-        MultiMediaDouble,
-        MultiMediaWhole,
-        MultiMediaX,
-        MultiMediaY
-      );
-
-      TRegisterType = (
-        Invalid,
-        Int,
-        FP,
-        MMX,
-        MultiMedia,
-        Special,
-        Address
-      );
-{$pop}
-
+      PParameterLocation = ^TParameterLocation;
       TParameterLocation =
 {$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}
       packed
@@ -135,8 +136,8 @@ unit typinfo;
         { if Reference, otherwise 0 }
         property ShiftVal: Int8 read GetShiftVal;
       end;
-      PParameterLocation = ^TParameterLocation;
 
+      PParameterLocations = ^TParameterLocations;
       TParameterLocations =
 {$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}
       packed
@@ -499,6 +500,7 @@ unit typinfo;
               (RefTypeRef: TypeInfoPtr);
       end;
 
+      PPropData = ^TPropData;
       TPropData =
 {$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}
       packed
@@ -2452,7 +2454,7 @@ begin
   if aIndex >= Count then
     Result := Nil
   else
-    Result := PParameterLocation(@Count + SizeOf(Count) + SizeOf(TParameterLocation) * Count);
+    Result := PParameterLocation(@Count + SizeOf(Count) + SizeOf(TParameterLocation) * aIndex);
 end;
 
 { TProcedureParam }

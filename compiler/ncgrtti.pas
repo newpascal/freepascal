@@ -28,7 +28,8 @@ interface
     uses
       cclasses,constexp,
       aasmbase,aasmcnst,
-      symbase,symconst,symtype,symdef,symsym;
+      symbase,symconst,symtype,symdef,symsym,
+      parabase;
 
     type
 
@@ -43,14 +44,13 @@ interface
         defaultpacking: shortint;
 
         procedure fields_write_rtti(st:tsymtable;rt:trttitype);
-        procedure params_write_rtti(def:tabstractprocdef;rt:trttitype);
+        procedure params_write_rtti(def:tabstractprocdef;rt:trttitype;allow_hidden:boolean);
         procedure fields_write_rtti_data(tcb: ttai_typedconstbuilder; def: tabstractrecorddef; rt: trttitype);
+        procedure methods_write_rtti(st:tsymtable;rt:trttitype;visibilities:tvisibilities;allow_hidden:boolean);
         procedure write_rtti_extrasyms(def:Tdef;rt:Trttitype;mainrtti:Tasmsymbol);
         procedure published_write_rtti(st:tsymtable;rt:trttitype);
         function  published_properties_count(st:tsymtable):longint;
         procedure published_properties_write_rtti_data(tcb: ttai_typedconstbuilder; propnamelist: TFPHashObjectList; st: tsymtable);
-        procedure write_param_flag_newpascal(tcb: ttai_typedconstbuilder; parasym:tparavarsym);
-        procedure methods_write_rtti_newpascal(tcb: ttai_typedconstbuilder; st:tsymtable);
         procedure collect_propnamelist(propnamelist:TFPHashObjectList;objdef:tobjectdef);
         { only use a direct reference if the referenced type can *only* reside
           in the same unit as the current one }
@@ -62,7 +62,8 @@ interface
         procedure write_header(tcb: ttai_typedconstbuilder; def: tdef; typekind: byte);
         function write_methodkind(tcb:ttai_typedconstbuilder;def:tabstractprocdef):byte;
         procedure write_callconv(tcb:ttai_typedconstbuilder;def:tabstractprocdef);
-        procedure write_paralocs(tcb:ttai_typedconstbuilder;parasym:tparavarsym);
+        procedure write_paralocs(tcb:ttai_typedconstbuilder;para:pcgpara);
+        procedure write_param_flag(tcb:ttai_typedconstbuilder;parasym:tparavarsym);
       public
         constructor create;
         procedure write_rtti(def:tdef;rt:trttitype);
@@ -87,7 +88,7 @@ implementation
        symtable,
        aasmtai,aasmdata,
        defutil,
-       parabase,paramgr,
+       paramgr,
        wpobase
        ;
 
@@ -98,7 +99,6 @@ implementation
          { Objective-C related, does not pass here }
          symconst.ds_none,symconst.ds_none,
          symconst.ds_none,symconst.ds_none);
-
 
     type
        TPropNameListItem = class(TFPHashObject)
@@ -249,12 +249,12 @@ implementation
       end;
 
 
-    procedure TRTTIWriter.write_paralocs(tcb:ttai_typedconstbuilder;parasym:tparavarsym);
+    procedure TRTTIWriter.write_paralocs(tcb:ttai_typedconstbuilder;para:pcgpara);
       var
         locs : trttiparalocs;
         i : longint;
       begin
-        locs:=paramanager.cgparalocs_to_rttiparalocs(parasym.paraloc[callerside].location);
+        locs:=paramanager.cgparalocs_to_rttiparalocs(para^.location);
         if length(locs)>high(byte) then
           internalerror(2017010601);
         tcb.emit_ord_const(length(locs),u8inttype);
@@ -266,6 +266,50 @@ implementation
             { the corresponding type for aint is alusinttype }
             tcb.emit_ord_const(locs[i].offset,alusinttype);
           end;
+      end;
+
+
+    procedure TRTTIWriter.write_param_flag(tcb:ttai_typedconstbuilder;parasym:tparavarsym);
+      var
+        paraspec : word;
+      begin
+        case parasym.varspez of
+          vs_value   : paraspec := 0;
+          vs_const   : paraspec := pfConst;
+          vs_var     : paraspec := pfVar;
+          vs_out     : paraspec := pfOut;
+          vs_constref: paraspec := pfConstRef;
+          else
+            internalerror(2013112904);
+        end;
+        { Kylix also seems to always add both pfArray and pfReference
+          in this case
+        }
+        if is_open_array(parasym.vardef) then
+          paraspec:=paraspec or pfArray or pfReference;
+        { and these for classes and interfaces (maybe because they
+          are themselves addresses?)
+        }
+        if is_class_or_interface(parasym.vardef) then
+          paraspec:=paraspec or pfAddress;
+        { flags for the hidden parameters }
+        if vo_is_hidden_para in parasym.varoptions then
+          paraspec:=paraspec or pfHidden;
+        if vo_is_high_para in parasym.varoptions then
+          paraspec:=paraspec or pfHigh;
+        if vo_is_self in parasym.varoptions then
+          paraspec:=paraspec or pfSelf;
+        if vo_is_vmt in parasym.varoptions then
+          paraspec:=paraspec or pfVmt;
+        if vo_is_funcret in parasym.varoptions then
+          paraspec:=paraspec or pfResult;
+        { set bits run from the highest to the lowest bit on
+          big endian systems
+        }
+        if (target_info.endian = endian_big) then
+          paraspec:=reverse_word(paraspec);
+        { write flags for current parameter }
+        tcb.emit_ord_const(paraspec,u16inttype);
       end;
 
 
@@ -363,7 +407,7 @@ implementation
       end;
 
 
-    procedure TRTTIWriter.params_write_rtti(def:tabstractprocdef;rt:trttitype);
+    procedure TRTTIWriter.params_write_rtti(def:tabstractprocdef;rt:trttitype;allow_hidden:boolean);
       var
         i   : longint;
         sym : tparavarsym;
@@ -371,9 +415,29 @@ implementation
         for i:=0 to def.paras.count-1 do
           begin
             sym:=tparavarsym(def.paras[i]);
-            if not (vo_is_hidden_para in sym.varoptions) then
+            if not (vo_is_hidden_para in sym.varoptions) or allow_hidden then
               write_rtti(sym.vardef,rt);
           end;
+      end;
+
+
+    procedure TRTTIWriter.methods_write_rtti(st:tsymtable;rt:trttitype;visibilities:tvisibilities;allow_hidden:boolean);
+      var
+        i,j : longint;
+        sym : tprocsym;
+        def : tabstractprocdef;
+      begin
+        for i:=0 to st.symlist.count-1 do
+          if tsym(st.symlist[i]).typ=procsym then
+            begin
+              sym:=tprocsym(st.symlist[i]);
+              for j:=0 to sym.procdeflist.count-1 do
+                begin
+                  def:=tabstractprocdef(sym.procdeflist[j]);
+                  write_rtti(def.returndef,rt);
+                  params_write_rtti(def,rt,allow_hidden);
+                end;
+            end;
       end;
 
 
@@ -596,117 +660,9 @@ implementation
         tcb.end_anonymous_record;
       end;
 
-    procedure TRTTIWriter.write_param_flag_newpascal(tcb: ttai_typedconstbuilder; parasym:tparavarsym);
-    var
-      paraspec : byte;
-    begin
-      case parasym.varspez of
-        vs_value   : paraspec := 0;
-        vs_const   : paraspec := pfConst;
-        vs_var     : paraspec := pfVar;
-        vs_out     : paraspec := pfOut;
-        vs_constref: paraspec := pfConstRef;
-      else
-        internalerror(2013112904);
-      end;
-      { Kylix also seems to always add both pfArray and pfReference 
-        in this case
-      }
-      if is_open_array(parasym.vardef) then
-        paraspec:=paraspec or pfArray or pfReference;
-       { and these for classes and interfaces (maybe because they
-                 are themselves addresses?)
-       }
-       if is_class_or_interface(parasym.vardef) then
-         paraspec:=paraspec or pfAddress;
-         { set bits run from the highest to the lowest bit on
-           big endian systems
-         }
-       if (target_info.endian = endian_big) then
-         paraspec:=reverse_byte(paraspec);
-       { write flags for current parameter }
-       tcb.emit_ord_const(paraspec,u8inttype);
-    end;
-
-    procedure TRTTIWriter.methods_write_rtti_newpascal(tcb: ttai_typedconstbuilder; st: tsymtable);
-    var
-      count: Word;
-      i,j,k: LongInt;
-
-      sym : tprocsym;
-      def : tabstractprocdef;
-      para : tparavarsym;
-
-      reg: Byte;
-      off: LongInt;
-    begin
-      tcb.begin_anonymous_record('',defaultpacking,reqalign,
-          targetinfos[target_info.system]^.alignment.recordalignmin,
-          targetinfos[target_info.system]^.alignment.maxCrecordalign);
-
-      count:=0;
-      for i:=0 to st.SymList.Count-1 do
-        if (tsym(st.SymList[i]).typ=procsym) then
-          inc(count, tprocsym(st.SymList[i]).ProcdefList.count);
-
-      tcb.emit_ord_const(count,u16inttype);
-      tcb.emit_ord_const(count,u16inttype);
-
-      for i:=0 to st.SymList.Count-1 do
-        if (tsym(st.SymList[i]).typ=procsym) then
-          begin
-            sym:=tprocsym(st.SymList[i]);
-            for j:=0 to sym.ProcdefList.count-1 do
-              begin
-                def:=tabstractprocdef(sym.ProcdefList[j]);
-                def.init_paraloc_info(callerside);
-
-                tcb.begin_anonymous_record('',defaultpacking,reqalign,
-                  targetinfos[target_info.system]^.alignment.recordalignmin,
-                  targetinfos[target_info.system]^.alignment.maxCrecordalign);
-
-                tcb.emit_shortstring_const(sym.realname);
-                tcb.emit_ord_const(3,u8inttype);
-                write_callconv(tcb,def);
-                write_rtti_reference(tcb,def.returndef,fullrtti);
-                tcb.emit_ord_const(def.callerargareasize,u16inttype);
-                tcb.emit_ord_const(def.maxparacount + 1,u8inttype);
-
-                for k:=0 to def.paras.count-1 do
-                  begin
-                    para:=tparavarsym(def.paras[k]);
-
-                    if (vo_is_hidden_para in para.varoptions) and not (vo_is_self in para.varoptions) then
-                      continue;
-
-                    tcb.begin_anonymous_record('',defaultpacking,reqalign,
-                      targetinfos[target_info.system]^.alignment.recordalignmin,
-                      targetinfos[target_info.system]^.alignment.maxCrecordalign);
-
-                    { write flags for current parameter }
-                    write_param_flag_newpascal(tcb, para);
-                    { write param type }
-                    write_rtti_reference(tcb,para.vardef,fullrtti);
-
-                    paramanager.get_para_regoff(def.proccalloption, para.paraloc[callerside].location,reg,off);
-
-                    tcb.emit_ord_const(reg,u8inttype);
-                    tcb.emit_ord_const(off,u32inttype);
-
-                    { write name of current parameter }
-                    tcb.emit_shortstring_const(para.realname);
-
-                    tcb.end_anonymous_record;
-                  end;
-
-                tcb.end_anonymous_record;
-              end;
-          end;
-      tcb.end_anonymous_record;
-    end;
-
 
     procedure TRTTIWriter.write_rtti_data(tcb: ttai_typedconstbuilder; def: tdef; rt: trttitype);
+
         procedure unknown_rtti(def:tstoreddef);
         begin
           tcb.emit_ord_const(tkUnknown,u8inttype);
@@ -1161,54 +1117,13 @@ implementation
 
         procedure procvardef_rtti(def:tprocvardef);
 
-           procedure write_param_flag(parasym:tparavarsym);
-             var
-               paraspec : word;
-             begin
-               case parasym.varspez of
-                 vs_value   : paraspec := 0;
-                 vs_const   : paraspec := pfConst;
-                 vs_var     : paraspec := pfVar;
-                 vs_out     : paraspec := pfOut;
-                 vs_constref: paraspec := pfConstRef;
-                 else
-                   internalerror(2013112904);
-               end;
-               { Kylix also seems to always add both pfArray and pfReference
-                 in this case
-               }
-               if is_open_array(parasym.vardef) then
-                 paraspec:=paraspec or pfArray or pfReference;
-               { and these for classes and interfaces (maybe because they
-                 are themselves addresses?)
-               }
-               if is_class_or_interface(parasym.vardef) then
-                 paraspec:=paraspec or pfAddress;
-               { flags for the hidden parameters }
-               if vo_is_hidden_para in parasym.varoptions then
-                 paraspec:=paraspec or pfHidden;
-               if vo_is_high_para in parasym.varoptions then
-                 paraspec:=paraspec or pfHigh;
-               if vo_is_self in parasym.varoptions then
-                 paraspec:=paraspec or pfSelf;
-               if vo_is_vmt in parasym.varoptions then
-                 paraspec:=paraspec or pfVmt;
-               { set bits run from the highest to the lowest bit on
-                 big endian systems
-               }
-               if (target_info.endian = endian_big) then
-                 paraspec:=reverse_word(paraspec);
-               { write flags for current parameter }
-               tcb.emit_ord_const(paraspec,u16inttype);
-             end;
-
            procedure write_para(parasym:tparavarsym);
              begin
                { only store user visible parameters }
                if not(vo_is_hidden_para in parasym.varoptions) then
                  begin
                    { write flags for current parameter }
-                   write_param_flag_newpascal(tcb, parasym);
+                   write_param_flag(tcb,parasym);
                    { write name of current parameter }
                    tcb.emit_shortstring_const(parasym.realname);
                    { write name of type of current parameter }
@@ -1228,7 +1143,7 @@ implementation
                      targetinfos[target_info.system]^.alignment.recordalignmin,
                      targetinfos[target_info.system]^.alignment.maxCrecordalign);
                    { write flags for current parameter }
-                   write_param_flag_newpascal(tcb,parasym);
+                   write_param_flag(tcb,parasym);
                    { write param type }
                    write_rtti_reference(tcb,parasym.vardef,fullrtti);
                    { write name of current parameter }
@@ -1406,17 +1321,17 @@ implementation
             { write iidstr }
             if def.objecttype=odt_interfacecorba then
               begin
-                if assigned(def.iidstr) then
+                { prepareguid always allocates an empty string }
+                if not assigned(def.iidstr) then
+                  internalerror(2016021901);
                 tcb.emit_shortstring_const(def.iidstr^)
-                else
-                  tcb.emit_shortstring_const('');
               end;
 
             { write published properties for this object }
             published_properties_write_rtti_data(tcb,propnamelist,def.symtable);
 
             { write methods for this object }
-            methods_write_rtti_newpascal(tcb, def.symtable);
+            methods_write_rtti(tcb, def.symtable);
 
             tcb.end_anonymous_record;
             tcb.end_anonymous_record;
@@ -1796,7 +1711,7 @@ implementation
             if not is_objc_class_or_protocol(tabstractpointerdef(def).pointeddef) then
               write_rtti(tabstractpointerdef(def).pointeddef,rt);
           procvardef:
-            params_write_rtti(tabstractprocdef(def),rt);
+            params_write_rtti(tabstractprocdef(def),rt,false);
         end;
       end;
 
