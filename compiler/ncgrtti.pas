@@ -26,7 +26,7 @@ unit ncgrtti;
 interface
 
     uses
-      cclasses,constexp,
+      cclasses,constexp,globtype,
       aasmbase,aasmcnst,
       symbase,symconst,symtype,symdef,symsym,
       parabase;
@@ -54,11 +54,12 @@ interface
         procedure collect_propnamelist(propnamelist:TFPHashObjectList;objdef:tobjectdef);
         { only use a direct reference if the referenced type can *only* reside
           in the same unit as the current one }
-        function  ref_rtti(def:tdef;rt:trttitype;indirect:boolean):tasmsymbol;
+        function ref_rtti(def:tdef;rt:trttitype;indirect:boolean;suffix:tsymstr):tasmsymbol;
         procedure write_rtti_name(tcb: ttai_typedconstbuilder; def: tdef);
         procedure write_rtti_data(tcb: ttai_typedconstbuilder; def:tdef; rt: trttitype);
         procedure write_child_rtti_data(def:tdef;rt:trttitype);
         procedure write_rtti_reference(tcb: ttai_typedconstbuilder; def: tdef; rt: trttitype);
+        procedure write_methods(tcb:ttai_typedconstbuilder;st:tsymtable;visibilities:tvisibilities);
         procedure write_header(tcb: ttai_typedconstbuilder; def: tdef; typekind: byte);
         function write_methodkind(tcb:ttai_typedconstbuilder;def:tabstractprocdef):byte;
         procedure write_callconv(tcb:ttai_typedconstbuilder;def:tabstractprocdef);
@@ -67,9 +68,9 @@ interface
       public
         constructor create;
         procedure write_rtti(def:tdef;rt:trttitype);
-        function  get_rtti_label(def:tdef;rt:trttitype;indirect:boolean):tasmsymbol;
-        function  get_rtti_label_ord2str(def:tdef;rt:trttitype;indirect:boolean):tasmsymbol;
-        function  get_rtti_label_str2ord(def:tdef;rt:trttitype;indirect:boolean):tasmsymbol;
+        function  get_rtti_label(def:tdef;rt:trttitype;indirect:boolean):tasmsymbol; inline;
+        function  get_rtti_label_ord2str(def:tdef;rt:trttitype;indirect:boolean):tasmsymbol; inline;
+        function  get_rtti_label_str2ord(def:tdef;rt:trttitype;indirect:boolean):tasmsymbol; inline;
       end;
 
     { generate RTTI and init tables }
@@ -83,7 +84,7 @@ implementation
 
     uses
        cutils,
-       globals,globtype,verbose,systems,
+       globals,verbose,systems,
        fmodule, procinfo,
        symtable,
        aasmtai,aasmdata,
@@ -173,6 +174,95 @@ implementation
 {***************************************************************************
                               TRTTIWriter
 ***************************************************************************}
+
+
+    procedure TRTTIWriter.write_methods(tcb:ttai_typedconstbuilder;st:tsymtable;visibilities:tvisibilities);
+      var
+        rtticount,
+        totalcount,
+        i,j,k : longint;
+        sym : tprocsym;
+        def : tprocdef;
+        para : tparavarsym;
+      begin
+        tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PtrInt)),
+          targetinfos[target_info.system]^.alignment.recordalignmin,
+          targetinfos[target_info.system]^.alignment.maxCrecordalign);
+
+        totalcount:=0;
+        rtticount:=0;
+        for i:=0 to st.symlist.count-1 do
+          if tsym(st.symlist[i]).typ=procsym then
+            begin
+              sym:=tprocsym(st.symlist[i]);
+              inc(totalcount,sym.procdeflist.count);
+              for j:=0 to sym.procdeflist.count-1 do
+                if tprocdef(sym.procdeflist[j]).visibility in visibilities then
+                  inc(rtticount);
+            end;
+
+        tcb.emit_ord_const(totalcount,u16inttype);
+        if rtticount = 0 then
+          tcb.emit_ord_const($FFFF,u16inttype)
+        else
+          begin
+            tcb.emit_ord_const(rtticount,u16inttype);
+
+            for i:=0 to st.symlist.count-1 do
+              if tsym(st.symlist[i]).typ=procsym then
+                begin
+                  sym:=tprocsym(st.symlist[i]);
+                  for j:=0 to sym.procdeflist.count-1 do
+                    begin
+                      def:=tprocdef(sym.procdeflist[j]);
+
+                      if not (def.visibility in visibilities) then
+                        continue;
+
+                      def.init_paraloc_info(callerside);
+
+                      tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PtrInt)),
+                        targetinfos[target_info.system]^.alignment.recordalignmin,
+                        targetinfos[target_info.system]^.alignment.maxCrecordalign);
+
+                      write_rtti_reference(tcb,def.returndef,fullrtti);
+                      write_callconv(tcb,def);
+                      write_methodkind(tcb,def);
+                      tcb.emit_ord_const(def.paras.count,u16inttype);
+                      tcb.emit_ord_const(def.callerargareasize,ptrsinttype);
+                      tcb.emit_shortstring_const(sym.realname);
+
+                      for k:=0 to def.paras.count-1 do
+                        begin
+                          para:=tparavarsym(def.paras[k]);
+
+                          tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PtrInt)),
+                            targetinfos[target_info.system]^.alignment.recordalignmin,
+                            targetinfos[target_info.system]^.alignment.maxCrecordalign);
+
+                          if is_open_array(para.vardef) then
+                            write_rtti_reference(tcb,tarraydef(para.vardef).elementdef,fullrtti)
+                          else
+                            write_rtti_reference(tcb,para.vardef,fullrtti);
+                          write_param_flag(tcb,para);
+                          tcb.emit_shortstring_const(para.realname);
+
+                          write_paralocs(tcb,@para.paraloc[callerside]);
+
+                          tcb.end_anonymous_record;
+                        end;
+
+                      if not is_void(def.returndef) then
+                        write_paralocs(tcb,@para.paraloc[callerside]);
+
+                      tcb.end_anonymous_record;
+                    end;
+                end;
+          end;
+
+        tcb.end_anonymous_record;
+      end;
+
 
     procedure TRTTIWriter.write_header(tcb: ttai_typedconstbuilder; def: tdef; typekind: byte);
       var
@@ -416,7 +506,12 @@ implementation
           begin
             sym:=tparavarsym(def.paras[i]);
             if not (vo_is_hidden_para in sym.varoptions) or allow_hidden then
-              write_rtti(sym.vardef,rt);
+              begin
+                if is_open_array(sym.vardef) then
+                  write_rtti(tarraydef(sym.vardef).elementdef,rt)
+                else
+                  write_rtti(sym.vardef,rt);
+              end;
           end;
       end;
 
@@ -953,7 +1048,7 @@ implementation
                { total element count }
                tcb.emit_tai(Tai_const.Create_sizeint(asizeint(totalcount)),sizeuinttype);
                { last dimension element type }
-               tcb.emit_tai(Tai_const.Create_sym(ref_rtti(curdef.elementdef,rt,true)),voidpointertype);
+               tcb.emit_tai(Tai_const.Create_sym(get_rtti_label(curdef.elementdef,rt,true)),voidpointertype);
                { dimension count }
                tcb.emit_ord_const(dimcount,u8inttype);
                finaldef:=def;
@@ -1086,7 +1181,7 @@ implementation
                include(def.defstates,ds_init_table_used);
                { we use a direct reference as the init RTTI is always in the same
                  unit as the full RTTI }
-               tcb.emit_tai(Tai_const.Create_sym(ref_rtti(def,initrtti,false)),voidpointertype);
+               tcb.emit_tai(Tai_const.Create_sym(get_rtti_label(def,initrtti,false)),voidpointertype);
              end;
 
            tcb.emit_ord_const(def.size,u32inttype);
@@ -1330,8 +1425,8 @@ implementation
             { write published properties for this object }
             published_properties_write_rtti_data(tcb,propnamelist,def.symtable);
 
-            { write methods for this object }
-            methods_write_rtti(tcb, def.symtable);
+            { write published methods for this interface }
+            write_methods(tcb,def.symtable,[vis_published]);
 
             tcb.end_anonymous_record;
             tcb.end_anonymous_record;
@@ -1668,8 +1763,6 @@ implementation
     end;
 
     procedure TRTTIWriter.write_child_rtti_data(def:tdef;rt:trttitype);
-    var
-      i,j: SizeInt;
       begin
         case def.typ of
           enumdef :
@@ -1691,20 +1784,12 @@ implementation
               if (rt=initrtti) or (tobjectdef(def).objecttype=odt_object) then
                 fields_write_rtti(tobjectdef(def).symtable,rt)
               else
-                begin
                 published_write_rtti(tobjectdef(def).symtable,rt);
 
-                  if is_any_interface_kind(def) then
-                    with tobjectdef(def).symtable do
-                      for i := 0 to SymList.Count-1 do
-                        if (tsym(SymList[i]).typ=procsym) then
-                          with tprocsym(tobjectdef(def).symtable.SymList[i]) do
-                            for j := 0 to ProcdefList.Count - 1 do
-                              begin
-                                write_rtti(tabstractprocdef(ProcdefList[j]).returndef,rt);
-                                params_write_rtti(tabstractprocdef(ProcdefList[j]),rt);
-            end;
-                end;
+              if (rt=fullrtti)
+                  and (is_interface(def) or is_dispinterface(def))
+                  and (oo_can_have_published in tobjectdef(def).objectoptions) then
+                methods_write_rtti(tobjectdef(def).symtable,rt,[vis_published],true);
             end;
           classrefdef,
           pointerdef:
@@ -1731,15 +1816,15 @@ implementation
         if not assigned(def) or is_void(def) or ((rt<>initrtti) and is_objc_class_or_protocol(def)) then
           tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype)
         else
-          tcb.emit_tai(Tai_const.Create_sym(ref_rtti(def,rt,true)),voidpointertype);
+          tcb.emit_tai(Tai_const.Create_sym(get_rtti_label(def,rt,true)),voidpointertype);
       end;
 
 
-    function TRTTIWriter.ref_rtti(def:tdef;rt:trttitype;indirect:boolean):tasmsymbol;
+    function TRTTIWriter.ref_rtti(def:tdef;rt:trttitype;indirect:boolean;suffix:tsymstr):tasmsymbol;
       var
-        s : TSymStr;
+        s : tsymstr;
       begin
-        s:=def.rtti_mangledname(rt);
+        s:=def.rtti_mangledname(rt)+suffix;
         result:=current_asmdata.RefAsmSymbol(s,AT_DATA,indirect);
         if (cs_create_pic in current_settings.moduleswitches) and
            assigned(current_procinfo) then
@@ -1805,42 +1890,18 @@ implementation
 
 
     function TRTTIWriter.get_rtti_label(def:tdef;rt:trttitype;indirect:boolean):tasmsymbol;
-      var
-        name : tsymstr;
       begin
-        name:=def.rtti_mangledname(rt);
-        result:=current_asmdata.RefAsmSymbol(name,AT_DATA,indirect);
-        if (cs_create_pic in current_settings.moduleswitches) and
-           assigned(current_procinfo) then
-          include(current_procinfo.flags,pi_needs_got);
-        if assigned(current_module) and (findunitsymtable(def.owner).moduleid<>current_module.moduleid) then
-          current_module.add_extern_asmsym(name,AB_EXTERNAL,AT_DATA);
+        result:=ref_rtti(def,rt,indirect,'');
       end;
 
     function TRTTIWriter.get_rtti_label_ord2str(def:tdef;rt:trttitype;indirect:boolean):tasmsymbol;
-      var
-        name : tsymstr;
       begin
-        name:=def.rtti_mangledname(rt)+'_o2s';
-        result:=current_asmdata.RefAsmSymbol(name,AT_DATA,indirect);
-        if (cs_create_pic in current_settings.moduleswitches) and
-           assigned(current_procinfo) then
-          include(current_procinfo.flags,pi_needs_got);
-        if assigned(current_module) and (findunitsymtable(def.owner).moduleid<>current_module.moduleid) then
-          current_module.add_extern_asmsym(name,AB_EXTERNAL,AT_DATA);
+        result:=ref_rtti(def,rt,indirect,'_o2s');
       end;
 
     function TRTTIWriter.get_rtti_label_str2ord(def:tdef;rt:trttitype;indirect:boolean):tasmsymbol;
-      var
-        name : tsymstr;
       begin
-        name:=def.rtti_mangledname(rt)+'_s2o';
-        result:=current_asmdata.RefAsmSymbol(name,AT_DATA,indirect);
-        if (cs_create_pic in current_settings.moduleswitches) and
-           assigned(current_procinfo) then
-          include(current_procinfo.flags,pi_needs_got);
-        if assigned(current_module) and (findunitsymtable(def.owner).moduleid<>current_module.moduleid) then
-          current_module.add_extern_asmsym(name,AB_EXTERNAL,AT_DATA);
+        result:=ref_rtti(def,rt,indirect,'_s2o');
       end;
 
 end.

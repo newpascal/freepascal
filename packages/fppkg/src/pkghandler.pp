@@ -57,9 +57,6 @@ procedure RegisterPkgHandler(const AAction:string;pkghandlerclass:TPackageHandle
 function GetPkgHandler(const AAction:string):TPackageHandlerClass;
 procedure ExecuteAction(const APackageName,AAction:string; PackageManager: TpkgFPpkg);
 
-function PackageBuildPath(APackage:TFPPackage):String;
-function PackageRemoteArchive(APackage:TFPPackage): String;
-function PackageLocalArchive(APackage:TFPPackage): String;
 function PackageManifestFile(APackage:TFPPackage): String;
 procedure ClearExecutedAction;
 
@@ -122,41 +119,6 @@ begin
     finally
       Free;
     end;
-end;
-
-
-function PackageBuildPath(APackage:TFPPackage):String;
-begin
-  if (APackage.Name=CmdLinePackageName) or (APackage.Name=URLPackageName) then
-    Result:=GFPpkg.Options.GlobalSection.BuildDir+ChangeFileExt(ExtractFileName(APackage.LocalFileName),'')
-  else if Assigned(APackage.PackagesStructure) and (APackage.PackagesStructure.GetBuildPathDirectory(APackage)<>'') then
-    Result:=APackage.PackagesStructure.GetBuildPathDirectory(APackage)
-  else
-    Result:=GFPpkg.Options.GlobalSection.BuildDir+APackage.Name;
-end;
-
-
-function PackageRemoteArchive(APackage:TFPPackage): String;
-begin
-  if APackage.Name=CurrentDirPackageName then
-    Error(SErrNoPackageSpecified)
-  else if APackage.Name=CmdLinePackageName then
-    Error(SErrPackageIsLocal);
-  if APackage.DownloadURL<>'' then
-    Result:=APackage.DownloadURL
-  else
-    Result:=GetRemoteRepositoryURL(APackage.FileName);
-end;
-
-
-function PackageLocalArchive(APackage:TFPPackage): String;
-begin
-  if APackage.Name=CurrentDirPackageName then
-    Error(SErrNoPackageSpecified)
-  else if APackage.Name=CmdLinePackageName then
-    Result:=APackage.LocalFileName
-  else
-    Result:=GFPpkg.Options.GlobalSection.ArchivesDir+APackage.FileName;
 end;
 
 
