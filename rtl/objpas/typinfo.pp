@@ -144,9 +144,11 @@ unit typinfo;
       record
       private
         function GetLocation(aIndex: Byte): PParameterLocation; inline;
+        function GetTail: Pointer; inline;
       public
         Count: Byte;
         property Location[Index: Byte]: PParameterLocation read GetLocation;
+        property Tail: Pointer read GetTail;
       end;
 
       PVmtFieldEntry = ^TVmtFieldEntry;
@@ -296,7 +298,7 @@ unit typinfo;
       record
       private
         function GetParam(Index: Word): PVmtMethodParam;
-        function GetReturnLoc: PParameterLocations; inline;
+        function GetResultLocs: PParameterLocations; inline;
         function GetTail: Pointer; inline;
         function GetNext: PIntfMethodEntry; inline;
       public
@@ -307,9 +309,9 @@ unit typinfo;
         StackSize: SizeInt;
         Name: ShortString;
         { Params: array[0..ParamCount - 1] of TVmtMethodParam }
-        { ReturnLoc: TParameterLocations (if ResultType != Nil) }
+        { ResultLocs: TParameterLocations (if ResultType != Nil) }
         property Param[Index: Word]: PVmtMethodParam read GetParam;
-        property ReturnLoc: PParameterLocations read GetReturnLoc;
+        property ResultLocs: PParameterLocations read GetResultLocs;
         property Tail: Pointer read GetTail;
         property Next: PIntfMethodEntry read GetNext;
       end;
@@ -2522,7 +2524,12 @@ begin
   if aIndex >= Count then
     Result := Nil
   else
-    Result := PParameterLocation(@Count + SizeOf(Count) + SizeOf(TParameterLocation) * aIndex);
+    Result := PParameterLocation(PByte(aligntoptr(PByte(@Count) + SizeOf(Count))) + SizeOf(TParameterLocation) * aIndex);
+end;
+
+function TParameterLocations.GetTail: Pointer;
+begin
+  Result := PByte(aligntoptr(PByte(@Count) + SizeOf(Count))) + SizeOf(TParameterLocation) * Count;
 end;
 
 { TProcedureParam }
@@ -2579,15 +2586,12 @@ end;
 
 function TVmtMethodParam.GetParaLocs: PParameterLocations;
 begin
-  Result := PParameterLocations(PByte(@Name[0]) + Length(Name) + 1);
+  Result := PParameterLocations(aligntoptr(PByte(@Name[0]) + Length(Name) + Sizeof(Name[0])));
 end;
 
 function TVmtMethodParam.GetTail: Pointer;
-var
-  pl: PParameterLocations;
 begin
-  pl := ParaLocs;
-  Result := PByte(@pl^.Count) + SizeOf(pl^.Count) + SizeOf(TParameterLocation) * pl^.Count;
+  Result := ParaLocs^.Tail;
 end;
 
 function TVmtMethodParam.GetNext: PVmtMethodParam;
@@ -2612,7 +2616,7 @@ begin
     end;
 end;
 
-function TIntfMethodEntry.GetReturnLoc: PParameterLocations;
+function TIntfMethodEntry.GetResultLocs: PParameterLocations;
 begin
   if not Assigned(ResultType) then
     Result := Nil
@@ -2628,7 +2632,7 @@ var
 begin
   if Assigned(ResultType) then
     begin
-      retloc := ReturnLoc;
+      retloc := ResultLocs;
       Result := PByte(@retloc^.Count) + SizeOf(retloc^.Count) + SizeOf(TParameterLocation) * retloc^.Count;
     end
   else if ParamCount = 0 then

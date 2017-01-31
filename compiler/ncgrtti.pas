@@ -347,15 +347,23 @@ implementation
         locs:=paramanager.cgparalocs_to_rttiparalocs(para^.location);
         if length(locs)>high(byte) then
           internalerror(2017010601);
+        tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PtrInt)),
+          targetinfos[target_info.system]^.alignment.recordalignmin,
+          targetinfos[target_info.system]^.alignment.maxCrecordalign);
         tcb.emit_ord_const(length(locs),u8inttype);
         for i:=low(locs) to high(locs) do
           begin
+            tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PtrInt)),
+              targetinfos[target_info.system]^.alignment.recordalignmin,
+              targetinfos[target_info.system]^.alignment.maxCrecordalign);
             tcb.emit_ord_const(locs[i].loctype,u8inttype);
             tcb.emit_ord_const(locs[i].regsub,u8inttype);
             tcb.emit_ord_const(locs[i].regindex,u16inttype);
             { the corresponding type for aint is alusinttype }
             tcb.emit_ord_const(locs[i].offset,alusinttype);
+            tcb.end_anonymous_record;
           end;
+        tcb.end_anonymous_record;
       end;
 
 
@@ -1605,7 +1613,7 @@ implementation
             end;
           { write rtti data; make sure that the alignment matches the corresponding data structure
             in the code that uses it (if alignment is required). }
-          tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
+          tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable,tcalo_data_force_indirect]);
           { use TConstPtrUInt packrecords to ensure good alignment }
           tcb.begin_anonymous_record('',defaultpacking,reqalign,
             targetinfos[target_info.system]^.alignment.recordalignmin,
@@ -1660,7 +1668,7 @@ implementation
             tcb.end_anonymous_record;
 
             tabledef:=tcb.end_anonymous_record;
-            rttilab:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_o2s',AB_GLOBAL,AT_DATA_FORCEINDIRECT,tabledef);
+            rttilab:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_o2s',AB_GLOBAL,AT_DATA_NOINDIRECT,tabledef);
             current_asmdata.asmlists[al_rtti].concatlist(tcb.get_final_asmlist(
               rttilab,tabledef,sec_rodata,
               rttilab.name,sizeof(pint)));
@@ -1682,7 +1690,7 @@ implementation
           tabledef: tdef;
         begin
           { write rtti data }
-          tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
+          tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable,tcalo_data_force_indirect]);
           { begin of Tstring_to_ord }
           tcb.begin_anonymous_record('',defaultpacking,min(reqalign,sizeof(pointer)),
             targetinfos[target_info.system]^.alignment.recordalignmin,
@@ -1707,7 +1715,7 @@ implementation
             end;
           tcb.end_anonymous_record;
           tabledef:=tcb.end_anonymous_record;
-          rttilab:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_s2o',AB_GLOBAL,AT_DATA_FORCEINDIRECT,tabledef);
+          rttilab:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_s2o',AB_GLOBAL,AT_DATA_NOINDIRECT,tabledef);
           current_asmdata.asmlists[al_rtti].concatlist(tcb.get_final_asmlist(
             rttilab,tabledef,sec_rodata,
             rttilab.name,sizeof(pint)));
@@ -1853,7 +1861,7 @@ implementation
         { write first all dependencies }
         write_child_rtti_data(def,rt);
         { write rtti data }
-        tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
+        tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable,tcalo_data_force_indirect]);
         tcb.begin_anonymous_record(
           internaltypeprefixName[itp_rttidef]+tstoreddef(def).rtti_mangledname(rt),
           defaultpacking,reqalign,
@@ -1862,7 +1870,7 @@ implementation
         );
         write_rtti_data(tcb,def,rt);
         rttidef:=tcb.end_anonymous_record;
-        rttilab:=current_asmdata.DefineAsmSymbol(tstoreddef(def).rtti_mangledname(rt),AB_GLOBAL,AT_DATA_FORCEINDIRECT,rttidef);
+        rttilab:=current_asmdata.DefineAsmSymbol(tstoreddef(def).rtti_mangledname(rt),AB_GLOBAL,AT_DATA_NOINDIRECT,rttidef);
         current_asmdata.AsmLists[al_rtti].concatList(
           tcb.get_final_asmlist(rttilab,rttidef,sec_rodata,rttilab.name,min(target_info.alignment.maxCrecordalign,SizeOf(QWord))));
         tcb.free;

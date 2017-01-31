@@ -633,11 +633,14 @@ implementation
         pd:=tprocdef(cnodeutils.create_main_procdef(target_info.cprefix+name,potype,ps));
         { We don't need is a local symtable. Change it into the static
           symtable }
-        if potype<>potype_mainstub then
+        if not (potype in [potype_mainstub,potype_pkgstub]) then
           begin
             pd.localst.free;
             pd.localst:=st;
           end
+        else if (potype=potype_pkgstub) and
+            (target_info.system in systems_all_windows+systems_nativent) then
+          pd.proccalloption:=pocall_stdcall
         else
           pd.proccalloption:=pocall_cdecl;
         handle_calling_convention(pd);
@@ -645,7 +648,8 @@ implementation
         result:=tcgprocinfo(cprocinfo.create(nil));
         result.procdef:=pd;
         { main proc does always a call e.g. to init system unit }
-        include(result.flags,pi_do_call);
+        if potype<>potype_pkgstub then
+          include(result.flags,pi_do_call);
       end;
 
 
@@ -1420,8 +1424,8 @@ type
         hp,hp2    : tmodule;
         pkg : tpcppackage;
         {finalize_procinfo,
-        init_procinfo,
-        main_procinfo : tcgprocinfo;}
+        init_procinfo,}
+        main_procinfo : tcgprocinfo;
         force_init_final : boolean;
         uu : tused_unit;
         module_name: ansistring;
@@ -1430,8 +1434,8 @@ type
          Status.IsPackage:=true;
          Status.IsExe:=true;
          parse_only:=false;
-         {main_procinfo:=nil;
-         init_procinfo:=nil;
+         main_procinfo:=nil;
+         {init_procinfo:=nil;
          finalize_procinfo:=nil;}
 
          if not (tf_supports_packages in target_info.flags) then
@@ -1662,12 +1666,11 @@ type
              { Note: all contained units are considered as used }
            end;
 
-         if target_info.system in systems_windows then
+         if target_info.system in systems_all_windows+systems_nativent then
            begin
-             { ToDo: generate an entry dummy using higher level functionality }
-             new_section(current_asmdata.asmlists[al_procedures],sec_code,'',0);
-             current_asmdata.asmlists[al_procedures].concat(tai_symbol.createname_global('_DLLMainCRTStartup',AT_FUNCTION,0,voidcodepointertype));
-             gen_fpc_dummy(current_asmdata.asmlists[al_procedures]);
+             main_procinfo:=create_main_proc('_DLLMainCRTStartup',potype_pkgstub,current_module.localsymtable);
+             main_procinfo.code:=generate_pkg_stub(main_procinfo.procdef);
+             main_procinfo.generate_code;
            end;
 
          { leave when we got an error }
