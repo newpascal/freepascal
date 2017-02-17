@@ -133,7 +133,7 @@ implementation
 
     uses
       verbose,version,globals,cutils,constexp,
-      scanner,systems,procinfo,fmodule,
+      scanner,systems,procinfo,fmodule,pparautl,
       aasmbase,aasmtai,aasmcnst,
       symbase,symtable,defutil,symcreat,
       nadd,ncal,ncnv,ncon,nflw,ninl,nld,nmem,nobj,nutils,ncgutil,
@@ -483,12 +483,22 @@ implementation
        (tfiledef(tstaticvarsym(p).vardef).filetyp=ft_text) and
        (tstaticvarsym(p).isoindex<>0) then
        begin
-         addstatement(stat^,ccallnode.createintern('fpc_textinit_iso',
-           ccallparanode.create(
-             cordconstnode.create(tstaticvarsym(p).isoindex,uinttype,false),
-           ccallparanode.create(
-             cloadnode.create(tstaticvarsym(p),tstaticvarsym(p).Owner),
-           nil))));
+         if cs_transparent_file_names in current_settings.globalswitches then
+           addstatement(stat^,ccallnode.createintern('fpc_textinit_filename_iso',
+             ccallparanode.create(
+               cstringconstnode.createstr(tstaticvarsym(p).Name),
+             ccallparanode.create(
+               cordconstnode.create(tstaticvarsym(p).isoindex,uinttype,false),
+             ccallparanode.create(
+               cloadnode.create(tstaticvarsym(p),tstaticvarsym(p).Owner),
+             nil)))))
+         else
+           addstatement(stat^,ccallnode.createintern('fpc_textinit_iso',
+             ccallparanode.create(
+               cordconstnode.create(tstaticvarsym(p).isoindex,uinttype,false),
+             ccallparanode.create(
+               cloadnode.create(tstaticvarsym(p),tstaticvarsym(p).Owner),
+             nil))));
        end;
     end;
 
@@ -1467,6 +1477,20 @@ implementation
            tprocdef(pd).parast.insert(pvs);
            pvs:=cparavarsym.create('ARGP',3,vs_const,cpointerdef.getreusable(charpointertype),[]);
            tprocdef(pd).parast.insert(pvs);
+           tprocdef(pd).calcparas;
+         end
+       { package stub for Windows is a DLLMain }
+       else if (tprocdef(pd).proctypeoption=potype_pkgstub) and
+           (target_info.system in systems_all_windows+systems_nativent) then
+         begin
+           pvs:=cparavarsym.create('HINSTANCE',1,vs_const,uinttype,[]);
+           tprocdef(pd).parast.insert(pvs);
+           pvs:=cparavarsym.create('DLLREASON',2,vs_const,u32inttype,[]);
+           tprocdef(pd).parast.insert(pvs);
+           pvs:=cparavarsym.create('DLLPARAM',3,vs_const,voidpointertype,[]);
+           tprocdef(pd).parast.insert(pvs);
+           tprocdef(pd).returndef:=bool32type;
+           insert_funcret_para(tprocdef(pd));
            tprocdef(pd).calcparas;
          end;
      end;

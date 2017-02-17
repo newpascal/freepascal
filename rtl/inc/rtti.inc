@@ -48,15 +48,16 @@ type
   packed
 {$endif USE_PACKED}
   record
+{$ifndef VER3_0}
+    InitTable: Pointer;
+{$endif VER3_0}
     Size: Longint;
-{$if FPC_FULLVERSION>30100}
-    InitTable: PPointer;
-{$endif FPC_FULLVERSION>30100}
     Count: Longint;
     { Elements: array[count] of TRecordElement }
   end;
 
-{$if FPC_FULLVERSION>30100}
+  PRecordInfoInit=^TRecordInfoInit;
+{$ifndef VER3_0}
   TRTTIRecVarOp=procedure(ARec: Pointer);
   TRTTIRecCloneOp=procedure(ASrc, ADest: Pointer);
   TRTTIRecOpType=(rotAny, rotInitialize, rotFinalize, rotCopy, rotClone);
@@ -72,19 +73,20 @@ type
     Clone: TRTTIRecCloneOp;
   end;
 
-  PRecordInfoInit=^TRecordInfoInit;
   TRecordInfoInit=
 {$ifdef USE_PACKED}
   packed
 {$endif USE_PACKED}
   record
-    Size: Longint;
     Terminator: Pointer;
+    Size: Longint;
     RecordOp: PRTTIRecordOpVMT;
     Count: Longint;
     { Elements: array[count] of TRecordElement }
   end;
-{$endif FPC_FULLVERSION>30100}
+{$else VER3_0}
+  TRecordInfoInit=TRecordInfoFull;
+{$endif VER3_0}
 
   PArrayInfo=^TArrayInfo;
   TArrayInfo=
@@ -105,7 +107,11 @@ type
 
 function RTTIArraySize(typeInfo: Pointer): SizeInt;
 begin
+{$ifdef VER3_0}
   typeInfo:=aligntoptr(typeInfo+2+PByte(typeInfo)[1]);
+{$else VER3_0}
+  typeInfo:=aligntoqword(typeInfo+2+PByte(typeInfo)[1]);
+{$endif VER3_0}
   {$ifdef VER2_6}
   result:=PArrayInfo(typeInfo)^.Size*PArrayInfo(typeInfo)^.ElCount;
   {$else}
@@ -115,7 +121,12 @@ end;
 
 function RTTIRecordSize(typeInfo: Pointer): SizeInt;
 begin
+{$ifdef VER3_0}
   typeInfo:=aligntoptr(typeInfo+2+PByte(typeInfo)[1]);
+{$else VER3_0}
+  typeInfo:=aligntoqword(typeInfo+2+PByte(typeInfo)[1]);
+{$endif VER3_0}
+  { for size field init table is compatible with rtti table }
   result:=PRecordInfoFull(typeInfo)^.Size;
 end;
 
@@ -123,16 +134,16 @@ end;
 function RTTIRecordOp(typeInfo: Pointer; var initrtti: Pointer): PRecordInfoInit; inline;
 begin
   { find init table and management operators }
-  typeInfo:=aligntoptr(typeInfo+2+PByte(typeInfo)[1]);
+  typeInfo:=aligntoqword(typeInfo+2+PByte(typeInfo)[1]);
   result:=typeInfo;
 
   { check terminator, maybe we are already in init table }
   if Assigned(result^.Terminator) then
   begin
     { point to more optimal initrtti }
-    initrtti:=PRecordInfoFull(result)^.InitTable^;
+    initrtti:=PRecordInfoFull(result)^.InitTable;
     { and point to management operators in our init table }
-    result:=aligntoptr(initrtti+2+PByte(initrtti)[1]);
+    result:=aligntoqword(initrtti+2+PByte(initrtti)[1]);
   end
 end;
 {$endif FPC_FULLVERSION>30100}
@@ -187,7 +198,11 @@ var
   count,
   i : longint;
 begin
+{$ifdef VER3_0}
   typeInfo:=aligntoptr(typeInfo+2+PByte(typeInfo)[1]);
+{$else VER3_0}
+  typeInfo:=aligntoqword(typeInfo+2+PByte(typeInfo)[1]);
+{$endif VER3_0}
 {$if FPC_FULLVERSION>30100}
   Count:=PRecordInfoInit(typeInfo)^.Count;
   Inc(PRecordInfoInit(typeInfo));
@@ -210,7 +225,11 @@ procedure ArrayRTTI(Data,TypeInfo:Pointer;rttiproc:TRTTIProc);
 var
   i: SizeInt;
 begin
+{$ifdef VER3_0}
   typeInfo:=aligntoptr(typeInfo+2+PByte(typeInfo)[1]);
+{$else VER3_0}
+  typeInfo:=aligntoqword(typeInfo+2+PByte(typeInfo)[1]);
+{$endif VER3_0}
   { Process elements }
   for I:=0 to PArrayInfo(typeInfo)^.ElCount-1 do
     rttiproc(Data+(I*PArrayInfo(typeInfo)^.Size),PArrayInfo(typeInfo)^.ElInfo);
@@ -221,7 +240,11 @@ var
   i,Count,ElSize: SizeInt;
   Info: Pointer;
 begin
+{$ifdef VER3_0}
   typeInfo:=aligntoptr(typeInfo+2+PByte(typeInfo)[1]);
+{$else VER3_0}
+  typeInfo:=aligntoqword(typeInfo+2+PByte(typeInfo)[1]);
+{$endif VER3_0}
   Count:=PArrayInfo(typeInfo)^.ElCount;
   { no elements to process => exit }
   if Count = 0 then
@@ -394,7 +417,11 @@ begin
 {$endif FPC_HAS_FEATURE_WIDESTRINGS}
     tkArray:
       begin
+{$ifdef VER3_0}
         Temp:=aligntoptr(typeInfo+2+PByte(typeInfo)[1]);
+{$else VER3_0}
+        Temp:=aligntoqword(typeInfo+2+PByte(typeInfo)[1]);
+{$endif VER3_0}
       {$ifdef VER2_6}
         { Process elements }
         for I:=0 to PArrayInfo(Temp)^.ElCount-1 do
@@ -426,7 +453,11 @@ begin
       with RTTIRecordOp(typeinfo, typeinfo)^ do
 {$endif FPC_FULLVERSION>30100}
       begin
+{$ifdef VER3_0}
         Temp:=aligntoptr(typeInfo+2+PByte(typeInfo)[1]);
+{$else VER3_0}
+        Temp:=aligntoqword(typeInfo+2+PByte(typeInfo)[1]);
+{$endif VER3_0}
 {$if FPC_FULLVERSION>30100}
         if Assigned(recordop) and Assigned(recordop^.Clone) then
           recordop^.Clone(Src,Dest)

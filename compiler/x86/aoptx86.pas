@@ -46,6 +46,7 @@ unit aoptx86;
         function OptPass1MOV(var p : tai) : boolean;
 
         function OptPass2MOV(var p : tai) : boolean;
+        function OptPass2Imul(var p : tai) : boolean;
 
         procedure DebugMsg(const s : string; p : tai);inline;
 
@@ -67,6 +68,10 @@ unit aoptx86;
     function RefsEqual(const r1, r2: treference): boolean;
 
     function MatchReference(const ref : treference;base,index : TRegister) : Boolean;
+
+    { returns true, if ref is a reference using only the registers passed as base and index
+      and having an offset }
+    function MatchReferenceWithOffset(const ref : treference;base,index : TRegister) : Boolean;
 
     function MatchOpType(const instr : tai;ot0,ot1 : toptype) : Boolean;
 
@@ -175,6 +180,19 @@ unit aoptx86;
       begin
        Result:=(ref.offset=0) and
          (ref.scalefactor in [0,1]) and
+         (ref.segment=NR_NO) and
+         (ref.symbol=nil) and
+         (ref.relsymbol=nil) and
+         ((base=NR_INVALID) or
+          (ref.base=base)) and
+         ((index=NR_INVALID) or
+          (ref.index=index));
+      end;
+
+
+    function MatchReferenceWithOffset(const ref : treference;base,index : TRegister) : Boolean;
+      begin
+       Result:=(ref.scalefactor in [0,1]) and
          (ref.segment=NR_NO) and
          (ref.symbol=nil) and
          (ref.relsymbol=nil) and
@@ -349,7 +367,11 @@ unit aoptx86;
             ((p.oper[0]^.typ = top_ref) and
              not RegInRef(reg,p.oper[0]^.ref^)))) or
           ((p.opcode = A_POP) and
-           (SuperRegistersEqual(p.oper[0]^.reg,reg)));
+           (SuperRegistersEqual(p.oper[0]^.reg,reg))) or
+          ((p.opcode = A_IMUL) and
+           (p.ops=3) and
+           (SuperRegistersEqual(p.oper[2]^.reg,reg)) and
+           not((SuperRegistersEqual(p.oper[1]^.reg,reg))));
       end;
 
 
@@ -1102,18 +1124,19 @@ unit aoptx86;
            ((taicpu(hp1).opcode=A_LEA) and
              GetNextInstruction(hp1,hp2) and
              MatchInstruction(hp2,A_MOV,[]) and
-            (taicpu(hp1).oper[1]^.reg = taicpu(p).oper[1]^.reg) and
             ((MatchReference(taicpu(hp1).oper[0]^.ref^,taicpu(p).oper[1]^.reg,NR_INVALID) and
              (taicpu(hp1).oper[0]^.ref^.index<>taicpu(p).oper[1]^.reg)
               ) or
              (MatchReference(taicpu(hp1).oper[0]^.ref^,NR_INVALID,
               taicpu(p).oper[1]^.reg) and
-             (taicpu(hp1).oper[0]^.ref^.base<>taicpu(p).oper[1]^.reg))
+             (taicpu(hp1).oper[0]^.ref^.base<>taicpu(p).oper[1]^.reg)) or
+             (MatchReferenceWithOffset(taicpu(hp1).oper[0]^.ref^,taicpu(p).oper[1]^.reg,NR_NO)) or
+             (MatchReferenceWithOffset(taicpu(hp1).oper[0]^.ref^,NR_NO,taicpu(p).oper[1]^.reg))
             ) and
             ((MatchOperand(taicpu(p).oper[1]^,taicpu(hp2).oper[0]^)) or not(RegUsedAfterInstruction(taicpu(p).oper[1]^.reg,hp1,UsedRegs)))
            )
           ) and
-          MatchOperand(taicpu(p).oper[1]^,taicpu(hp2).oper[0]^) and
+          MatchOperand(taicpu(hp1).oper[taicpu(hp1).ops-1]^,taicpu(hp2).oper[0]^) and
           (taicpu(hp2).oper[1]^.typ = top_ref) then
           begin
             CopyUsedRegs(TmpUsedRegs);
@@ -1132,10 +1155,12 @@ unit aoptx86;
                   A_LEA :
                     begin
                       taicpu(hp1).opcode:=A_ADD;
-                      if taicpu(hp1).oper[0]^.ref^.index<>taicpu(p).oper[1]^.reg then
+                      if (taicpu(hp1).oper[0]^.ref^.index<>taicpu(p).oper[1]^.reg) and (taicpu(hp1).oper[0]^.ref^.index<>NR_NO) then
                         taicpu(hp1).loadreg(0,taicpu(hp1).oper[0]^.ref^.index)
+                      else if (taicpu(hp1).oper[0]^.ref^.base<>taicpu(p).oper[1]^.reg) and (taicpu(hp1).oper[0]^.ref^.base<>NR_NO) then
+                        taicpu(hp1).loadreg(0,taicpu(hp1).oper[0]^.ref^.base)
                       else
-                        taicpu(hp1).loadreg(0,taicpu(hp1).oper[0]^.ref^.base);
+                        taicpu(hp1).loadconst(0,taicpu(hp1).oper[0]^.ref^.offset);
                       taicpu(hp1).loadRef(1,taicpu(p).oper[0]^.ref^);
                       DebugMsg('Peephole FoldLea done',hp1);
                     end
@@ -1147,6 +1172,45 @@ unit aoptx86;
                 p.free;
                 hp2.free;
                 p := hp1
+              end;
+            ReleaseUsedRegs(TmpUsedRegs);
+          end;
+      end;
+
+
+    function TX86AsmOptimizer.OptPass2Imul(var p : tai) : boolean;
+      var
+        TmpUsedRegs : TAllUsedRegs;
+        hp1 : tai;
+        i : longint;
+      begin
+        Result:=false;
+        if (taicpu(p).ops >= 2) and
+           ((taicpu(p).oper[0]^.typ = top_const) or
+            ((taicpu(p).oper[0]^.typ = top_ref) and (taicpu(p).oper[0]^.ref^.refaddr=addr_full))) and
+           (taicpu(p).oper[1]^.typ = top_reg) and
+           ((taicpu(p).ops = 2) or
+            ((taicpu(p).oper[2]^.typ = top_reg) and
+             (taicpu(p).oper[2]^.reg = taicpu(p).oper[1]^.reg))) and
+           GetLastInstruction(p,hp1) and
+           MatchInstruction(hp1,A_MOV,[]) and
+           MatchOpType(hp1,top_reg,top_reg) and
+           ((taicpu(hp1).oper[1]^.reg = taicpu(p).oper[1]^.reg) or
+            ((taicpu(hp1).opsize=S_L) and (taicpu(p).opsize=S_Q) and SuperRegistersEqual(taicpu(hp1).oper[1]^.reg,taicpu(p).oper[1]^.reg))) then
+          begin
+            CopyUsedRegs(TmpUsedRegs);
+            if not(RegUsedAfterInstruction(taicpu(p).oper[1]^.reg,p,TmpUsedRegs)) then
+              { change
+                  mov reg1,reg2
+                  imul y,reg2 to imul y,reg1,reg2 }
+              begin
+                taicpu(p).ops := 3;
+                taicpu(p).loadreg(1,taicpu(hp1).oper[0]^.reg);
+                taicpu(p).loadreg(2,taicpu(hp1).oper[1]^.reg);
+                DebugMsg('Peephole MovImul2Imul done',p);
+                asml.remove(hp1);
+                hp1.free;
+                result:=true;
               end;
             ReleaseUsedRegs(TmpUsedRegs);
           end;

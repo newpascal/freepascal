@@ -956,6 +956,8 @@ const
   unit_u_indirect_crc_changed=10062;
   unit_u_ppu_invalid_memory_model=10063;
   unit_u_loading_from_package=10064;
+  cg_f_internal_type_not_found=10065;
+  cg_f_internal_type_does_not_match=10066;
   option_usage=11000;
   option_only_one_source_support=11001;
   option_def_only_for_os2=11002;
@@ -1010,6 +1012,7 @@ const
   option_smart_link_requires_external_linker=11056;
   option_com_files_require_tiny_model=11057;
   option_gc_incompatible_with_release_flag=11058;
+  option_invalid_target_architecture=11059;
   wpo_cant_find_file=12000;
   wpo_begin_processing=12001;
   wpo_end_processing=12002;
@@ -1063,9 +1066,9 @@ const
   option_info=11024;
   option_help_pages=11025;
 
-  MsgTxtSize = 78693;
+  MsgTxtSize = 79107;
 
   MsgIdxMax : array[1..20] of longint=(
-    27,102,347,124,96,58,130,33,209,65,
-    59,20,30,1,1,1,1,1,1,1
+    27,102,347,124,96,58,130,33,209,67,
+    60,20,30,1,1,1,1,1,1,1
   );

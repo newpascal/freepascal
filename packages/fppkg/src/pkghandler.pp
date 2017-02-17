@@ -23,7 +23,8 @@ uses
 {$ifdef HAS_UNIT_PROCESS}
   process,
 {$endif HAS_UNIT_PROCESS}
-  fprepos;
+  fprepos,
+  pkgFppkg;
 
 type
   { TPackageHandler }
@@ -31,6 +32,7 @@ type
   TPackageHandler = Class(TComponent)
   private
     FPackageName : string;
+    FPackageManager: tpkgFPpkg;
   Protected
     Procedure Log(Level: TLogLevel;Msg : String);
     Procedure Log(Level: TLogLevel;Fmt : String; const Args : array of const);
@@ -38,8 +40,9 @@ type
     Procedure Error(Fmt : String; const Args : array of const);
     Function ExecuteProcess(Const Prog,Args:String):Integer;
     Procedure SetCurrentDir(Const ADir:String);
+    Property PackageManager:TpkgFPpkg Read FPackageManager;
   Public
-    Constructor Create(AOwner:TComponent;const APackageName:string); virtual;
+    Constructor Create(AOwner:TComponent; APackageManager:TpkgFPpkg; const APackageName:string); virtual;
     function PackageLogPrefix:String;
     procedure ExecuteAction(const APackageName,AAction:string);
     procedure Execute; virtual; abstract;
@@ -52,11 +55,8 @@ type
 // Actions/PkgHandler
 procedure RegisterPkgHandler(const AAction:string;pkghandlerclass:TPackageHandlerClass);
 function GetPkgHandler(const AAction:string):TPackageHandlerClass;
-procedure ExecuteAction(const APackageName,AAction:string);
+procedure ExecuteAction(const APackageName,AAction:string; PackageManager: TpkgFPpkg);
 
-function PackageBuildPath(APackage:TFPPackage):String;
-function PackageRemoteArchive(APackage:TFPPackage): String;
-function PackageLocalArchive(APackage:TFPPackage): String;
 function PackageManifestFile(APackage:TFPPackage): String;
 procedure ClearExecutedAction;
 
@@ -94,7 +94,7 @@ begin
 end;
 
 
-procedure ExecuteAction(const APackageName,AAction:string);
+procedure ExecuteAction(const APackageName,AAction:string; PackageManager: TpkgFPpkg);
 var
   pkghandlerclass : TPackageHandlerClass;
   FullActionName : string;
@@ -111,7 +111,7 @@ begin
 
   // Create action handler class
   pkghandlerclass:=GetPkgHandler(AAction);
-  With pkghandlerclass.Create(nil,APackageName) do
+  With pkghandlerclass.Create(nil,PackageManager,APackageName) do
     try
       Log(llDebug,SLogRunAction+' start',[AAction]);
       Execute;
@@ -119,41 +119,6 @@ begin
     finally
       Free;
     end;
-end;
-
-
-function PackageBuildPath(APackage:TFPPackage):String;
-begin
-  if (APackage.Name=CmdLinePackageName) or (APackage.Name=URLPackageName) then
-    Result:=GFPpkg.Options.GlobalSection.BuildDir+ChangeFileExt(ExtractFileName(APackage.LocalFileName),'')
-  else if Assigned(APackage.PackagesStructure) and (APackage.PackagesStructure.GetBuildPathDirectory(APackage)<>'') then
-    Result:=APackage.PackagesStructure.GetBuildPathDirectory(APackage)
-  else
-    Result:=GFPpkg.Options.GlobalSection.BuildDir+APackage.Name;
-end;
-
-
-function PackageRemoteArchive(APackage:TFPPackage): String;
-begin
-  if APackage.Name=CurrentDirPackageName then
-    Error(SErrNoPackageSpecified)
-  else if APackage.Name=CmdLinePackageName then
-    Error(SErrPackageIsLocal);
-  if APackage.DownloadURL<>'' then
-    Result:=APackage.DownloadURL
-  else
-    Result:=GetRemoteRepositoryURL(APackage.FileName);
-end;
-
-
-function PackageLocalArchive(APackage:TFPPackage): String;
-begin
-  if APackage.Name=CurrentDirPackageName then
-    Error(SErrNoPackageSpecified)
-  else if APackage.Name=CmdLinePackageName then
-    Result:=APackage.LocalFileName
-  else
-    Result:=GFPpkg.Options.GlobalSection.ArchivesDir+APackage.FileName;
 end;
 
 
@@ -169,10 +134,12 @@ end;
 
 { TPackageHandler }
 
-constructor TPackageHandler.Create(AOwner:TComponent;const APackageName:string);
+Constructor TPackageHandler.Create(AOwner: TComponent; APackageManager: TpkgFPpkg;
+  const APackageName: string);
 begin
   inherited Create(AOwner);
   FPackageName:=APackageName;
+  FPackageManager:=APackageManager;
 end;
 
 {$ifdef HAS_UNIT_PROCESS}
@@ -290,8 +257,7 @@ end;
 
 procedure TPackageHandler.ExecuteAction(const APackageName,AAction:string);
 begin
-  // Needed to override TComponent.ExecuteAction method
-  pkghandler.ExecuteAction(APackageName,AAction);
+  pkghandler.ExecuteAction(APackageName,AAction,PackageManager);
 end;
 
 

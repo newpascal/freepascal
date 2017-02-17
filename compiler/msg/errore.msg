@@ -3007,7 +3007,7 @@ link_e_com_program_uses_segment_relocations=09207_E_Cannot create a .COM file, b
 % might be caused by the use of the Seg() function or by the SEG assembler
 % directive (either in pascal's built-in inline assembler, or in an externally
 % linked assembly module).
-link_w_program_uses_checkpointer=09208_W_Program "$1" uses experimental CheckPointer function
+link_w_program_uses_checkpointer=09208_W_Program "$1" uses experimental CheckPointer option
 %\end{description}
 # EndOfTeX
 
@@ -3221,6 +3221,16 @@ unit_u_ppu_invalid_memory_model=10063_U_PPU is compiled for another i8086 memory
 % cannot be read.
 unit_u_loading_from_package=10064_U_Loading unit $1 from package $2
 % The unit is loaded from a package.
+cg_f_internal_type_not_found=10065_F_Internal type "$1" was not found. Check if you use the correct run time library.
+% The compiler expects that the runtime library contains certain types. If you see this error
+% and you didn't change the runtime library code, it's very likely that the runtime library
+% you're using doesn't match the compiler in use. If you changed the runtime library this error means
+% that you removed a type which the compiler needs for internal use.
+cg_f_internal_type_does_not_match=10066_F_Internal type "$1" does not look as expected. Check if you use the correct run time library.
+% The compiler expects that the runtime library contains certain types. If you see this error
+% and you didn't change the runtime library code, it's very likely that the runtime library
+% you're using doesn't match the compiler in use. If you changed the runtime library this error means
+% that you changed a type which the compiler needs for internal use and which needs to have a certain structure.
 % \end{description}
 # EndOfTeX
 
@@ -3375,6 +3385,8 @@ option_smart_link_requires_external_linker=11056_W_Smart linking requires extern
 option_com_files_require_tiny_model=11057_E_Creating .COM files is not supported in the current memory model. Only the tiny memory model supports making .COM files.
 % Do not enable experimental -gc option if -Ur option is given.
 option_gc_incompatible_with_release_flag=11058_W_Experimental CheckPointer option not enabled because it is incomptatible with -Ur option.
+% The compiler binary only supports a single target architecture. Invoke the fpc binary if you wish to select a compiler binary for a different target architecture.
+option_invalid_target_architecture=11059_E_Unsupported target architecture -P$1, invoke the the "fpc" compiler driver instead.
 
 %\end{description}
 # EndOfTeX
@@ -3554,7 +3566,7 @@ package_u_ppl_filename=13029_U_PPL filename $1
 #
 option_logo=11023_[
 Free Pascal Compiler version $FPCFULLVERSION [$FPCDATE] for $FPCCPU
-Copyright (c) 1993-2016 by Florian Klaempfl and others
+Copyright (c) 1993-2017 by Florian Klaempfl and others
 ]
 
 #
@@ -3639,6 +3651,7 @@ F*0*_Only options valid for the default or selected platform are listed.
 **0*_Put + after a boolean switch option to enable it, - to disable it.
 **1@<x>_Read compiler options from <x> in addition to the default fpc.cfg
 **1a_The compiler does not delete the generated assembler file
+**2a5_Don't generate Big Obj COFF files for GNU Binutils older than 2.25 (Windows, NativeNT)
 **2al_List sourcecode lines in assembler file
 **2an_List node info in assembler file (-dEXTDEBUG compiler)
 **2ao_Add an extra option to external assembler call (ignored for internal)
@@ -3857,6 +3870,7 @@ F*2P<x>_Set target CPU (aarch64,arm,avr,i386,i8086,jvm,m68k,mips,mipsel,powerpc,
 **3SIcorba_CORBA compatible interface
 **2Sm_Support macros like C (global)
 **2So_Same as -Mtp
+**2Sr_Transparent file names in ISO mode
 **2Ss_Constructor name must be init (destructor must be done)
 **2Sv_Support vector processing (use CPU vector extensions if available)
 **2Sx_Enable exception keywords (default in Delphi/ObjFPC modes)

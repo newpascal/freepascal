@@ -894,6 +894,19 @@ Implementation
 
 
     function TExternalAssembler.MakeCmdLine: TCmdStr;
+
+      function section_high_bound:longint;
+        var
+          alt : tasmlisttype;
+        begin
+          result:=0;
+          for alt:=low(tasmlisttype) to high(tasmlisttype) do
+            result:=result+current_asmdata.asmlists[alt].section_count;
+        end;
+
+      const
+        min_big_obj_section_count = $7fff;
+
       begin
         result:=asminfo^.asmcmd;
         { for Xcode 7.x and later }
@@ -940,6 +953,15 @@ Implementation
            Replace(result,'$ENDIAN','-mlittle')
          else
            Replace(result,'$ENDIAN','-mbig');
+
+         { as we don't keep track of the amount of sections we created we simply
+           enable Big Obj COFF files always for targets that need them }
+         if (cs_asm_pre_binutils_2_25 in current_settings.globalswitches) or
+            not (target_info.system in systems_all_windows+systems_nativent-[system_i8086_win16]) or
+            (section_high_bound<min_big_obj_section_count) then
+           Replace(result,'$BIGOBJ','')
+         else
+           Replace(result,'$BIGOBJ','-mbig-obj');
 
          Replace(result,'$EXTRAOPT',asmextraopt);
       end;
@@ -2027,7 +2049,7 @@ Implementation
            MaybeNextList(hp);
          end;
         ObjData.afteralloc;
-        { leave if errors have occured }
+        { leave if errors have occurred }
         if errorcount>0 then
          goto doexit;
 
@@ -2048,7 +2070,7 @@ Implementation
         ObjData.createsection(sec_code);
         ObjData.afteralloc;
 
-        { leave if errors have occured }
+        { leave if errors have occurred }
         if errorcount>0 then
          goto doexit;
 
@@ -2069,7 +2091,7 @@ Implementation
         ObjData.createsection(sec_code);
         ObjData.afterwrite;
 
-        { don't write the .o file if errors have occured }
+        { don't write the .o file if errors have occurred }
         if errorcount=0 then
          begin
            { write objectfile }
@@ -2122,7 +2144,7 @@ Implementation
              ObjData.CreateSection(startsectype,startsecname,startsecorder);
            TreePass0(hp);
            ObjData.afteralloc;
-           { leave if errors have occured }
+           { leave if errors have occurred }
            if errorcount>0 then
              break;
 
@@ -2135,7 +2157,7 @@ Implementation
            TreePass1(hp);
            ObjData.afteralloc;
 
-           { leave if errors have occured }
+           { leave if errors have occurred }
            if errorcount>0 then
              break;
 
@@ -2149,7 +2171,7 @@ Implementation
            hp:=TreePass2(hp);
            ObjData.afterwrite;
 
-           { leave if errors have occured }
+           { leave if errors have occurred }
            if errorcount>0 then
              break;
 

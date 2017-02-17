@@ -10,8 +10,6 @@ uses
   pkgFppkg,
   fpmkunit;
 
-function GetRemoteRepositoryURL(const AFileName:string):string;
-
 procedure LoadLocalAvailableMirrors;
 function LoadManifestFromFile(const AManifestFN:string):TFPPackage;
 procedure FindInstalledPackages(ACompilerOptions:TCompilerOptions;showdups:boolean=true);
@@ -20,8 +18,6 @@ function  FindBrokenPackages(SL:TStrings):Boolean;
 procedure CheckFPMakeDependencies;
 procedure ListPackages(const ShowGlobalAndLocal: boolean);
 procedure InitializeFppkg;
-
-procedure ClearRemoteRepository;
 
 procedure SetDefaultRepositoryClass(ARepositoryClass: TFPRepositoryClass);
 
@@ -43,7 +39,6 @@ resourcestring
   SErrRepositoryClassAlreadyAssigned = 'Default repository class is already assigned.';
 
 var
-  CurrentRemoteRepositoryURL : String;
   RepositoryClass : TFPRepositoryClass;
 
 procedure SetDefaultRepositoryClass(ARepositoryClass: TFPRepositoryClass);
@@ -138,23 +133,6 @@ begin
     Error(SErrFailedToSelectMirror);
 end;
 
-
-function GetRemoteRepositoryURL(const AFileName:string):string;
-begin
-  if CurrentRemoteRepositoryURL='' then
-    begin
-      if GFPpkg.Options.GlobalSection.RemoteRepository='auto' then
-        CurrentRemoteRepositoryURL:=SelectRemoteMirror
-      else
-        CurrentRemoteRepositoryURL:=GFPpkg.Options.GlobalSection.RemoteRepository;
-    end;
-  result := CurrentRemoteRepositoryURL;
-  if result[length(result)]<>'/' then
-    result := result + '/';
-  Result:=Result+GFPpkg.CompilerOptions.CompilerVersion+'/'+AFileName;
-end;
-
-
 {*****************************************************************************
                            Local Repository
 *****************************************************************************}
@@ -199,6 +177,7 @@ begin
   FPMKUnitDeps[high(FPMKUnitDeps)].package:=APackage.Name;
   FPMKUnitDeps[high(FPMKUnitDeps)].reqver:=APackage.Version.AsString;
   FPMKUnitDeps[high(FPMKUnitDeps)].def:='HAS_PACKAGE_'+APackage.Name;
+  FPMKUnitDeps[high(FPMKUnitDeps)].PluginUnit:=APackage.FPMakePluginUnits;
   FPMKUnitDeps[high(FPMKUnitDeps)].available:=true;
 end;
 
@@ -237,45 +216,8 @@ end;
 
 
 procedure CheckFPMakeDependencies;
-var
-  i : Integer;
-  P,AvailP : TFPPackage;
-  AvailVerStr : string;
-  ReqVer : TFPVersion;
 begin
-  // Reset availability
-  for i:=0 to high(FPMKUnitDeps) do
-    FPMKUnitDeps[i].available:=false;
-  // Not version check needed in Recovery mode, we always need to use
-  // the internal bootstrap procedure
-  if GFPpkg.Options.CommandLineSection.RecoveryMode then
-    exit;
-  // Check for fpmkunit dependencies
-  for i:=0 to high(FPMKUnitDeps) do
-    begin
-      P:=GFPpkg.FPMakeRepoFindPackage(FPMKUnitDeps[i].package, pkgpkInstalled);
-      if P<>nil then
-        begin
-          AvailP:=GFPpkg.FindPackage(FPMKUnitDeps[i].package, pkgpkAvailable);
-          if AvailP<>nil then
-            AvailVerStr:=AvailP.Version.AsString
-          else
-            AvailVerStr:='<not available>';
-          ReqVer:=TFPVersion.Create;
-          try
-            ReqVer.AsString:=FPMKUnitDeps[i].ReqVer;
-            log(llDebug,SLogFPMKUnitDepVersion,[P.Name,ReqVer.AsString,P.Version.AsString,AvailVerStr]);
-            if ReqVer.CompareVersion(P.Version)<=0 then
-              FPMKUnitDeps[i].available:=true
-            else
-              log(llDebug,SLogFPMKUnitDepTooOld,[FPMKUnitDeps[i].package]);
-          finally
-            ReqVer.Free;
-          end;
-        end
-      else
-        log(llDebug,SLogFPMKUnitDepTooOld,[FPMKUnitDeps[i].package]);
-    end;
+  GFPpkg.ScanAvailablePackages;
 end;
 
 
@@ -362,11 +304,6 @@ begin
   if Assigned(GFPpkg) then
     GFPpkg.Free;
   GFPpkg := TpkgFPpkg.Create(nil);
-end;
-
-procedure ClearRemoteRepository;
-begin
-  CurrentRemoteRepositoryURL := '';
 end;
 
 initialization

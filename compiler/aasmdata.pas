@@ -58,6 +58,8 @@ interface
         al_exports,
         al_resources,
         al_rtti,
+        { all symbols with indirect suffix }
+        al_indirectglobals,
         al_dwarf_frame,
         al_dwarf_info,
         al_dwarf_abbrev,
@@ -112,6 +114,7 @@ interface
         'al_exports',
         'al_resources',
         'al_rtti',
+        'al_indirectglobals',
         'al_dwarf_frame',
         'al_dwarf_info',
         'al_dwarf_abbrev',
@@ -128,6 +131,7 @@ interface
 
     type
       TAsmList = class(tlinkedlist)
+         section_count : longint;
          constructor create;
          function  getlasttaifilepos : pfileposinfo;
       end;
@@ -356,7 +360,7 @@ implementation
       begin
         { this difference is only necessary to determine whether we always need
           indirect references or not }
-        if _typ=AT_DATA_FORCEINDIRECT then
+        if _typ in [AT_DATA_FORCEINDIRECT,AT_DATA_NOINDIRECT] then
           _typ:=AT_DATA;
         namestr:=s;
         if _bind in asmsymbindindirect then

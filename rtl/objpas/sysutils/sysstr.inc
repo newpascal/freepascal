@@ -1223,6 +1223,7 @@ Begin
   P:=Pos(FormatSettings.DecimalSeparator,S);
   If (P<>0) Then
     S[P] := '.';
+  s:=Trim(s);
   try
     case ValueType of
       fvCurrency:
@@ -1908,7 +1909,13 @@ end;
 
 function StrToBool(const S: string): Boolean;
 begin
-  if not(TryStrToBool(S,Result)) then
+  if not(TryStrToBool(S,Result,DefaultFormatSettings)) then
+    Raise EConvertError.CreateFmt(SInvalidBoolean,[S]);
+end;
+
+function StrToBool(const S: string; const FormatSettings: TFormatSettings): Boolean;
+begin
+  if not(TryStrToBool(S,Result,FormatSettings)) then
     Raise EConvertError.CreateFmt(SInvalidBoolean,[S]);
 end;
 
@@ -1956,7 +1963,19 @@ begin
     Result:=Default;
 end;
 
+function StrToBoolDef(const S: string; Default: Boolean; const FormatSettings: TFormatSettings): Boolean;
+begin
+  if not(TryStrToBool(S,Result,FormatSettings)) then
+    Result:=Default;
+end;
+
 function TryStrToBool(const S: string; out Value: Boolean): Boolean;
+
+begin
+  Result:=TryStrToBool(S,Value,DefaultFormatSettings);
+end;
+
+function TryStrToBool(const S: string; out Value: Boolean; const FormatSettings: TFormatSettings): Boolean;
 Var
   Temp : String;
   I    : Longint;
@@ -1970,7 +1989,7 @@ begin
   Temp:=upcase(S);
   Val(temp,D,code);
   Result:=true;
-  If Code=0 then
+  If (Code=0) or TryStrToFloat(S,D,FormatSettings) then
 {$ifdef FPUNONE}
     Value:=(D<>0)
 {$else}

@@ -1687,7 +1687,7 @@ begin
   // converts parameter value to connection charset
   if FCodePage = CP_UTF8 then
     Result := Param.AsUTF8String
-  else if FCodePage in [DefaultSystemCodePage, CP_ACP] then
+  else if FCodePage in [DefaultSystemCodePage, CP_ACP, CP_NONE] then
     Result := Param.AsAnsiString
   else
   begin
@@ -1699,7 +1699,7 @@ end;
 function TSQLConnection.GetAsSQLText(Field : TField) : string;
 begin
   if (not assigned(Field)) or Field.IsNull then Result := 'Null'
-  else case field.DataType of
+  else case Field.DataType of
     ftString   : Result := QuotedStr(Field.AsString);
     ftDate     : Result := '''' + FormatDateTime('yyyy-mm-dd',Field.AsDateTime,FSqlFormatSettings) + '''';
     ftDateTime : Result := '''' + FormatDateTime('yyyy-mm-dd hh:nn:ss.zzz',Field.AsDateTime,FSqlFormatSettings) + '''';
@@ -1934,7 +1934,7 @@ Var
   Where : String;
 
 begin
-  Result:=Query.RefreshSQL.Text;
+  Result:=Trim(Query.RefreshSQL.Text);
   if (Result='') then
     begin
     Where:='';
@@ -1985,7 +1985,7 @@ var
 
 begin
   qry:=Nil;
-  ReturningClause:=(sqSupportReturning in ConnOptions) and not (sqoRefreshUsingSelect in Query.Options) and (Query.RefreshSQL.Count=0);
+  ReturningClause:=(sqSupportReturning in ConnOptions) and not (sqoRefreshUsingSelect in Query.Options) and (Trim(Query.RefreshSQL.Text)='');
   case UpdateKind of
     ukInsert : begin
                s := Trim(Query.FInsertSQL.Text);
@@ -2570,7 +2570,7 @@ Var
   DoReturning : Boolean;
 
 begin
-  Result:=(FRefreshSQL.Count<>0);
+  Result:=(Trim(FRefreshSQL.Text)<>'');
   DoReturning:=(sqSupportReturning in SQLConnection.ConnOptions) and not (sqoRefreshUsingSelect in Options);
   if Not (Result or DoReturning) then
     begin

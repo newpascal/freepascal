@@ -89,20 +89,58 @@ type
         b_clsiz: dword;       {* Sector per cluster       *}
     end;
 
+type
+    PDOSTIME = ^TDOSTIME;
+    TDOSTIME = record
+        time: word;           {* Time like Tgettime *}
+        date: word;           {* Date like Tgetdate *}
+    end;
+
+type
+  PPD = ^TPD;
+  TPD = record
+      p_lowtpa: pointer;      {* Start address of the TPA            *}
+      p_hitpa: pointer;       {* First byte after the end of the TPA *}
+      p_tbase: pointer;       {* Start address of the program code   *}
+      p_tlen: longint;        {* Length of the program code          *}
+      p_dbase: pointer;       {* Start address of the DATA segment   *}
+      p_dlen: longint;        {* Length of the DATA section          *}
+      p_bbase: pointer;       {* Start address of the BSS segment    *}
+      p_blen: longint;        {* Length of the BSS section           *}
+      p_dta: PDTA;            {* Pointer to the default DTA          *}
+                              {* Warning: Points first to the        *}
+                              {* command line !                      *}
+      p_parent: PPD;          {* Pointer to the basepage of the      *}
+                              {* calling processes                   *}
+      p_resrvd0: longint;     {* Reserved                            *}
+      p_env: pchar;           {* Address of the environment string   *}
+      p_resrvd1: array[0..79] of char;   {* Reserved                            *}
+      p_cmdlin: array[0..127] of char;   {* Command line                        *}
+  end;
+  TBASEPAGE = TPD; {* alias types... *}
+  PBASEPAGE = ^TBASEPAGE;
+
+
+procedure gemdos_cconws(p: pchar); syscall 1 9;
 
 function gemdos_dsetdrv(drv: smallint): longint; syscall 1 14;
 
 function gemdos_dgetdrv: smallint; syscall 1 25;
 procedure gemdos_setdta(buf: PDTA); syscall 1 26;
 
+function gemdos_tgetdate: longint; syscall 1 42;
+function gemdos_tsetdate(date: word): smallint; syscall 1 43;
+function gemdos_tgettime: longint; syscall 1 44;
+function gemdos_tsettime(time: word): smallint; syscall 1 45;
+
 function gemdos_getdta: PDTA; syscall 1 47;
+function gemdos_sversion: smallint; syscall 1 48;
 
 function gemdos_dfree(buf: PDISKINFO; driveno: smallint): smallint; syscall 1 54;
 
 function gemdos_dcreate(const path: pchar): longint; syscall 1 57;
 function gemdos_ddelete(const path: pchar): longint; syscall 1 58;
 function gemdos_dsetpath(path: pchar): smallint; syscall 1 59;
-
 function gemdos_fcreate(fname: pchar; attr: smallint): smallint; syscall 1 60;
 function gemdos_fopen(fname: pchar; mode: smallint): longint; syscall 1 61;
 function gemdos_fclose(handle: smallint): smallint; syscall 1 62;
@@ -115,10 +153,12 @@ function gemdos_fattrib(filename: pchar; wflag: smallint; attrib: smallint): sma
 function gemdos_dgetpath(path: pchar; driveno: smallint): smallint; syscall 1 71;
 function gemdos_malloc(number: dword): pointer; syscall 1 72;
 function gemdos_free(block: pointer): dword; syscall 1 73;
-
+function gemdos_mshrink(zero: word; block: pointer; newsiz: longint): longint; syscall 1 74;
+function gemdos_pexec(mode: word; name: pchar; cmdline: pchar; env: pchar): longint; syscall 1 75;
 procedure gemdos_pterm(returncode: smallint); syscall 1 76;
 
 function gemdos_fsfirst(filename: pchar; attr: smallint): longint; syscall 1 78;
 function gemdos_fsnext: smallint; syscall 1 79;
 
-function gemdos_frename(oldname: pchar; newname: pchar): longint; syscall 1 86;
+function gemdos_frename(zero: word; oldname: pchar; newname: pchar): longint; syscall 1 86;
+procedure gemdos_fdatime(timeptr: PDOSTIME; handle: smallint; wflag: smallint); syscall 1 87;

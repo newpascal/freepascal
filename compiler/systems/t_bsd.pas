@@ -591,35 +591,35 @@ begin
    end;
   { main objectfiles }
 
-  { Generate appfiles.txt file if needed }
+  { Generate linkfiles.res file if needed }
   { Always needed on Windows, due to the limitation of 8196 characters for command line }
+  { linkfiles.res will be piped if possible }
   if LdSupportsNoResponseFile then
-  begin
-    FilesList:=TLinkRes.Create(outputexedir+'appfiles.txt',not LdSupportsNoResponseFile);
+   begin
+     FilesList:=TLinkRes.Create(outputexedir+'linkfiles.res',not LdSupportsNoResponseFile);
   while not ObjectFiles.Empty do
    begin
      s:=ObjectFiles.GetFirst;
      if s<>'' then
-      begin
-         // osxcross can only handle '/'
-         repeat
-           i:=Pos('\',s);
-           if i>0 then s[i]:='/';
-         until i=0;
-        FilesList.Add(s);
+         begin
+           repeat
+            i:=Pos(source_info.dirsep,s);
+            if i>0 then s[i]:=target_info.dirsep;
+           until i=0;
+           FilesList.Add(s);
+         end;
       end;
-    end;
-    FilesList.writetodisk;
-    FilesList.Free;
-  end
+     FilesList.writetodisk;
+     FilesList.Free;
+   end
       else
-  begin
-    while not ObjectFiles.Empty do
-    begin
-      s:=ObjectFiles.GetFirst;
-      if s<>'' then LinkRes.AddFileName(maybequoted(s));
+   begin
+     while not ObjectFiles.Empty do
+      begin
+        s:=ObjectFiles.GetFirst;
+        if s<>'' then LinkRes.AddFileName(maybequoted(s));
    end;
-  end;
+   end;
 
   if not LdSupportsNoResponseFile then
    LinkRes.Add(')');
@@ -808,7 +808,7 @@ begin
   Replace(cmdstr,'$CATRES',CatFileContent(outputexedir+Info.ResName));
   Replace(cmdstr,'$RES',maybequoted(outputexedir+Info.ResName));
   if LdSupportsNoResponseFile
-     then Replace(cmdstr,'$FILELIST','-filelist '+maybequoted(outputexedir+'appfiles.txt'))
+     then Replace(cmdstr,'$FILELIST','-filelist '+maybequoted(outputexedir+'linkfiles.res'))
      else Replace(cmdstr,'$FILELIST','');
   Replace(cmdstr,'$STATIC',StaticStr);
   Replace(cmdstr,'$STRIP',StripStr);
@@ -833,16 +833,17 @@ begin
      not(cs_link_nolink in current_settings.globalswitches) then
     begin
       { we have to use a script to use the IFS hack }
-      linkscript:=TAsmScriptUnix.create(outputexedir+'ppaslink');
+      linkscript:=GenerateScript(outputexedir+'ppaslink');
       linkscript.AddLinkCommand(BinStr,CmdStr,'');
       if (extdbgcmdstr<>'') then
         linkscript.AddLinkCommand(extdbgbinstr,extdbgcmdstr,'');
       linkscript.WriteToDisk;
       BinStr:=linkscript.fn;
-      {$ifdef hasUnix}
       if not path_absolute(BinStr) then
-        BinStr:='./'+BinStr;
-      {$endif}
+        if cs_link_on_target in current_settings.globalswitches then
+          BinStr:='.'+target_info.dirsep+BinStr
+        else
+          BinStr:='.'+source_info.dirsep+BinStr;
       CmdStr:='';
     end;
 
@@ -864,8 +865,8 @@ begin
        end;
    end;
 
-  { Remove appfiles.txt }
-  if (success) and (LdSupportsNoResponseFile) then DeleteFile(outputexedir+'appfiles.txt');
+  { Remove linkfiles.res }
+  if (success) and (LdSupportsNoResponseFile) then DeleteFile(outputexedir+'linkfiles.res');
 
   MakeExecutable:=success;   { otherwise a recursive call to link method }
 end;
@@ -934,7 +935,7 @@ begin
   Replace(cmdstr,'$EMUL',EmulStr);
   Replace(cmdstr,'$CATRES',CatFileContent(outputexedir+Info.ResName));
   if LdSupportsNoResponseFile
-     then Replace(cmdstr,'$FILELIST','-filelist '+maybequoted(outputexedir+'appfiles.txt'))
+     then Replace(cmdstr,'$FILELIST','-filelist '+maybequoted(outputexedir+'linkfiles.res'))
      else Replace(cmdstr,'$FILELIST','');
   Replace(cmdstr,'$RES',maybequoted(outputexedir+Info.ResName));
   Replace(cmdstr,'$INIT',InitStr);
@@ -975,16 +976,17 @@ begin
      not(cs_link_nolink in current_settings.globalswitches) then
     begin
       { we have to use a script to use the IFS hack }
-      linkscript:=TAsmScriptUnix.create(outputexedir+'ppaslink');
+      linkscript:=GenerateScript(outputexedir+'ppaslink');
       linkscript.AddLinkCommand(BinStr,CmdStr,'');
       if (extdbgbinstr<>'') then
         linkscript.AddLinkCommand(extdbgbinstr,extdbgcmdstr,'');
       linkscript.WriteToDisk;
       BinStr:=linkscript.fn;
-      {$ifdef hasUnix}
       if not path_absolute(BinStr) then
-        BinStr:='./'+BinStr;
-      {$endif}
+        if cs_link_on_target in current_settings.globalswitches then
+          BinStr:='.'+target_info.dirsep+BinStr
+        else
+          BinStr:='.'+source_info.dirsep+BinStr;
       CmdStr:='';
     end;
 
@@ -1015,8 +1017,8 @@ begin
         DeleteFile(outputexedir+'linksyms.fpc');
     end;
 
-  { Remove appfiles.txt }
-  if (success) and (LdSupportsNoResponseFile) then DeleteFile(outputexedir+'appfiles.txt');
+  { Remove linkfiles.res }
+  if (success) and (LdSupportsNoResponseFile) then DeleteFile(outputexedir+'linkfiles.res');
 
   MakeSharedLibrary:=success;   { otherwise a recursive call to link method }
 end;

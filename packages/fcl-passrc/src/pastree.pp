@@ -82,9 +82,17 @@ type
   // Visitor pattern.
   TPassTreeVisitor = class;
 
+  { TPasElementBase }
+
   TPasElementBase = class
-    procedure Accept(Visitor: TPassTreeVisitor); virtual; abstract;
+  private
+    FData: TObject;
+  protected
+    procedure Accept(Visitor: TPassTreeVisitor); virtual;
+  public
+    Property CustomData : TObject Read FData Write FData;
   end;
+  TPasElementBaseClass = class of TPasElementBase;
 
 
   TPasModule = class;
@@ -109,7 +117,6 @@ type
 
   TPasElement = class(TPasElementBase)
   private
-    FData: TObject;
     FDocComment: String;
     FRefCount: LongWord;
     FName: string;
@@ -145,7 +152,6 @@ type
     property Name: string read FName write FName;
     property Parent: TPasElement read FParent Write FParent;
     Property Hints : TPasMemberHints Read FHints Write FHints;
-    Property CustomData : TObject Read FData Write FData;
     Property HintMessage : String Read FHintMessage Write FHintMessage;
     Property DocComment : String Read FDocComment Write FDocComment;
   end;
@@ -535,6 +541,7 @@ type
       const Arg: Pointer); override;
   public
     EnumType: TPasType;
+    IsPacked : Boolean;
   end;
 
   TPasRecordType = class;
@@ -622,7 +629,7 @@ type
   public
     Access: TArgumentAccess;
     ArgType: TPasType;
-    ValueExpr: TPasExpr;
+    ValueExpr: TPasExpr; // the default value
     Function Value : String;
   end;
 
@@ -709,7 +716,7 @@ type
   end;
 
   { TPasVariable }
-  TVariableModifier = (vmCVar, vmExternal, vmPublic, vmExport, vmClass,vmStatic);
+  TVariableModifier = (vmCVar, vmExternal, vmPublic, vmExport, vmClass, vmStatic);
   TVariableModifiers = set of TVariableModifier;
 
   TPasVariable = class(TPasElement)
@@ -809,7 +816,7 @@ type
   TProcedureModifier = (pmVirtual, pmDynamic, pmAbstract, pmOverride,
                         pmExport, pmOverload, pmMessage, pmReintroduce,
                         pmStatic,pmInline,pmAssembler,pmVarargs, pmPublic,
-                        pmCompilerProc,pmExternal,pmForward, pmdispid);
+                        pmCompilerProc,pmExternal,pmForward, pmdispid, pmnoreturn);
   TProcedureModifiers = Set of TProcedureModifier;
   TProcedureMessageType = (pmtNone,pmtInteger,pmtString);
                         
@@ -837,6 +844,7 @@ type
     LibrarySymbolName,
     LibraryExpr : TPasExpr;
     DispIDExpr :  TPasExpr;
+    AliasName : String;
     Procedure AddModifier(AModifier : TProcedureModifier);
     Function IsVirtual : Boolean;
     Function IsDynamic : Boolean;
@@ -1311,15 +1319,18 @@ Type
     ExceptAddr : TPasExpr;
   end;
 
-  { TPassTreeVisitor }
-
-  TPassTreeVisitor = class
-    procedure Visit(obj: TPasElement); virtual;
-  end;
+  { TPasImplLabelMark }
 
   TPasImplLabelMark = class(TPasImplElement)
   public
     LabelId: AnsiString;
+  end;
+
+  { TPassTreeVisitor }
+
+  TPassTreeVisitor = class
+  public
+    procedure Visit(obj: TPasElement); virtual;
   end;
 
 const
@@ -1388,7 +1399,10 @@ const
                 = ('virtual', 'dynamic','abstract', 'override',
                    'export', 'overload', 'message', 'reintroduce',
                    'static','inline','assembler','varargs', 'public',
-                   'compilerproc','external','forward','dispid');
+                   'compilerproc','external','forward','dispid','noreturn');
+
+  VariableModifierNames : Array[TVariableModifier] of string
+     = ('cvar', 'external', 'public', 'export', 'class', 'static');
 
 procedure ReleaseAndNil(var El: TPasElement); overload;
 
@@ -1401,6 +1415,13 @@ begin
   if El=nil then exit;
   El.Release;
   El:=nil;
+end;
+
+{ TPasElementBase }
+
+procedure TPasElementBase.Accept(Visitor: TPassTreeVisitor);
+begin
+
 end;
 
 { TPasTypeRef }

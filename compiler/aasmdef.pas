@@ -57,6 +57,7 @@ function TAsmDataDef.DefineAsmSymbolByClass(symclass: TAsmSymbolClass; const s: 
     { define the indirect asmsymbol if necessary }
     if not wasdefined and
        (_bind in [AB_GLOBAL,AB_COMMON]) and
+       (_typ<>AT_DATA_NOINDIRECT) and
        (((_typ=AT_DATA) and
          (tf_supports_packages in target_info.flags) and
          (target_info.system in systems_indirect_var_imports)
@@ -68,7 +69,7 @@ function TAsmDataDef.DefineAsmSymbolByClass(symclass: TAsmSymbolClass; const s: 
         symind:=current_asmdata.DefineAsmSymbol(s,AB_INDIRECT,AT_DATA,ptrdef);
         tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable,tcalo_new_section]);
         tcb.emit_tai(Tai_const.Create_sym_offset(result,0),ptrdef);
-        current_asmdata.AsmLists[al_exports].concatlist(tcb.get_final_asmlist(
+        current_asmdata.AsmLists[al_indirectglobals].concatlist(tcb.get_final_asmlist(
           symind,ptrdef,
           sec_rodata,
           lower(symind.name),

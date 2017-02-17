@@ -488,6 +488,7 @@ type
 implementation
 
    uses
+     cutils,
      verbose,globals,systems,widestr,
      fmodule,
      symtable,defutil;
@@ -912,6 +913,10 @@ implementation
    procedure ttai_typedconstbuilder.finalize_asmlist(sym: tasmsymbol; def: tdef; section: TAsmSectiontype; const secname: TSymStr; alignment: shortint; const options: ttcasmlistoptions);
      var
        prelist: tasmlist;
+       ptrdef : tdef;
+       symind : tasmsymbol;
+       indtcb : ttai_typedconstbuilder;
+       indsecname : tsymstr;
      begin
        if tcalo_apply_constalign in options then
          alignment:=const_align(alignment);
@@ -982,6 +987,31 @@ implementation
        fasmlist.concat(tai_symbol_end.Createname(sym.name));
        { free the temporary list }
        prelist.free;
+
+       if (tcalo_data_force_indirect in options) and
+           not fvectorized_finalize_called and
+           (sym.bind in [AB_GLOBAL,AB_COMMON]) and
+           (sym.typ=AT_DATA) then
+         begin
+           ptrdef:=cpointerdef.getreusable(def);
+           symind:=current_asmdata.DefineAsmSymbol(sym.name,AB_INDIRECT,AT_DATA,ptrdef);
+           { reuse the section if possible }
+           if section=sec_rodata then
+             indsecname:=secname
+           else
+             indsecname:=lower(symind.name);
+           indtcb:=ctai_typedconstbuilder.create([tcalo_new_section]);
+           indtcb.emit_tai(tai_const.create_sym_offset(sym,0),ptrdef);
+           current_asmdata.asmlists[al_indirectglobals].concatlist(indtcb.get_final_asmlist(
+             symind,
+             ptrdef,
+             sec_rodata,
+             indsecname,
+             ptrdef.alignment));
+           indtcb.free;
+           if not (target_info.system in systems_indirect_var_imports) then
+             current_module.add_public_asmsym(symind.name,AB_INDIRECT,AT_DATA);
+         end;
      end;
 
 
@@ -1679,21 +1709,23 @@ implementation
    procedure ttai_typedconstbuilder.emit_guid_const(const guid: tguid);
      var
        i: longint;
+       field: tfieldvarsym;
      begin
        maybe_begin_aggregate(rec_tguid);
        { variant record -> must specify which fields get initialised }
-       next_field:=tfieldvarsym(rec_tguid.symtable.symlist[0]);
+       next_field:=tfieldvarsym(rec_tguid.symtable.Find('DATA1'));
        emit_tai(Tai_const.Create_32bit(longint(guid.D1)),u32inttype);
-       next_field:=tfieldvarsym(rec_tguid.symtable.symlist[1]);
+       next_field:=tfieldvarsym(rec_tguid.symtable.Find('DATA2'));
        emit_tai(Tai_const.Create_16bit(guid.D2),u16inttype);
-       next_field:=tfieldvarsym(rec_tguid.symtable.symlist[2]);
+       next_field:=tfieldvarsym(rec_tguid.symtable.Find('DATA3'));
        emit_tai(Tai_const.Create_16bit(guid.D3),u16inttype);
-       next_field:=tfieldvarsym(rec_tguid.symtable.symlist[3]);
+       field:=tfieldvarsym(rec_tguid.symtable.Find('DATA4'));
+       next_field:=field;
        { the array }
-       maybe_begin_aggregate(tfieldvarsym(rec_tguid.symtable.symlist[3]).vardef);
+       maybe_begin_aggregate(field.vardef);
        for i:=Low(guid.D4) to High(guid.D4) do
          emit_tai(Tai_const.Create_8bit(guid.D4[i]),u8inttype);
-       maybe_end_aggregate(tfieldvarsym(rec_tguid.symtable.symlist[3]).vardef);
+       maybe_end_aggregate(field.vardef);
        maybe_end_aggregate(rec_tguid);
      end;
 

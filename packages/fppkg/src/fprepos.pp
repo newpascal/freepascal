@@ -20,7 +20,8 @@ uses
   classes,sysutils,
   contnrs,
   fpmkunit,
-  streamcoll;
+  streamcoll,
+  pkgoptions;
 
 Const
   StreamVersion   : Integer = 1;
@@ -28,25 +29,35 @@ Const
 
 
 type
-  TFPRepositoryType = (fprtUnknown, fprtInstalled, fprtAvailable);
   TFPInstallationNeeded = (fpinInstallationNeeded, fpinNoInstallationNeeded, fpinInstallationImpossible);
   TFPRepository = class;
   TFPPackage = class;
 
   { TFPCustomPackagesStructure }
 
+  TFPCustomPackagesStructureClass = class of TFPCustomPackagesStructure;
   TFPCustomPackagesStructure = Class(TComponent)
+  private class var
+    FRegisteredPackagesStructureClasses: TFPObjectList;
   private
     FInstallRepositoryName: string;
     function GetInstallRepositoryName: string;
     procedure SetInstallRepositoryName(AValue: string);
+  protected
+    FCompilerOptions: TCompilerOptions;
+    FOptions: TFppkgOptions;
   public
+    class procedure RegisterPackagesStructureClass(APackagesStructureClass: TFPCustomPackagesStructureClass);
+    class function GetPackagesStructureForRepositoryOptionSection(ARepositoryOptionSection: TFppkgRepositoryOptionSection): TFPCustomPackagesStructureClass;
+    class destructor Destroy;
+    class function GetRepositoryOptionSectionClass: TFppkgRepositoryOptionSectionClass; virtual;
+    procedure InitializeWithOptions(ARepoOptionSection: TFppkgRepositoryOptionSection; AnOptions: TFppkgOptions; ACompilerOptions: TCompilerOptions); virtual;
     function AddPackagesToRepository(ARepository: TFPRepository): Boolean; virtual; abstract;
     function GetUnitDirectory(APackage: TFPPackage): string; virtual;
     function GetBuildPathDirectory(APackage: TFPPackage): string; virtual;
     function GetPrefix: string; virtual;
     function GetBaseInstallDir: string; virtual;
-    function GetConfigFileForPackage(APackageName: string): string; virtual;
+    function GetConfigFileForPackage(APackage: TFPPackage): string; virtual;
     function UnzipBeforeUse: Boolean; virtual;
     function IsInstallationNeeded(APackage: TFPPackage): TFPInstallationNeeded; virtual;
     property InstallRepositoryName: string read GetInstallRepositoryName write SetInstallRepositoryName;
@@ -96,6 +107,7 @@ type
     FDescription: String;
     FEmail: String;
     FFPMakeOptionsString: string;
+    FFPMakePluginUnits: string;
     FKeywords: String;
     FSourcePath: string;
     FIsFPMakeAddIn: boolean;
@@ -149,6 +161,7 @@ type
     Property Email : String Read FEmail Write FEmail;
     Property Checksum : Cardinal Read FChecksum Write FChecksum;
     Property IsFPMakeAddIn : boolean read FIsFPMakeAddIn write FIsFPMakeAddIn;
+    Property FPMakePluginUnits: string read FFPMakePluginUnits write FFPMakePluginUnits;
     // These properties are used to re-compile the package, when it's dependencies are changed.
     Property SourcePath : string read FSourcePath write FSourcePath;
     Property FPMakeOptionsString : string read FFPMakeOptionsString write FFPMakeOptionsString;
@@ -200,6 +213,9 @@ type
   Public
     Constructor Create(AOwner : TComponent); override;
     Destructor Destroy; override;
+    // Initialize the repository based onto an section in the ini-file
+    procedure InitializeWithOptions(ARepoOptionSection: TFppkgRepositoryOptionSection;
+      AnOptions: TFppkgOptions; ACompilerOptions: TCompilerOptions);
     // Loading and Saving repository. Own format.
     Procedure LoadFromStream(Stream : TStream); Virtual;
     Procedure SaveToStream(Stream : TStream); Virtual;
@@ -303,6 +319,7 @@ const
   KeyNeedLibC = 'NeedLibC';
   KeyDepends  = 'Depends';
   KeyAddIn    = 'FPMakeAddIn';
+  KeyPluginUnits = 'PluginUnits';
   KeySourcePath = 'SourcePath';
   KeyFPMakeOptions = 'FPMakeOptions';
   KeyCPU      = 'CPU';
@@ -361,10 +378,10 @@ begin
   raise Exception.Create('It is not possible to install into this repository.');
 end;
 
-function TFPCustomPackagesStructure.GetConfigFileForPackage(APackageName: string): string;
+function TFPCustomPackagesStructure.GetConfigFileForPackage(APackage: TFPPackage): string;
 begin
   Result := IncludeTrailingPathDelimiter(GetBaseInstallDir)+
-    'fpmkinst'+PathDelim+GFPpkg.CompilerOptions.CompilerTarget+PathDelim+APackageName+FpmkExt;
+    'fpmkinst'+PathDelim+FCompilerOptions.CompilerTarget+PathDelim+APackage.Name+FpmkExt;
 end;
 
 function TFPCustomPackagesStructure.UnzipBeforeUse: Boolean;
@@ -385,6 +402,55 @@ end;
 procedure TFPCustomPackagesStructure.SetInstallRepositoryName(AValue: string);
 begin
   FInstallRepositoryName := AValue;
+end;
+
+class procedure TFPCustomPackagesStructure.RegisterPackagesStructureClass(
+  APackagesStructureClass: TFPCustomPackagesStructureClass);
+begin
+  if not Assigned(FRegisteredPackagesStructureClasses) then
+    FRegisteredPackagesStructureClasses := TFPObjectList.Create(False);
+  if FRegisteredPackagesStructureClasses.IndexOf(TObject(APackagesStructureClass)) = -1 then
+    FRegisteredPackagesStructureClasses.Add(TObject(APackagesStructureClass));
+end;
+
+class function TFPCustomPackagesStructure.GetPackagesStructureForRepositoryOptionSection(
+  ARepositoryOptionSection: TFppkgRepositoryOptionSection): TFPCustomPackagesStructureClass;
+var
+  PackageStructureClass: TFPCustomPackagesStructureClass;
+  i: Integer;
+begin
+  Result := nil;
+  if Assigned(FRegisteredPackagesStructureClasses) then
+    begin
+      for i := 0 to FRegisteredPackagesStructureClasses.Count -1 do
+        begin
+          PackageStructureClass := TFPCustomPackagesStructureClass(FRegisteredPackagesStructureClasses.Items[I]);
+          if PackageStructureClass.GetRepositoryOptionSectionClass = ARepositoryOptionSection.ClassType then
+            begin
+              Result := PackageStructureClass;
+            end;
+        end;
+    end;
+end;
+
+class destructor TFPCustomPackagesStructure.Destroy;
+begin
+  FRegisteredPackagesStructureClasses.Free;
+end;
+
+class function TFPCustomPackagesStructure.GetRepositoryOptionSectionClass: TFppkgRepositoryOptionSectionClass;
+begin
+  result := nil;
+end;
+
+procedure TFPCustomPackagesStructure.InitializeWithOptions(
+  ARepoOptionSection: TFppkgRepositoryOptionSection; AnOptions: TFppkgOptions;
+  ACompilerOptions: TCompilerOptions);
+begin
+  if Assigned(ARepoOptionSection) then
+    InstallRepositoryName := ARepoOptionSection.InstallRepositoryName;
+  FCompilerOptions := ACompilerOptions;
+  FOptions := AnOptions;
 end;
 
 { TFPPackage }
@@ -591,6 +657,7 @@ begin
       FreeAndNil(L2);
       //NeedLibC:=Upcase(Values[KeyNeedLibC])='Y';
       IsFPMakeAddIn:=Upcase(Values[KeyAddIn])='Y';
+      FPMakePluginUnits:=Values[KeyPluginUnits];
     end;
 end;
 
@@ -814,6 +881,23 @@ destructor TFPRepository.Destroy;
 begin
   FreeAndNil(FPackages);
   inherited Destroy;
+end;
+
+procedure TFPRepository.InitializeWithOptions(ARepoOptionSection: TFppkgRepositoryOptionSection;
+  AnOptions: TFppkgOptions; ACompilerOptions: TCompilerOptions);
+var
+  PackStructureClass: TFPCustomPackagesStructureClass;
+begin
+  RepositoryType := ARepoOptionSection.GetRepositoryType;
+  RepositoryName := ARepoOptionSection.RepositoryName;
+  Description := ARepoOptionSection.Description;
+
+  PackStructureClass := TFPCustomPackagesStructureClass.GetPackagesStructureForRepositoryOptionSection(ARepoOptionSection);
+  if Assigned(PackStructureClass) then
+    begin
+      DefaultPackagesStructure := PackStructureClass.Create(Owner);
+      DefaultPackagesStructure.InitializeWithOptions(ARepoOptionSection, AnOptions, ACompilerOptions);
+    end;
 end;
 
 procedure TFPRepository.LoadFromStream(Stream: TStream);

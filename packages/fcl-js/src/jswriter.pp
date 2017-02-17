@@ -83,8 +83,14 @@ Type
     Property AsUnicodeString : UnicodeString Read GetUnicodeString;
   end;
 
+  TJSEscapeQuote = (
+    jseqSingle,
+    jseqDouble,
+    jseqBoth
+    );
 
   { TJSWriter }
+
   TWriteOption = (woCompact,
                   woUseUTF8,
                   woTabIndent,
@@ -104,7 +110,8 @@ Type
     FOptions: TWriteOptions;
     FWriter: TTextWriter;
     FFreeWriter : Boolean;
-    FSkipBrackets : Boolean;
+    FSkipCurlyBrackets : Boolean;
+    FSkipRoundBrackets : Boolean;
     function GetUseUTF8: Boolean;
     procedure SetOptions(AValue: TWriteOptions);
   Protected
@@ -125,7 +132,7 @@ Type
     Procedure WriteLiteral(El: TJSLiteral);virtual;
     Procedure WriteArrayLiteral(El: TJSArrayLiteral);virtual;
     Procedure WriteObjectLiteral(El: TJSObjectLiteral);virtual;
-    Procedure WriteMemberExpression(el: TJSMemberExpression);virtual;
+    Procedure WriteMemberExpression(El: TJSMemberExpression);virtual;
     Procedure WriteCallExpression(El: TJSCallExpression);virtual;
     Procedure WriteSwitchStatement(El: TJSSwitchStatement);virtual;
     Procedure WriteUnary(El: TJSUnary);virtual;
@@ -144,13 +151,13 @@ Type
     Procedure WriteFunctionBody(El: TJSFunctionBody);virtual;
     Procedure WriteFunctionDeclarationStatement(El: TJSFunctionDeclarationStatement);virtual;
     Procedure WriteLabeledStatement(El: TJSLabeledStatement);virtual;
-    Procedure WriteReturnStatement(EL: TJSReturnStatement);virtual;
+    Procedure WriteReturnStatement(El: TJSReturnStatement);virtual;
     Procedure WriteTargetStatement(El: TJSTargetStatement);virtual;
     Procedure WriteFuncDef(FD: TJSFuncDef);virtual;
     Procedure WritePrimaryExpression(El: TJSPrimaryExpression);virtual;
     Procedure WriteBinary(El: TJSBinary);virtual;
   Public
-    Function EscapeString(const S: TJSString): String;
+    Function EscapeString(const S: TJSString; Quote: TJSEscapeQuote = jseqDouble): String;
     Function JSStringToStr(const S: TJSString): string;
     Constructor Create(AWriter : TTextWriter);
     Constructor Create(Const AFileName : String);
@@ -163,13 +170,94 @@ Type
     Property IndentSize : Byte Read FIndentSize Write FIndentSize;
     Property UseUTF8 : Boolean Read GetUseUTF8;
   end;
-  EJSWriter = CLass(Exception);
+  EJSWriter = Class(Exception);
+
+function IsValidJSIdentifier(Name: TJSString; AllowEscapeSeq: boolean = false): boolean;
 
 implementation
 
 Resourcestring
   SErrUnknownJSClass = 'Unknown javascript element class : %s';
   SErrNilNode = 'Nil node in Javascript';
+
+function IsValidJSIdentifier(Name: TJSString; AllowEscapeSeq: boolean): boolean;
+var
+  p: TJSPChar;
+  i: Integer;
+begin
+  Result:=false;
+  if Name='' then exit;
+  p:=TJSPChar(Name);
+  repeat
+    case p^ of
+    #0:
+      if p-TJSPChar(Name)=length(Name) then
+        exit(true)
+      else
+        exit;
+    '0'..'9':
+      if p=TJSPChar(Name) then
+        exit
+      else
+        inc(p);
+    'a'..'z','A'..'Z','_','$': inc(p);
+    '\':
+      begin
+      if not AllowEscapeSeq then exit;
+      inc(p);
+      if p^='x' then
+        begin
+        // \x00
+        for i:=1 to 2 do
+          begin
+          inc(p);
+          if not (p^ in ['0'..'9','a'..'f','A'..'F']) then exit;
+          end;
+        end
+      else if p^='u' then
+        begin
+        inc(p);
+        if p^='{' then
+          begin
+          // \u{00000}
+          i:=0;
+          repeat
+            inc(p);
+            case p^ of
+            '}': break;
+            '0'..'9': i:=i*16+ord(p^)-ord('0');
+            'a'..'f': i:=i*16+ord(p^)-ord('a')+10;
+            'A'..'F': i:=i*16+ord(p^)-ord('A')+10;
+            else exit;
+            end;
+            if i>$10FFFF then exit;
+          until false;
+          inc(p);
+          end
+        else
+          begin
+          // \u0000
+          for i:=1 to 4 do
+            begin
+            inc(p);
+            if not (p^ in ['0'..'9','a'..'f','A'..'F']) then exit;
+            end;
+          end;
+        end
+      else
+        exit; // unknown sequence
+      end;
+    #$200C,#$200D: inc(p); // zero width non-joiner/joiner
+    #$00AA..#$2000,
+    #$200E..#$D7FF:
+      inc(p); // ToDo: only those with ID_START/ID_CONTINUE see https://codepoints.net/search?IDC=1
+    #$D800..#$DBFF:
+      inc(p,2); // see above
+    else
+      exit;
+    end;
+  until false;
+end;
 
 { TBufferWriter }
 
@@ -222,6 +310,7 @@ Var
 
 begin
   Result:=Length(S)*SizeOf(Char);
+  if Result=0 then exit;
   MinLen:=Result+FBufPos;
   If (MinLen>Capacity) then
     begin
@@ -241,6 +330,7 @@ Var
 
 begin
   Result:=Length(S)*SizeOf(UnicodeChar);
+  if Result=0 then exit;
   MinLen:=Result+FBufPos;
   If (MinLen>Capacity) then
     begin
@@ -377,27 +467,30 @@ begin
     end;
 end;
 
-function TJSWriter.EscapeString(const S: TJSString): String;
+function TJSWriter.EscapeString(const S: TJSString; Quote: TJSEscapeQuote
+  ): String;
 
 Var
   I,J,L : Integer;
-  P : PWideChar;
+  P : TJSPChar;
 
 begin
   I:=1;
   J:=1;
   Result:='';
   L:=Length(S);
-  P:=PWideChar(S);
+  P:=TJSPChar(S);
   While I<=L do
     begin
-    if (P^ in ['"','/','\',#8,#9,#10,#12,#13]) then
+    if (P^ in [#0..#31,'"','''','/','\']) then
       begin
       Result:=Result+JSStringToStr(Copy(S,J,I-J));
       Case P^ of
         '\' : Result:=Result+'\\';
         '/' : Result:=Result+'\/';
-        '"' : Result:=Result+'\"';
+        '"' : if Quote=jseqSingle then Result:=Result+'"' else Result:=Result+'\"';
+        '''': if Quote=jseqDouble then Result:=Result+'''' else Result:=Result+'\''';
+        #0..#7,#11,#14..#31: Result:=Result+'\x'+hexStr(ord(P^),2);
         #8  : Result:=Result+'\b';
         #9  : Result:=Result+'\t';
         #10 : Result:=Result+'\n';
@@ -424,6 +517,7 @@ procedure TJSWriter.WriteValue(V: TJSValue);
 
 Var
   S : String;
+  JS: TJSString;
 begin
   if V.CustomValue<>'' then
     S:=JSStringToStr(V.CustomValue)
@@ -432,7 +526,14 @@ begin
       jstUNDEFINED : S:='undefined';
       jstNull : s:='null';
       jstBoolean : if V.AsBoolean then s:='true' else s:='false';
-      jstString : S:='"'+EscapeString(V.AsString)+'"';
+      jstString :
+        begin
+        JS:=V.AsString;
+        if Pos('"',JS)>0 then
+          S:=''''+EscapeString(JS,jseqSingle)+''''
+        else
+          S:='"'+EscapeString(JS,jseqDouble)+'"';
+        end;
       jstNumber :
         if Frac(V.AsNumber)=0 then // this needs to be improved
           Str(Round(V.AsNumber),S)
@@ -495,7 +596,7 @@ begin
     end;
   if Assigned(FD.Body) then
     begin
-    FSkipBrackets:=True;
+    FSkipCurlyBrackets:=True;
     //writeln('TJSWriter.WriteFuncDef '+FD.Body.ClassName);
     WriteJS(FD.Body);
     If (Assigned(FD.Body.A))
@@ -541,15 +642,15 @@ procedure TJSWriter.WriteRegularExpressionLiteral(
 
 begin
   Write('/');
-  Write(EscapeString(El.Pattern.AsString));
+  Write(EscapeString(El.Pattern.AsString,jseqBoth));
   Write('/');
   If Assigned(El.PatternFlags) then
-    Write(EscapeString(El.PatternFlags.AsString));
+    Write(EscapeString(El.PatternFlags.AsString,jseqBoth));
 end;
 
 procedure TJSWriter.WriteLiteral(El: TJSLiteral);
 begin
-  WriteValue(el.Value);
+  WriteValue(El.Value);
 end;
 
 procedure TJSWriter.WritePrimaryExpression(El: TJSPrimaryExpression);
@@ -563,45 +664,47 @@ end;
 
 procedure TJSWriter.WriteArrayLiteral(El: TJSArrayLiteral);
 
-
-
 Var
   Chars : Array[Boolean] of string[2] = ('[]','()');
 
 Var
   i,C : Integer;
-  isArgs,WC : Boolean;
+  isArgs,WC , MultiLine: Boolean;
   BC : String[2];
 
 begin
-  isArgs:=el is TJSArguments;
+  isArgs:=El is TJSArguments;
   BC:=Chars[isArgs];
-  C:=EL.Elements.Count-1;
+  C:=El.Elements.Count-1;
   if C=-1 then
     begin
-    if isArgs then
-      Write(bc)
-    else
-      Write(bc);
+    Write(bc);
     Exit;
     end;
   WC:=(woCompact in Options) or
       ((Not isArgs) and (woCompactArrayLiterals in Options)) or
       (isArgs and (woCompactArguments in Options)) ;
-  if WC then
-    Write(Copy(BC,1,1))
-  else
+  MultiLine:=(not WC) and (C>4);
+  if MultiLine then
     begin
     Writeln(Copy(BC,1,1));
     Indent;
-    end;
+    end
+  else
+    Write(Copy(BC,1,1));
   For I:=0 to C do
-   begin
-   WriteJS(EL.Elements[i].Expr);
-   if I<C then
-     if WC then Write(', ') else Writeln(',')
-   end;
-  if not WC then
+    begin
+    FSkipRoundBrackets:=true;
+    WriteJS(El.Elements[i].Expr);
+    if I<C then
+      if WC then
+        Write(',')
+      else if MultiLine then
+        Writeln(',')
+      else
+        Write(', ');
+    end;
+  if MultiLine then
     begin
     Writeln('');
     Undent;
@@ -619,7 +722,7 @@ Var
   S : TJSString;
 
 begin
-  C:=EL.Elements.Count-1;
+  C:=El.Elements.Count-1;
   QE:=(woQuoteElementNames in Options);
   if C=-1 then
     begin
@@ -636,16 +739,18 @@ begin
     end;
   For I:=0 to C do
    begin
-   S:=EL.Elements[i].Name;
-   if QE then
+   S:=El.Elements[i].Name;
+   if QE or not IsValidJSIdentifier(S) then
      S:='"'+S+'"';
    Write(S+': ');
    Indent;
-   WriteJS(EL.Elements[i].Expr);
+   FSkipRoundBrackets:=true;
+   WriteJS(El.Elements[i].Expr);
    if I<C then
      if WC then Write(', ') else Writeln(',');
    Undent;
    end;
+  FSkipRoundBrackets:=false;
   if not WC then
     begin
     Writeln('');
@@ -654,27 +759,29 @@ begin
   Write('}');
 end;
 
-procedure TJSWriter.WriteMemberExpression(el: TJSMemberExpression);
+procedure TJSWriter.WriteMemberExpression(El: TJSMemberExpression);
 
 begin
-  if el is TJSNewMemberExpression then
+  if El is TJSNewMemberExpression then
     Write('new ');
-  WriteJS(el.MExpr);
-  if el is TJSDotMemberExpression then
+  WriteJS(El.MExpr);
+  if El is TJSDotMemberExpression then
     begin
     write('.');
-    Write(TJSDotMemberExpression(el).Name);
+    Write(TJSDotMemberExpression(El).Name);
     end
-  else if el is TJSBracketMemberExpression then
+  else if El is TJSBracketMemberExpression then
     begin
     write('[');
-    WriteJS(TJSBracketMemberExpression(el).Name);
+    FSkipRoundBrackets:=true;
+    WriteJS(TJSBracketMemberExpression(El).Name);
+    FSkipRoundBrackets:=false;
     write(']');
     end
-  else if (el is TJSNewMemberExpression) then
+  else if (El is TJSNewMemberExpression) then
     begin
-    if (Assigned(TJSNewMemberExpression(el).Args)) then
-      WriteArrayLiteral(TJSNewMemberExpression(el).Args)
+    if (Assigned(TJSNewMemberExpression(El).Args)) then
+      WriteArrayLiteral(TJSNewMemberExpression(El).Args)
     else
       Write('()');
     end;
@@ -685,7 +792,7 @@ procedure TJSWriter.WriteCallExpression(El: TJSCallExpression);
 begin
   WriteJS(El.Expr);
   if Assigned(El.Args) then
-    WriteArrayLiteral(EL.Args)
+    WriteArrayLiteral(El.Args)
   else
     Write('()');
 end;
@@ -696,6 +803,7 @@ Var
   S : String;
 
 begin
+  FSkipRoundBrackets:=false;
   S:=El.PreFixOperator;
   if (S<>'') then
     Write(S);
@@ -716,13 +824,13 @@ Var
   LastEl: TJSElement;
 
 begin
-  //write('TJSWriter.WriteStatementList '+BoolToStr(FSkipBrackets,true));
+  //write('TJSWriter.WriteStatementList '+BoolToStr(FSkipCurlyBrackets,true));
   //if El.A<>nil then write(' El.A='+El.A.ClassName) else write(' El.A=nil');
   //if El.B<>nil then write(' El.B='+El.B.ClassName) else write(' El.B=nil');
   //writeln(' ');
 
   C:=(woCompact in Options);
-  B:= Not FSkipBrackets;
+  B:= Not FSkipCurlyBrackets;
   if B then
     begin
     Write('{');
@@ -742,7 +850,7 @@ begin
         else
           Writeln(';');
         end;
-      FSkipBrackets:=True;
+      FSkipCurlyBrackets:=True;
       WriteJS(El.B);
       LastEl:=El.B;
       end;
@@ -759,24 +867,26 @@ end;
 procedure TJSWriter.WriteWithStatement(El: TJSWithStatement);
 begin
    Write('with (');
-   WriteJS(EL.A);
+   FSkipRoundBrackets:=true;
+   WriteJS(El.A);
+   FSkipRoundBrackets:=false;
    if (woCompact in Options) then
      Write(') ')
    else
      WriteLn(')');
    Indent;
-   WriteJS(EL.B);
+   WriteJS(El.B);
    Undent;
 end;
 
 procedure TJSWriter.WriteVarDeclarationList(El: TJSVariableDeclarationList);
 
 begin
-  WriteJS(EL.A);
-  If Assigned(EL.B) then
+  WriteJS(El.A);
+  If Assigned(El.B) then
     begin
     Write(', ');
-    WriteJS(EL.B);
+    WriteJS(El.B);
     end;
 end;
 
@@ -784,12 +894,15 @@ procedure TJSWriter.WriteBinary(El: TJSBinary);
 
 Var
   S : AnsiString;
-  AllowCompact : Boolean;
+  AllowCompact, WithBrackets: Boolean;
 begin
-  Write('(');
-  WriteJS(EL.A);
+  WithBrackets:=not FSkipRoundBrackets;
+  if WithBrackets then
+    Write('(');
+  FSkipRoundBrackets:=false;
+  WriteJS(El.A);
   AllowCompact:=False;
-  if (el is TJSBinaryExpression) then
+  if (El is TJSBinaryExpression) then
     begin
     S:=TJSBinaryExpression(El).OperatorString;
     AllowCompact:=TJSBinaryExpression(El).AllowCompact;
@@ -797,19 +910,20 @@ begin
   If Not (AllowCompact and (woCompact in Options)) then
     S:=' '+S+' ';
   Write(S);
-  WriteJS(EL.B);
-  Write(')');
+  WriteJS(El.B);
+  if WithBrackets then
+    Write(')');
 end;
 
 procedure TJSWriter.WriteConditionalExpression(El: TJSConditionalExpression);
 
 begin
   write('(');
-  WriteJS(EL.A);
+  WriteJS(El.A);
   write(' ? ');
-  WriteJS(EL.B);
+  WriteJS(El.B);
   write(' : ');
-  WriteJS(EL.C);
+  WriteJS(El.C);
   write(')');
 end;
 
@@ -818,22 +932,26 @@ procedure TJSWriter.WriteAssignStatement(El: TJSAssignStatement);
 Var
   S : AnsiString;
 begin
-  WriteJS(EL.LHS);
+  WriteJS(El.LHS);
   S:=El.OperatorString;
   If Not (woCompact in Options) then
     S:=' '+S+' ';
   Write(s);
-  WriteJS(EL.Expr);
+  FSkipRoundBrackets:=true;
+  WriteJS(El.Expr);
+  FSkipRoundBrackets:=false;
 end;
 
 procedure TJSWriter.WriteVarDeclaration(El: TJSVarDeclaration);
 
 begin
-  Write(EL.Name);
-  if Assigned(EL.Init) then
+  Write(El.Name);
+  if Assigned(El.Init) then
     begin
     Write(' = ');
-    WriteJS(EL.Init);
+    FSkipRoundBrackets:=true;
+    WriteJS(El.Init);
+    FSkipRoundBrackets:=false;
     end;
 end;
 
@@ -841,17 +959,25 @@ procedure TJSWriter.WriteIfStatement(El: TJSIfStatement);
 
 begin
   Write('if (');
+  FSkipRoundBrackets:=true;
   WriteJS(El.Cond);
+  FSkipRoundBrackets:=false;
   Write(')');
   If Not (woCompact in Options) then
     Write(' ');
   if (El.BTrue<>nil) and (not (El.BTrue is TJSEmptyStatement)) then
+    begin
     WriteJS(El.BTrue);
+    end;
   if Assigned(El.BFalse) then
     begin
     if (El.BTrue=nil) or (El.BTrue is TJSEmptyStatement) then
-      Write('{}');
-    Write(' else ');
+      Writeln('{}')
+    else if not (El.BTrue is TJSStatementList) then
+      Writeln('')
+    else
+      Write(' ');
+    Write('else ');
     WriteJS(El.BFalse)
     end;
 end;
@@ -878,7 +1004,11 @@ begin
     WriteJS(El.Init);
   Write('; ');
   if Assigned(El.Cond) then
+    begin
+    FSkipRoundBrackets:=true;
     WriteJS(El.Cond);
+    FSkipRoundBrackets:=false;
+    end;
   Write('; ');
   if Assigned(El.Incr) then
     WriteJS(El.Incr);
@@ -896,19 +1026,27 @@ begin
     Write('do ');
     if Assigned(El.Body) then
       begin
-      FSkipBrackets:=false;
+      FSkipCurlyBrackets:=false;
       WriteJS(El.Body);
       end;
     Write(' while (');
     If Assigned(El.Cond) then
+      begin
+      FSkipRoundBrackets:=true;
       WriteJS(EL.Cond);
+      FSkipRoundBrackets:=false;
+      end;
     Write(')');
     end
   else
     begin
     Write('while (');
     If Assigned(El.Cond) then
+      begin
+      FSkipRoundBrackets:=true;
       WriteJS(EL.Cond);
+      FSkipRoundBrackets:=false;
+      end;
     Write(') ');
     if Assigned(El.Body) then
       WriteJS(El.Body);
@@ -934,7 +1072,11 @@ begin
   C:=(woCompact in Options);
   Write('switch (');
   If Assigned(El.Cond) then
+    begin
+    FSkipRoundBrackets:=true;
     WriteJS(El.Cond);
+    FSkipRoundBrackets:=false;
+    end;
   if C then
     Write(') {')
   else
@@ -947,7 +1089,9 @@ begin
     else
       begin
       Write('case ');
+      FSkipRoundBrackets:=true;
       WriteJS(EC.Expr);
+      FSkipRoundBrackets:=false;
       end;
     If C then
       Write(': ')
@@ -955,7 +1099,7 @@ begin
       Writeln(':');
     if Assigned(EC.Body) then
       begin
-      FSkipBrackets:=true;
+      FSkipCurlyBrackets:=true;
       Indent;
       WriteJS(EC.Body);
       Undent;
@@ -1009,25 +1153,32 @@ begin
     Error('Unknown target statement class: "%s"',[EL.ClassName])
 end;
 
-procedure TJSWriter.WriteReturnStatement(EL: TJSReturnStatement);
+procedure TJSWriter.WriteReturnStatement(El: TJSReturnStatement);
 
 begin
-  Write('return ');
-  WriteJS(EL.Expr);
+  if El.Expr=nil then
+    Write('return')
+  else
+    begin
+    Write('return ');
+    FSkipRoundBrackets:=true;
+    WriteJS(El.Expr);
+    FSkipRoundBrackets:=false;
+    end;
 end;
 
 procedure TJSWriter.WriteLabeledStatement(El: TJSLabeledStatement);
 begin
-  if Assigned(EL.TheLabel) then
+  if Assigned(El.TheLabel) then
     begin
-    Write(EL.TheLabel.Name);
+    Write(El.TheLabel.Name);
     if woCompact in Options then
       Write(': ')
     else
       Writeln(':');
     end;
   // Target ??
-  WriteJS(EL.A);
+  WriteJS(El.A);
 end;
 
 procedure TJSWriter.WriteTryStatement(El: TJSTryStatement);
@@ -1039,45 +1190,33 @@ begin
   C:=woCompact in Options;
   Write('try {');
   if Not C then writeln('');
-  FSkipBrackets:=True;
+  FSkipCurlyBrackets:=True;
   Indent;
   WriteJS(El.Block);
   Undent;
-  If C then
-    Write('} ')
-  else
-    begin
-    Writeln('}');
-    end;
+  Write('}');
   If (El is TJSTryCatchFinallyStatement) or (El is TJSTryCatchStatement) then
     begin
-    Write('catch ('+El.Ident);
+    Write(' catch');
+    if El.Ident<>'' then Write(' ('+El.Ident+')');
     If C then
-      Write(') {')
+      Write(' {')
     else
-      Writeln(') {');
+      Writeln(' {');
+    FSkipCurlyBrackets:=True;
     Indent;
     WriteJS(El.BCatch);
     Undent;
-    If C then
-      if (El is TJSTryCatchFinallyStatement) then
-        Write('} ')
-      else
-        Write('}')
-    else
-      begin
-      Writeln('');
-      Writeln('}');
-      end;
+    Write('}');
     end;
   If (El is TJSTryCatchFinallyStatement) or (El is TJSTryFinallyStatement) then
     begin
     If C then
-      Write('finally {')
+      Write(' finally {')
     else
-      Writeln('finally {');
+      Writeln(' finally {');
     Indent;
-    FSkipBrackets:=True;
+    FSkipCurlyBrackets:=True;
     WriteJS(El.BFinally);
     Undent;
     Write('}');
@@ -1087,7 +1226,7 @@ end;
 procedure TJSWriter.WriteFunctionBody(El: TJSFunctionBody);
 
 begin
-  //writeln('TJSWriter.WriteFunctionBody '+El.A.ClassName+' FSkipBrackets='+BoolToStr(FSkipBrackets,'true','false'));
+  //writeln('TJSWriter.WriteFunctionBody '+El.A.ClassName+' FSkipBrackets='+BoolToStr(FSkipCurlyBrackets,'true','false'));
   if Assigned(El.A) and (not (El.A is TJSEmptyBlockStatement)) then
     WriteJS(El.A);
 end;
@@ -1096,8 +1235,8 @@ procedure TJSWriter.WriteFunctionDeclarationStatement(
   El: TJSFunctionDeclarationStatement);
 
 begin
-  if Assigned(EL.AFunction) then
-    WriteFuncDef(EL.AFunction);
+  if Assigned(El.AFunction) then
+    WriteFuncDef(El.AFunction);
 end;
 
 procedure TJSWriter.WriteSourceElements(El: TJSSourceElements);
@@ -1204,7 +1343,7 @@ begin
   else
     Error(SErrUnknownJSClass,[El.ClassName]);
 //  Write('/* '+El.ClassName+' */');
-  FSkipBrackets:=False;
+  FSkipCurlyBrackets:=False;
 end;
 
 { TFileWriter }

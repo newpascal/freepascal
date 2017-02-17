@@ -955,6 +955,7 @@ implementation
     procedure new_section(list:TAsmList;Asectype:TAsmSectiontype;const Aname:string;Aalign:byte;Asecorder:TasmSectionorder=secorder_default);
       begin
         list.concat(tai_section.create(Asectype,Aname,Aalign,Asecorder));
+        inc(list.section_count);
         list.concat(cai_align.create(Aalign));
       end;
 
@@ -1021,8 +1022,8 @@ implementation
       begin
         inherited ppuload(t,ppufile);
         kind:=TSymbolPairKind(ppufile.getbyte);;
-        sym:=stringdup(ppufile.getstring);
-        value:=stringdup(ppufile.getstring);
+        sym:=ppufile.getpshortstring;
+        value:=ppufile.getpshortstring;
       end;
 
     procedure tai_symbolpair.ppuwrite(ppufile: tcompilerppufile);
@@ -1183,7 +1184,7 @@ implementation
         inherited ppuload(t,ppufile);
         sectype:=TAsmSectiontype(ppufile.getbyte);
         secalign:=ppufile.getbyte;
-        name:=stringdup(ppufile.getstring);
+        name:=ppufile.getpshortstring;
         sec:=nil;
       end;
 
@@ -3109,7 +3110,7 @@ implementation
           sd_none: ;
           sd_string:
             begin
-              data.name:=stringdup(ppufile.getstring);
+              data.name:=ppufile.getpshortstring;
               data.flags:=ppufile.getbyte;
             end;
 
@@ -3177,7 +3178,7 @@ implementation
       begin
         inherited ppuload(t, ppufile);
         stackslot:=ppufile.getlongint;
-        desc:=stringdup(ppufile.getstring);
+        desc:=ppufile.getpshortstring;
         startlab:=ppufile.getasmsymbol;
         stoplab:=ppufile.getasmsymbol;
       end;
@@ -3228,7 +3229,7 @@ implementation
     constructor tai_jcatch.ppuload(t: taitype; ppufile: tcompilerppufile);
       begin
         inherited ppuload(t, ppufile);
-        name:=stringdup(ppufile.getstring);
+        name:=ppufile.getpshortstring;
         startlab:=ppufile.getasmsymbol;
         startlab.increfs;
         stoplab:=ppufile.getasmsymbol;

@@ -47,7 +47,7 @@ unit typinfo;
                    tkDynArray,tkInterfaceRaw,tkProcVar,tkUString,tkUChar,
                    tkHelper,tkFile,tkClassRef,tkPointer);
 
-       TOrdType  = (otSByte,otUByte,otSWord,otUWord,otSLong,otULong);
+       TOrdType  = (otSByte,otUByte,otSWord,otUWord,otSLong,otULong,otSQWord,otUQWord);
 
 {$ifndef FPUNONE}
        TFloatType = (ftSingle,ftDouble,ftExtended,ftComp,ftCurr);
@@ -55,7 +55,9 @@ unit typinfo;
        TMethodKind = (mkProcedure,mkFunction,mkConstructor,mkDestructor,
                       mkClassProcedure,mkClassFunction,mkClassConstructor,
                       mkClassDestructor,mkOperatorOverload);
-       TParamFlag     = (pfVar,pfConst,pfArray,pfAddress,pfReference,pfOut,pfConstRef);
+       TParamFlag     = (pfVar,pfConst,pfArray,pfAddress,pfReference,pfOut,pfConstRef
+                         {$ifndef VER3_0},pfHidden,pfHigh,pfSelf,pfVmt,pfResult{$endif VER3_0}
+                         );
        TParamFlags    = set of TParamFlag;
        TIntfFlag      = (ifHasGuid,ifDispInterface,ifDispatch,ifHasStrGUID);
        TIntfFlags     = set of TIntfFlag;
@@ -64,10 +66,39 @@ unit typinfo;
        // don't rely on integer values of TCallConv since it includes all conventions
        // which both delphi and fpc support. In the future delphi can support more and
        // fpc own conventions will be shifted/reordered accordinly
-       PCallConv = ^TCallConv;
        TCallConv = (ccReg, ccCdecl, ccPascal, ccStdCall, ccSafeCall,
                     ccCppdecl, ccFar16, ccOldFPCCall, ccInternProc,
                     ccSysCall, ccSoftFloat, ccMWPascal);
+
+{$push}
+{$scopedenums on}
+       TSubRegister = (
+         None,
+         Lo,
+         Hi,
+         Word,
+         DWord,
+         QWord,
+         FloatSingle,
+         FloatDouble,
+         FloatQuad,
+         MultiMediaSingle,
+         MultiMediaDouble,
+         MultiMediaWhole,
+         MultiMediaX,
+         MultiMediaY
+       );
+
+       TRegisterType = (
+         Invalid,
+         Int,
+         FP,
+         MMX,
+         MultiMedia,
+         Special,
+         Address
+       );
+{$pop}
 
 {$MINENUMSIZE DEFAULT}
 
@@ -80,6 +111,45 @@ unit typinfo;
    type
       TTypeKinds = set of TTypeKind;
       ShortStringBase = string[255];
+
+      PParameterLocation = ^TParameterLocation;
+      TParameterLocation =
+{$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}
+      packed
+{$endif FPC_REQUIRES_PROPER_ALIGNMENT}
+      record
+      private
+        LocType: Byte;
+        function GetRegType: TRegisterType; inline;
+        function GetReference: Boolean; inline;
+        function GetShiftVal: Int8; inline;
+      public
+        RegSub: TSubRegister;
+        RegNumber: Word;
+        { Stack offset if Reference, ShiftVal if not }
+        Offset: SizeInt;
+        { if Reference then the register is the index register otherwise the
+          register in wihch (part of) the parameter resides }
+        property Reference: Boolean read GetReference;
+        property RegType: TRegisterType read GetRegType;
+        { if Reference, otherwise 0 }
+        property ShiftVal: Int8 read GetShiftVal;
+      end;
+
+      PParameterLocations = ^TParameterLocations;
+      TParameterLocations =
+{$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}
+      packed
+{$endif FPC_REQUIRES_PROPER_ALIGNMENT}
+      record
+      private
+        function GetLocation(aIndex: Byte): PParameterLocation; inline;
+        function GetTail: Pointer; inline;
+      public
+        Count: Byte;
+        property Location[Index: Byte]: PParameterLocation read GetLocation;
+        property Tail: Pointer read GetTail;
+      end;
 
       PVmtFieldEntry = ^TVmtFieldEntry;
       TVmtFieldEntry =
@@ -114,6 +184,8 @@ unit typinfo;
 
       PTypeInfo = ^TTypeInfo;
       PPTypeInfo = ^PTypeInfo;
+
+      PPropData = ^TPropData;
 
 { Note: these are only for backwards compatibility. New type references should
         only use PPTypeInfo directly! }
@@ -159,6 +231,9 @@ unit typinfo;
         FldOffset: SizeInt;
       end;
 
+      PInitManagedField = ^TInitManagedField;
+      TInitManagedField = TManagedField;
+
       PProcedureParam = ^TProcedureParam;
       TProcedureParam =
       {$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}
@@ -167,10 +242,12 @@ unit typinfo;
       record
       private
         function GetParamType: PTypeInfo; inline;
+        function GetFlags: Byte; inline;
       public
         property ParamType: PTypeInfo read GetParamType;
+        property Flags: Byte read GetFlags;
       public
-        Flags: Byte;
+        ParamFlags: TParamFlags;
         ParamTypeRef: TypeInfoPtr;
         Name: ShortString;
       end;
@@ -199,12 +276,18 @@ unit typinfo;
       packed
       {$endif FPC_REQUIRES_PROPER_ALIGNMENT}
       record
+      private
+        function GetParaLocs: PParameterLocations; inline;
+        function GetTail: Pointer; inline;
+        function GetNext: PVmtMethodParam; inline;
+      public
+        ParamType: PPTypeInfo;
         Flags: TParamFlags;
-        ParamType: TypeInfoPtr;
-        ParReg: Byte;
-        ParOff: LongInt;
         Name: ShortString;
-        {Attribute data TODO}
+        { ParaLocs: TParameterLocations; }
+        property ParaLocs: PParameterLocations read GetParaLocs;
+        property Tail: Pointer read GetTail;
+        property Next: PVmtMethodParam read GetNext;
       end;
 
       PIntfMethodEntry = ^TIntfMethodEntry;
@@ -213,16 +296,24 @@ unit typinfo;
       packed
       {$endif FPC_REQUIRES_PROPER_ALIGNMENT}
       record
-        Name: ShortString;
-        {
-        Version: Byte;
+      private
+        function GetParam(Index: Word): PVmtMethodParam;
+        function GetResultLocs: PParameterLocations; inline;
+        function GetTail: Pointer; inline;
+        function GetNext: PIntfMethodEntry; inline;
+      public
+        ResultType: PPTypeInfo;
         CC: TCallConv;
-        ResultType: TypeInfoPtr;
-        StackSize: Word;
-        ParamCount: Byte;
-        Params: array[0..ParamCount - 1] of TVmtMethodParam;
-        }
-        {Attribute data TODO}
+        Kind: TMethodKind;
+        ParamCount: Word;
+        StackSize: SizeInt;
+        Name: ShortString;
+        { Params: array[0..ParamCount - 1] of TVmtMethodParam }
+        { ResultLocs: TParameterLocations (if ResultType != Nil) }
+        property Param[Index: Word]: PVmtMethodParam read GetParam;
+        property ResultLocs: PParameterLocations read GetResultLocs;
+        property Tail: Pointer read GetTail;
+        property Next: PIntfMethodEntry read GetNext;
       end;
 
       PIntfMethodTable = ^TIntfMethodTable;
@@ -231,9 +322,75 @@ unit typinfo;
       packed
       {$endif FPC_REQUIRES_PROPER_ALIGNMENT}
       record
+      private
+        function GetMethod(Index: Word): PIntfMethodEntry;
+      public
         Count: Word;
-        RTTICount: Word;//$FFFF if there is no further info, or the value of Count
-        {Entry: array[0..Count - 1] of TIntfMethodEntry}
+        { $FFFF if there is no further info, or the value of Count }
+        RTTICount: Word;
+        { Entry: array[0..Count - 1] of TIntfMethodEntry }
+        property Method[Index: Word]: PIntfMethodEntry read GetMethod;
+      end;
+
+      PRecInitData = ^TRecInitData;
+      TRecInitData =
+      {$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}
+      packed
+      {$endif FPC_REQUIRES_PROPER_ALIGNMENT}
+      record
+        Terminator: Pointer;
+        Size: Integer;
+        ManagementOp: Pointer;
+        ManagedFieldCount: Integer;
+        { ManagedFields: array[0..ManagedFieldCount - 1] of TInitManagedField ; }
+      end;
+
+      PInterfaceData = ^TInterfaceData;
+      TInterfaceData =
+      {$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}
+      packed
+      {$endif FPC_REQUIRES_PROPER_ALIGNMENT}
+      record
+      private
+        function GetUnitName: ShortString; inline;
+        function GetPropertyTable: PPropData; inline;
+        function GetMethodTable: PIntfMethodTable; inline;
+      public
+        Parent: PPTypeInfo;
+        Flags: TIntfFlagsBase;
+        GUID: TGUID;
+        property UnitName: ShortString read GetUnitName;
+        property PropertyTable: PPropData read GetPropertyTable;
+        property MethodTable: PIntfMethodTable read GetMethodTable;
+      private
+        UnitNameField: ShortString;
+        { PropertyTable: TPropData }
+        { MethodTable: TIntfMethodTable }
+      end;
+
+      PInterfaceRawData = ^TInterfaceRawData;
+      TInterfaceRawData =
+      {$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}
+      packed
+      {$endif FPC_REQUIRES_PROPER_ALIGNMENT}
+      record
+      private
+        function GetUnitName: ShortString; inline;
+        function GetIIDStr: ShortString; inline;
+        function GetPropertyTable: PPropData; inline;
+        function GetMethodTable: PIntfMethodTable; inline;
+      public
+        Parent: PPTypeInfo;
+        Flags : TIntfFlagsBase;
+        IID: TGUID;
+        property UnitName: ShortString read GetUnitName;
+        property IIDStr: ShortString read GetIIDStr;
+        property PropertyTable: PPropData read GetPropertyTable;
+        property MethodTable: PIntfMethodTable read GetMethodTable;
+      private
+        UnitNameField: ShortString;
+        { IIDStr: ShortString; }
+        { PropertyTable: TPropData }
       end;
 
       PTypeData = ^TTypeData;
@@ -246,6 +403,9 @@ unit typinfo;
         function GetBaseType: PTypeInfo; inline;
         function GetCompType: PTypeInfo; inline;
         function GetParentInfo: PTypeInfo; inline;
+{$ifndef VER3_0}        
+        function GetRecInitData: PRecInitData; inline;
+{$endif}
         function GetHelperParent: PTypeInfo; inline;
         function GetExtendedInfo: PTypeInfo; inline;
         function GetIntfParent: PTypeInfo; inline;
@@ -262,6 +422,10 @@ unit typinfo;
         property CompType: PTypeInfo read GetCompType;
         { tkClass }
         property ParentInfo: PTypeInfo read GetParentInfo;
+        { tkRecord }
+{$ifndef VER3_0}        
+        property RecInitData: PRecInitData read GetRecInitData;
+{$endif}
         { tkHelper }
         property HelperParent: PTypeInfo read GetHelperParent;
         property ExtendedInfo: PTypeInfo read GetExtendedInfo;
@@ -283,6 +447,9 @@ unit typinfo;
               ();
             tkAString:
               (CodePage: Word);
+{$ifndef VER3_0}
+            tkInt64,tkQWord,
+{$endif VER3_0}
             tkInteger,tkChar,tkEnumeration,tkBool,tkWChar,tkSet:
               (OrdType : TOrdType;
                case TTypeKind of
@@ -295,6 +462,14 @@ unit typinfo;
                         NameList : ShortString;
                         {EnumUnitName: ShortString;})
                     );
+{$ifndef VER3_0}
+                  {tkBool with OrdType=otSQWord }
+                  tkInt64:
+                    (MinInt64Value, MaxInt64Value: Int64);
+                  {tkBool with OrdType=otUQWord }
+                  tkQWord:
+                    (MinQWordValue, MaxQWordValue: QWord);
+{$endif VER3_0}
                   tkSet:
                     (CompTypeRef : TypeInfoPtr)
               );
@@ -313,12 +488,14 @@ unit typinfo;
               );
             tkRecord:
               (
+{$ifndef VER3_0}
+                RecInitInfo: Pointer; { points to TTypeInfo followed by init table }
+{$endif VER3_0}
                 RecSize: Integer;
-{$if FPC_FULLVERSION>30100}
-                RecInitTable: PPointer;
-{$endif FPC_FULLVERSION>30100}
-                ManagedFldCount: Integer;
-                {ManagedFields: array[1..ManagedFldCount] of TManagedField}
+                case Boolean of
+                  False: (ManagedFldCount: Integer deprecated 'Use RecInitData^.ManagedFieldCount or TotalFieldCount depending on your use case');
+                  True: (TotalFieldCount: Integer);
+                {ManagedFields: array[1..TotalFieldCount] of TManagedField}
               );
             tkHelper:
               (HelperParentRef : TypeInfoPtr;
@@ -345,21 +522,20 @@ unit typinfo;
               );
             tkProcVar:
               (ProcSig: TProcedureSignature);
+{$ifdef VER3_0}
             tkInt64:
               (MinInt64Value, MaxInt64Value: Int64);
             tkQWord:
               (MinQWordValue, MaxQWordValue: QWord);
+{$endif VER3_0}
             tkInterface:
               (
                IntfParentRef: TypeInfoPtr;
                IntfFlags : TIntfFlagsBase;
                GUID: TGUID;
                IntfUnit: ShortString;
-               {
-               IntfPropCount: Word;
-               IntfProps: array[0..IntfPropCount-1] of TPropInfo;
-               IntfMethTable : TIntfMethodTable;
-               }
+               { PropertyTable: TPropData }
+               { MethodTable: TIntfMethodTable }
               );
             tkInterfaceRaw:
               (
@@ -368,12 +544,7 @@ unit typinfo;
                IID: TGUID;
                RawIntfUnit: ShortString;
                { IIDStr: ShortString; }
-               { here the properties follow as Word Count & array of TPropInfo }
-               {
-               RawIntfPropCount: Word;
-               RawIntfProps: array[0..IntfPropCount-1] of TPropInfo;
-               IntfMethTable : TIntfMethodTable;
-               }
+               { PropertyTable: TPropData }
               );
             tkArray:
               (ArrayData: TArrayTypeData);
@@ -391,20 +562,29 @@ unit typinfo;
               (RefTypeRef: TypeInfoPtr);
       end;
 
+      PPropInfo = ^TPropInfo;
+
       TPropData =
 {$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}
       packed
 {$endif FPC_REQUIRES_PROPER_ALIGNMENT}
       record
+      private
+        function GetProp(Index: Word): PPropInfo;
+        function GetTail: Pointer; inline;
+      public
         PropCount : Word;
         PropList : record _alignmentdummy : ptrint; end;
+        property Prop[Index: Word]: PPropInfo read GetProp;
+        property Tail: Pointer read GetTail;
       end;
-{$PACKRECORDS 1}
 
-      PPropInfo = ^TPropInfo;
+{$PACKRECORDS 1}
       TPropInfo = packed record
       private
         function GetPropType: PTypeInfo; inline;
+        function GetTail: Pointer; inline;
+        function GetNext: PPropInfo; inline;
       public
         PropTypeRef : TypeInfoPtr;
         GetProc : CodePointer;
@@ -423,6 +603,8 @@ unit typinfo;
 
         Name : ShortString;
         property PropType: PTypeInfo read GetPropType;
+        property Tail: Pointer read GetTail;
+        property Next: PPropInfo read GetNext;
       end;
 
       TProcInfoProc = Procedure(PropInfo : PPropInfo) of object;
@@ -439,6 +621,7 @@ unit typinfo;
 
 // general property handling
 Function GetTypeData(TypeInfo : PTypeInfo) : PTypeData;
+Function AlignTypeData(p : Pointer) : Pointer; inline;
 
 Function GetPropInfo(TypeInfo: PTypeInfo;const PropName: string): PPropInfo;
 Function GetPropInfo(TypeInfo: PTypeInfo;const PropName: string; AKinds: TTypeKinds): PPropInfo;
@@ -457,7 +640,6 @@ Function GetPropList(TypeInfo: PTypeInfo; TypeKinds: TTypeKinds; PropList: PProp
 Function GetPropList(TypeInfo: PTypeInfo; out PropList: PPropList): SizeInt;
 function GetPropList(AClass: TClass; out PropList: PPropList): Integer;
 function GetPropList(Instance: TObject; out PropList: PPropList): Integer;
-
 
 
 // Property information routines.
@@ -816,9 +998,31 @@ begin
 end;
 
 
+Function AlignTypeData(p : Pointer) : Pointer;
+{$push}
+{$packrecords c}
+  type
+    TAlignCheck = record
+      b : byte;
+      q : qword;
+    end;
+{$pop}
+begin
+{$ifdef FPC_REQUIRES_PROPER_ALIGNMENT}
+{$ifdef VER3_0}
+  Result:=Pointer(align(p,SizeOf(Pointer)));
+{$else VER3_0}
+  Result:=Pointer(align(p,PtrInt(@TAlignCheck(nil^).q)))
+{$endif VER3_0}
+{$else FPC_REQUIRES_PROPER_ALIGNMENT}
+  Result:=p;
+{$endif FPC_REQUIRES_PROPER_ALIGNMENT}
+end;
+
+
 Function GetTypeData(TypeInfo : PTypeInfo) : PTypeData;
 begin
-  GetTypeData:=PTypeData(aligntoptr(PTypeData(pointer(TypeInfo)+2+PByte(pointer(TypeInfo)+1)^)));
+  GetTypeData:=AlignTypeData(pointer(TypeInfo)+2+PByte(pointer(TypeInfo)+1)^);
 end;
 
 
@@ -2290,11 +2494,56 @@ begin
   Result:=IsStoredProp(instance,FindPropInfo(Instance,PropName));
 end;
 
+{ TParameterLocation }
+
+function TParameterLocation.GetReference: Boolean;
+begin
+  Result := (LocType and $80) <> 0;
+end;
+
+function TParameterLocation.GetRegType: TRegisterType;
+begin
+  Result := TRegisterType(LocType and $7F);
+end;
+
+function TParameterLocation.GetShiftVal: Int8;
+begin
+  if GetReference then begin
+    if Offset < Low(Int8) then
+      Result := Low(Int8)
+    else if Offset > High(Int8) then
+      Result := High(Int8)
+    else
+      Result := Offset;
+  end else
+    Result := 0;
+end;
+
+{ TParameterLocations }
+
+function TParameterLocations.GetLocation(aIndex: Byte): PParameterLocation;
+begin
+  if aIndex >= Count then
+    Result := Nil
+  else
+    Result := PParameterLocation(PByte(aligntoptr(PByte(@Count) + SizeOf(Count))) + SizeOf(TParameterLocation) * aIndex);
+end;
+
+function TParameterLocations.GetTail: Pointer;
+begin
+  Result := PByte(aligntoptr(PByte(@Count) + SizeOf(Count))) + SizeOf(TParameterLocation) * Count;
+end;
+
 { TProcedureParam }
 
 function TProcedureParam.GetParamType: PTypeInfo;
 begin
   Result := DerefTypeInfoPtr(ParamTypeRef);
+end;
+
+function TProcedureParam.GetFlags: Byte;
+begin
+  Result := PByte(@ParamFlags)^;
 end;
 
 { TManagedField }
@@ -2335,6 +2584,133 @@ begin
     end;
 end;
 
+{ TVmtMethodParam }
+
+function TVmtMethodParam.GetParaLocs: PParameterLocations;
+begin
+  Result := PParameterLocations(aligntoptr(PByte(@Name[0]) + Length(Name) + Sizeof(Name[0])));
+end;
+
+function TVmtMethodParam.GetTail: Pointer;
+begin
+  Result := ParaLocs^.Tail;
+end;
+
+function TVmtMethodParam.GetNext: PVmtMethodParam;
+begin
+  Result := PVmtMethodParam(aligntoptr(Tail));
+end;
+
+{ TIntfMethodEntry }
+
+function TIntfMethodEntry.GetParam(Index: Word): PVmtMethodParam;
+begin
+  if Index >= ParamCount then
+    Result := Nil
+  else
+    begin
+      Result := PVmtMethodParam(aligntoptr(PByte(@Name[0]) + SizeOf(Name[0]) + Length(Name)));
+      while Index > 0 do
+        begin
+          Result := Result^.Next;
+          Dec(Index);
+        end;
+    end;
+end;
+
+function TIntfMethodEntry.GetResultLocs: PParameterLocations;
+begin
+  if not Assigned(ResultType) then
+    Result := Nil
+  else if ParamCount = 0 then
+    Result := PParameterLocations(aligntoptr(PByte(@Name[0]) + SizeOf(Name[0]) + Length(Name)))
+  else
+    Result := PParameterLocations(aligntoptr(Param[ParamCount - 1]^.Tail));
+end;
+
+function TIntfMethodEntry.GetTail: Pointer;
+var
+  retloc: PParameterLocations;
+begin
+  if Assigned(ResultType) then
+    begin
+      retloc := ResultLocs;
+      Result := PByte(@retloc^.Count) + SizeOf(retloc^.Count) + SizeOf(TParameterLocation) * retloc^.Count;
+    end
+  else if ParamCount = 0 then
+    Result := PByte(@Name[0]) + Length(Name) + SizeOf(Byte)
+  else
+    Result := Param[ParamCount - 1]^.Tail;
+end;
+
+function TIntfMethodEntry.GetNext: PIntfMethodEntry;
+begin
+  Result := PIntfMethodEntry(aligntoptr(Tail));
+end;
+
+{ TIntfMethodTable }
+
+function TIntfMethodTable.GetMethod(Index: Word): PIntfMethodEntry;
+begin
+  if (RTTICount = $FFFF) or (Index >= RTTICount) then
+    Result := Nil
+  else
+    begin
+      Result := aligntoptr(PIntfMethodEntry(PByte(@RTTICount) + SizeOf(RTTICount)));
+      while Index > 0 do
+        begin
+          Result := Result^.Next;
+          Dec(Index);
+        end;
+    end;
+end;
+
+{ TInterfaceData }
+
+function TInterfaceData.GetUnitName: ShortString;
+begin
+  Result := UnitNameField;
+end;
+
+function TInterfaceData.GetPropertyTable: PPropData;
+var
+  p: PByte;
+begin
+  p := PByte(@UnitNameField[0]) + SizeOf(UnitNameField[0]) + Length(UnitNameField);
+  Result := AlignTypeData(p);
+end;
+
+function TInterfaceData.GetMethodTable: PIntfMethodTable;
+begin
+  Result := aligntoptr(PropertyTable^.Tail);
+end;
+
+{ TInterfaceRawData }
+
+function TInterfaceRawData.GetUnitName: ShortString;
+begin
+  Result := UnitNameField;
+end;
+
+function TInterfaceRawData.GetIIDStr: ShortString;
+begin
+  Result := PShortString(AlignTypeData(PByte(@UnitNameField[0]) + SizeOf(UnitNameField[0]) + Length(UnitNameField)))^;
+end;
+
+function TInterfaceRawData.GetPropertyTable: PPropData;
+var
+  p: PByte;
+begin
+  p := AlignTypeData(PByte(@UnitNameField[0]) + SizeOf(UnitNameField[0]) + Length(UnitNameField));
+  p := p + SizeOf(p^) + p^;
+  Result := aligntoptr(p);
+end;
+
+function TInterfaceRawData.GetMethodTable: PIntfMethodTable;
+begin
+  Result := aligntoptr(PropertyTable^.Tail);
+end;
+
 { TTypeData }
 
 function TTypeData.GetBaseType: PTypeInfo;
@@ -2351,6 +2727,13 @@ function TTypeData.GetParentInfo: PTypeInfo;
 begin
   Result := DerefTypeInfoPtr(ParentInfoRef);
 end;
+
+{$ifndef VER3_0}
+function TTypeData.GetRecInitData: PRecInitData;
+begin
+  Result := PRecInitData(aligntoptr(PTypeData(RecInitInfo+2+PByte(RecInitInfo+1)^)));
+end;
+{$endif}
 
 function TTypeData.GetHelperParent: PTypeInfo;
 begin
@@ -2374,7 +2757,7 @@ end;
 
 function TTypeData.GetIIDStr: ShortString;
 begin
-  Result := PShortString(Pointer(@RawIntfUnit) + Length(RawIntfUnit) + 1)^;
+  Result := PShortString(AlignTypeData(Pointer(@RawIntfUnit) + Length(RawIntfUnit) + 1))^;
 end;
 
 function TTypeData.GetElType: PTypeInfo;
@@ -2397,11 +2780,46 @@ begin
   Result := DerefTypeInfoPtr(RefTypeRef);
 end;
 
+{ TPropData }
+
+function TPropData.GetProp(Index: Word): PPropInfo;
+begin
+  if Index >= PropCount then
+    Result := Nil
+  else
+    begin
+      Result := PPropInfo(aligntoptr(PByte(@PropCount) + SizeOf(PropCount)));
+      while Index > 0 do
+        begin
+          Result := aligntoptr(Result^.Tail);
+          Dec(Index);
+        end;
+    end;
+end;
+
+function TPropData.GetTail: Pointer;
+begin
+  if PropCount = 0 then
+    Result := PByte(@PropCount) + SizeOf(PropCount)
+  else
+    Result := Prop[PropCount - 1]^.Tail;
+end;
+
 { TPropInfo }
 
 function TPropInfo.GetPropType: PTypeInfo;
 begin
   Result := DerefTypeInfoPtr(PropTypeRef);
+end;
+
+function TPropInfo.GetTail: Pointer;
+begin
+  Result := PByte(@Name[0]) + SizeOf(Name[0]) + Length(Name);
+end;
+
+function TPropInfo.GetNext: PPropInfo;
+begin
+  Result := PPropInfo(aligntoptr(Tail));
 end;
 
 end.

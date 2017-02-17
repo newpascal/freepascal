@@ -82,12 +82,13 @@ Const
    { calling conventions supported by the code generator }
    supported_calling_conventions : tproccalloptions = [
      pocall_internproc,
+     pocall_register,
      pocall_stdcall,
      { the difference to stdcall is only the name mangling }
      pocall_cdecl,
      { the difference to stdcall is only the name mangling }
      pocall_cppdecl,
-     { this used by the PalmOS port only }
+     { this is used by PalmOS, Atari and Amiga-likes }
      pocall_syscall
    ];
 

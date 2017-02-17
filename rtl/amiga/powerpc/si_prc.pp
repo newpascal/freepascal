@@ -25,7 +25,6 @@ const
 var
   AOS_ExecBase: Pointer; public name '_ExecBase';
   IExec: Pointer; public name '_IExec';
-  realExecBase: Pointer absolute $4;
   StkLen: LongInt; external name '__stklen';
   StackCookie: LongInt; external name '__stack_cookie';
   sysinit_jmpbuf: jmp_buf;
@@ -39,11 +38,11 @@ procedure PascalMain; external name 'PASCALMAIN';
 
 
 { this function must be the first in this unit which contains code }
-function _FPC_proc_start: longint; cdecl; public name '_start';
+{ apparently, the third argument contains the ExecBase on entry (KB) }
+function _FPC_proc_start(arg0: pointer; arg1: pointer; argExecBase: Pointer): longint; cdecl; public name '_start';
 begin
-  AOS_ExecBase:=realExecBase;
-  IExec:=nil;
-  newStack:=nil;
+  AOS_ExecBase:=argExecBase;
+  IExec:=PExecBase(AOS_ExecBase)^.MainInterface;
 
   { The StackCookie check is only here so the symbol is referenced and
     doesn't get striped out }

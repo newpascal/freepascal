@@ -399,7 +399,10 @@ implementation
            if o.ref^.refaddr=addr_full then
              begin
                getopstr:='';
-               getopstr:=LlvmAsmSymName(o.ref^.symbol);
+               if assigned(o.ref^.symbol) then
+                 getopstr:=LlvmAsmSymName(o.ref^.symbol)
+               else
+                 getopstr:='null';
                if o.ref^.offset<>0 then
                  internalerror(2013060223);
              end
@@ -437,12 +440,15 @@ implementation
            end;
          top_tai:
            begin
-             tmpinline:=1;
-             tmpasmblock:=false;
-             hp:=o.ai;
-             owner.writer.AsmWrite(fstr);
-             fstr:='';
-             owner.WriteTai(false,false,tmpinline,tmpasmblock,hp);
+             if assigned(o.ai) then
+               begin
+                 tmpinline:=1;
+                 tmpasmblock:=false;
+                 hp:=o.ai;
+                 owner.writer.AsmWrite(fstr);
+                 fstr:='';
+                 owner.WriteTai(false,false,tmpinline,tmpasmblock,hp);
+               end;
              result:='';
            end;
 {$if defined(cpuextended) and defined(FPC_HAS_TYPE_EXTENDED)}
@@ -569,7 +575,9 @@ implementation
         la_store,
         la_fence,
         la_cmpxchg,
-        la_atomicrmw:
+        la_atomicrmw,
+        la_catch,
+        la_filter:
           begin
             { instructions that never have a result }
           end;
@@ -678,7 +686,7 @@ implementation
                    owner.writer.AsmWrite(sep);
                    owner.writer.AsmWrite(getopstr(taillvm(hp).oper[i]^,op in [la_load,la_store]));
                    if (taillvm(hp).oper[i]^.typ in [top_def,top_cond,top_fpcond]) or
-                      (op=la_call) then
+                      (op in [la_call,la_landingpad,la_catch,la_filter]) then
                      sep :=' '
                    else
                      sep:=', ';

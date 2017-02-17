@@ -141,7 +141,7 @@ var
     P: TFPPackage;
   begin
     Result:=false;
-    P := GFPpkg.FPMakeRepoFindPackage(APackageName, pkgpkInstalled);
+    P := PackageManager.FPMakeRepoFindPackage(APackageName, pkgpkInstalled);
     if Assigned(P) then
       begin
         AUnitDir := P.PackagesStructure.GetUnitDirectory(P);
@@ -166,10 +166,10 @@ Var
   HaveFpmake : boolean;
   P : TFPPackage;
 begin
-  P:=GFPpkg.PackageByName(PackageName, pkgpkAvailable);
+  P:=PackageManager.PackageByName(PackageName, pkgpkAvailable);
   NeedFPMKUnitSource:=false;
   OOptions:='';
-  SetCurrentDir(PackageBuildPath(P));
+  SetCurrentDir(PackageManager.PackageBuildPath(P));
   // Generate random name for build path
   TempBuildDir:='build_fpmake_'+HexStr(DateTimeToUnix(Now),8)+HexStr(GetProcessId,4);
   // Check for fpmake source
@@ -200,6 +200,8 @@ begin
                 Error(SErrMissingInstallPackage,[FPMKUnitDeps[i].package]);
               if FPMKUnitDeps[i].def<>'' then
                 AddOption('-d'+FPMKUnitDeps[i].def);
+              if FPMKUnitDeps[i].PluginUnit<>'' then
+                AddOption('-Fa'+FPMKUnitDeps[i].PluginUnit);
             end
           else
             begin
@@ -235,9 +237,9 @@ begin
           CreateFPMKUnitSource(TempBuildDir+PathDelim+'fpmkunit.pp');
         end;
       // Call compiler
-      If ExecuteProcess(GFPpkg.FPMakeCompilerOptions.Compiler,OOptions+' '+FPmakeSrc)<>0 then
+      If ExecuteProcess(PackageManager.FPMakeCompilerOptions.Compiler,OOptions+' '+FPmakeSrc)<>0 then
         begin
-          if not GFPpkg.Options.CommandLineSection.RecoveryMode then
+          if not PackageManager.Options.CommandLineSection.RecoveryMode then
             Error(SErrCompileFailureFPMakeTryRecovery)
           else
             Error(SErrCompileFailureFPMake);
@@ -304,7 +306,7 @@ begin
   // Does the current package support this CPU-OS?
   if PackageName<>'' then
     begin
-      P:=GFPpkg.PackageByName(PackageName, pkgpkAvailable);
+      P:=PackageManager.PackageByName(PackageName, pkgpkAvailable);
       if (PackageName=CurrentDirPackageName) and (FileExists(ManifestFileName)) then
         ObtainSupportedTargetsFromManifest(p);
     end
@@ -313,9 +315,9 @@ begin
   if assigned(P) then
     begin
       if (command<>'archive') and (command<>'manifest') and
-         (not(GFPpkg.CompilerOptions.CompilerOS in P.OSes) or
-          not(GFPpkg.CompilerOptions.CompilerCPU in P.CPUs)) then
-        Error(SErrPackageDoesNotSupportTarget,[P.Name,MakeTargetString(GFPpkg.CompilerOptions.CompilerCPU,GFPpkg.CompilerOptions.CompilerOS)]);
+         (not(PackageManager.CompilerOptions.CompilerOS in P.OSes) or
+          not(PackageManager.CompilerOptions.CompilerCPU in P.CPUs)) then
+        Error(SErrPackageDoesNotSupportTarget,[P.Name,MakeTargetString(PackageManager.CompilerOptions.CompilerCPU,PackageManager.CompilerOptions.CompilerOS)]);
     end;
   { Maybe compile fpmake executable? }
   ExecuteAction(PackageName,'compilefpmake');
@@ -332,27 +334,27 @@ begin
     end
   else
     begin
-      if GFPpkg.CompilerOptions.HasOptions then
-        AddOption('--options='+GFPpkg.CompilerOptions.Options.DelimitedText);
+      if PackageManager.CompilerOptions.HasOptions then
+        AddOption('--options='+PackageManager.CompilerOptions.Options.DelimitedText);
 
-      if GFPpkg.Options.GlobalSection.CustomFPMakeOptions<>'' then
+      if PackageManager.Options.GlobalSection.CustomFPMakeOptions<>'' then
         begin
         AddOption('--ignoreinvalidoption');
-        AddOption(GFPpkg.Options.GlobalSection.CustomFPMakeOptions);
+        AddOption(PackageManager.Options.GlobalSection.CustomFPMakeOptions);
         end;
     end;
 
   AddOption('--nofpccfg');
-  AddOption('--compiler='+GFPpkg.CompilerOptions.Compiler);
-  AddOption('--cpu='+CPUToString(GFPpkg.CompilerOptions.CompilerCPU));
-  AddOption('--os='+OSToString(GFPpkg.CompilerOptions.CompilerOS));
+  AddOption('--compiler='+PackageManager.CompilerOptions.Compiler);
+  AddOption('--cpu='+CPUToString(PackageManager.CompilerOptions.CompilerCPU));
+  AddOption('--os='+OSToString(PackageManager.CompilerOptions.CompilerOS));
 
   // While scanning a source-repository it could be necessary to create manifest
   // files. At this moment the InstallRepo could not be initialized yet. And the
   // manifest command does not use the --prefix and --baseinstalldir parameters.
   if (command<>'manifest') then
     begin
-      InstallRepo := GFPpkg.RepositoryByName(GFPpkg.Options.CommandLineSection.InstallRepository);
+      InstallRepo := PackageManager.RepositoryByName(PackageManager.Options.CommandLineSection.InstallRepository);
 
       if not Assigned(InstallRepo.DefaultPackagesStructure) then
         begin
@@ -363,11 +365,11 @@ begin
       CondAddOption('--baseinstalldir',InstallRepo.DefaultPackagesStructure.GetBaseInstallDir);
     end;
 
-  for i := GFPpkg.RepositoryList.Count-1 downto 0 do
+  for i := PackageManager.RepositoryList.Count-1 downto 0 do
     begin
-      if GFPpkg.RepositoryList[i] is TFPRepository then
+      if PackageManager.RepositoryList[i] is TFPRepository then
         begin
-          InstallRepo := TFPRepository(GFPpkg.RepositoryList[i]);
+          InstallRepo := TFPRepository(PackageManager.RepositoryList[i]);
           if (InstallRepo.RepositoryType = fprtInstalled) and Assigned(InstallRepo.DefaultPackagesStructure) then
             begin
               BaseInstDir := InstallRepo.DefaultPackagesStructure.GetBaseInstallDir;
@@ -386,7 +388,7 @@ begin
 
   { Run FPMake }
   FPMakeBin:='fpmake'+ExeExt;
-  SetCurrentDir(PackageBuildPath(P));
+  SetCurrentDir(PackageManager.PackageBuildPath(P));
   Result:=ExecuteProcess(FPMakeBin,Command+' '+OOptions);
   if Result<>0 then
     Error(SErrExecutionFPMake,[Command]);
@@ -435,15 +437,15 @@ var
   StoredGlobalPrefix: string;
 begin
   // In most (all?) cases we do not want a prefix in the archive.
-  StoredGlobalPrefix := GFPpkg.CompilerOptions.GlobalPrefix;
-  StoredLocalPrefix := GFPpkg.CompilerOptions.LocalPrefix;
-  GFPpkg.CompilerOptions.GlobalPrefix := '';
-  GFPpkg.CompilerOptions.LocalPrefix := '';
+  StoredGlobalPrefix := PackageManager.CompilerOptions.GlobalPrefix;
+  StoredLocalPrefix := PackageManager.CompilerOptions.LocalPrefix;
+  PackageManager.CompilerOptions.GlobalPrefix := '';
+  PackageManager.CompilerOptions.LocalPrefix := '';
   try
     RunFPMake('archive');
   finally
-    GFPpkg.CompilerOptions.GlobalPrefix := StoredGlobalPrefix;
-    GFPpkg.CompilerOptions.LocalPrefix := StoredLocalPrefix;
+    PackageManager.CompilerOptions.GlobalPrefix := StoredGlobalPrefix;
+    PackageManager.CompilerOptions.LocalPrefix := StoredLocalPrefix;
   end;
 end;
 

@@ -444,6 +444,24 @@ function aligntoptr(p : pointer) : pointer;inline;
   end;
 
 
+function aligntoqword(p : pointer) : pointer;inline;
+{$push}
+{$packrecords c}
+  type
+    TAlignCheck = record
+      b : byte;
+      q : qword;
+    end;
+{$pop}
+  begin
+{$ifdef FPC_REQUIRES_PROPER_ALIGNMENT}
+    result:=align(p,PtrInt(@TAlignCheck(nil^).q))
+{$else FPC_REQUIRES_PROPER_ALIGNMENT}
+    result:=p;
+{$endif FPC_REQUIRES_PROPER_ALIGNMENT}
+  end;
+
+
 {****************************************************************************
                   Subroutines for String handling
 ****************************************************************************}
@@ -625,10 +643,11 @@ begin
       OldRandSeed:=RandSeed;
       l_index:=MTWIST_N;
     end;
-  if mt_index=MTWIST_N then
+  if l_index=MTWIST_N then
     begin
       mtwist_update_state;
       l_index:=0;
+      mt_index:=1;
     end;
   result:=mt_state[l_index];
   result:=result xor (result shr 11);
@@ -1245,7 +1264,7 @@ Begin
      End;
 {$ifdef FPC_HAS_FEATURE_EXCEPTIONS}
    except
-     { prevent endless dump if an exception occured }
+     { prevent endless dump if an exception occurred }
    end;
 {$endif FPC_HAS_FEATURE_EXCEPTIONS}
 End;

@@ -75,8 +75,8 @@ const
   otUWord     = 3;
   otSLong     = 4;
   otULong     = 5;
-  otSLongLong = 6;
-  otULongLong = 7;
+  otSQWord    = 6;
+  otUQWord    = 7;
 
   ftSingle   = 0;
   ftDouble   = 1;
@@ -105,6 +105,11 @@ const
   pfReference= 16;
   pfOut      = 32;
   pfConstRef = 64;
+  pfHidden   = 128;
+  pfHigh     = 256;
+  pfSelf     = 512;
+  pfVmt      = 1024;
+  pfResult   = 2048;
 
   unknown_level         = 0;
   main_program_level    = 1;
@@ -178,6 +183,7 @@ type
     vis_published,
     vis_none
   );
+  tvisibilities=set of tvisibility;
 
   { symbol options }
   tsymoption=(sp_none,
@@ -298,7 +304,8 @@ type
     potype_propgetter,        { Dispinterface property accessors }
     potype_propsetter,
     potype_exceptfilter,      { SEH exception filter or termination handler }
-    potype_mainstub           { "main" function that calls through to FPC_SYSTEMMAIN }
+    potype_mainstub,          { "main" function that calls through to FPC_SYSTEMMAIN }
+    potype_pkgstub            { stub for a package file, that tells OS that all is OK }
   );
   tproctypeoptions=set of tproctypeoption;
 

@@ -76,8 +76,10 @@ Type
     procedure ForceStaticLinking;
    protected
     MacVersionSet: boolean;
+    processorstr: TCmdStr;
     function ParseMacVersionMin(out minstr, emptystr: string; const compvarname, value: string; ios: boolean): boolean;
     procedure MaybeSetDefaultMacVersionMacro;
+    procedure VerifyTargetProcessor;
   end;
 
   TOptionClass=class of toption;
@@ -970,6 +972,16 @@ begin
   end;
 end;
 
+procedure TOption.VerifyTargetProcessor;
+  begin
+    { no custom target processor specified -> ok }
+    if processorstr='' then
+      exit;
+    { custom target processor specified -> verify it's the one we support }
+    if upcase(processorstr)<>upcase(target_cpu_string) then
+      Message1(option_invalid_target_architecture,processorstr);
+  end;
+
 
 function Toption.Unsetbool(var Opts:TCmdStr; Pos: Longint; const FullPara: TCmdStr; RequireBoolPara: boolean):boolean;
 { checks if the character after pos in Opts is a + or a - and returns resp.
@@ -1043,6 +1055,16 @@ begin
                while j<=length(more) do
                 begin
                   case more[j] of
+                    '5' :
+                      if target_info.system in systems_all_windows+systems_nativent-[system_i8086_win16] then
+                        begin
+                          if UnsetBool(More, j, opt, false) then
+                            exclude(init_settings.globalswitches,cs_asm_pre_binutils_2_25)
+                          else
+                            include(init_settings.globalswitches,cs_asm_pre_binutils_2_25);
+                        end
+                      else
+                        IllegalPara(opt);
                     'l' :
                       include(init_settings.globalswitches,cs_asm_source);
                     'r' :
@@ -1881,7 +1903,14 @@ begin
                  end;
              end;
 
-           'P' : ; { Ignore used by fpc.pp }
+           'P' :
+             begin
+               { used to select the target processor with the "fpc" binary;
+                 give an error if it's not the target architecture supported by
+                 this compiler binary (will be verified after the target_info
+                 is set) }
+               processorstr:=More;
+             end;
 
            'R' :
              begin
@@ -1997,6 +2026,11 @@ begin
                            include(init_settings.moduleswitches,cs_support_macro);
                        'o' : //an alternative to -Mtp
                          SetCompileMode('TP',true);
+                       'r' :
+                         If UnsetBool(More, j, opt, false) then
+                           exclude(init_settings.globalswitches,cs_transparent_file_names)
+                         else
+                           include(init_settings.globalswitches,cs_transparent_file_names);
 {$ifdef gpc_mode}
                        'p' : //an alternative to -Mgpc
                          SetCompileMode('GPC',true);
@@ -2301,6 +2335,8 @@ begin
                       end;
                     'p':
                       begin
+{$push}
+{$warn 6018 off} { Unreachable code due to compile time evaluation }
                         if (target_info.system in systems_embedded) and
                                                          ControllerSupport then
                           begin
@@ -2311,6 +2347,7 @@ begin
                           end
                         else
                           IllegalPara(opt);
+{$pop}
                       end;
                     'P':
                       begin
@@ -3080,9 +3117,10 @@ begin
   else
     features:=features+target_unsup_features;
 
-{$ifdef hasamiga}
-   { enable vlink as default linker on Amiga/MorphOS, but not for cross compilers (for now) }
-   if target_info.system in [system_m68k_amiga,system_powerpc_amiga,system_powerpc_morphos] then
+{$if defined(atari) or defined(hasamiga)}
+   { enable vlink as default linker on Atari, Amiga, and MorphOS, but not for cross compilers (for now) }
+   if target_info.system in [system_m68k_amiga,system_m68k_atari,
+                             system_powerpc_amiga,system_powerpc_morphos] then
      include(init_settings.globalswitches,cs_link_vlink);
 {$endif}
 end;
@@ -3583,6 +3621,10 @@ begin
     (and print possible errors)
   }
   option.checkoptionscompatibility;
+
+  { uses the CPUXXX-defines and target_info to determine whether the selected
+    target processor, if any, is supported }
+  Option.VerifyTargetProcessor;
 
   { Stop if errors in options }
   if ErrorCount>0 then
@@ -4108,27 +4150,30 @@ begin
     if i in features then
       def_system_macro('FPC_HAS_FEATURE_'+featurestr[i]);
 
-   if ControllerSupport and (target_info.system in systems_embedded) and
-     (init_settings.controllertype<>ct_none) then
-     begin
-       with embedded_controllers[init_settings.controllertype] do
-         begin
-           set_system_macro('FPC_FLASHBASE',tostr(flashbase));
-           set_system_macro('FPC_FLASHSIZE',tostr(flashsize));
-           set_system_macro('FPC_SRAMBASE',tostr(srambase));
-           set_system_macro('FPC_SRAMSIZE',tostr(sramsize));
-           set_system_macro('FPC_EEPROMBASE',tostr(eeprombase));
-           set_system_macro('FPC_EEPROMSIZE',tostr(eepromsize));
-           set_system_macro('FPC_BOOTBASE',tostr(bootbase));
-           set_system_macro('FPC_BOOTSIZE',tostr(bootsize));
-         end;
-     end;
+{$push}
+{$warn 6018 off} { Unreachable code due to compile time evaluation }
+  if ControllerSupport and (target_info.system in systems_embedded) and
+    (init_settings.controllertype<>ct_none) then
+    begin
+      with embedded_controllers[init_settings.controllertype] do
+        begin
+          set_system_macro('FPC_FLASHBASE',tostr(flashbase));
+          set_system_macro('FPC_FLASHSIZE',tostr(flashsize));
+          set_system_macro('FPC_SRAMBASE',tostr(srambase));
+          set_system_macro('FPC_SRAMSIZE',tostr(sramsize));
+          set_system_macro('FPC_EEPROMBASE',tostr(eeprombase));
+          set_system_macro('FPC_EEPROMSIZE',tostr(eepromsize));
+          set_system_macro('FPC_BOOTBASE',tostr(bootbase));
+          set_system_macro('FPC_BOOTSIZE',tostr(bootsize));
+        end;
+    end;
+{$pop}
 
   option.free;
   Option:=nil;
 
-  clearstack_pocalls := [pocall_cdecl,pocall_cppdecl,pocall_syscall,pocall_mwpascal];
-  cdecl_pocalls := [pocall_cdecl, pocall_cppdecl, pocall_mwpascal];
+  clearstack_pocalls := [pocall_cdecl,pocall_cppdecl,pocall_syscall,pocall_mwpascal,pocall_sysv_abi_cdecl,pocall_ms_abi_cdecl];
+  cdecl_pocalls := [pocall_cdecl, pocall_cppdecl, pocall_mwpascal, pocall_sysv_abi_cdecl, pocall_ms_abi_cdecl];
   if (tf_safecall_clearstack in target_info.flags) then
     begin
       include (cdecl_pocalls, pocall_safecall);

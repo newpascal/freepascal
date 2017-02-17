@@ -40,6 +40,7 @@ type
     public
       constructor Create; override;
       procedure SetDefaultInfo; override;
+      procedure InitSysInitUnitName; override;
       function  MakeExecutable: boolean; override;
   end;
 
@@ -47,7 +48,7 @@ type
 implementation
 
     uses
-       sysutils,cutils,cfileutl,cclasses,
+       sysutils,cutils,cfileutl,cclasses,aasmbase,
        globtype,globals,systems,verbose,script,fmodule,i_atari;
 
 
@@ -72,7 +73,7 @@ begin
      end
     else
      begin
-      ExeCmd[1]:='vlink -b ataritos $OPT $STRIP -o $EXE -T $RES';
+      ExeCmd[1]:='vlink -b ataritos $FLAGS $GCSECTIONS $OPT $STRIP -o $EXE -T $RES';
      end;
    end;
 end;
@@ -83,6 +84,12 @@ begin
   case (target_info.system) of
     system_m68k_Atari:      SetAtariInfo;
   end;
+end;
+
+
+procedure TLinkerAtari.InitSysInitUnitName;
+begin
+  sysinitunit:='si_prc';
 end;
 
 
@@ -120,8 +127,11 @@ begin
 
   LinkRes.Add('INPUT (');
   { add objectfiles, start with prt0 always }
-  s:=FindObjectFile('prt0','',false);
-  LinkRes.AddFileName(s);
+  if not (target_info.system in systems_internal_sysinit) then
+    begin
+      s:=FindObjectFile('prt0','',false);
+      LinkRes.AddFileName(maybequoted(s));
+    end;
   while not ObjectFiles.Empty do
    begin
     s:=ObjectFiles.GetFirst;
@@ -204,22 +214,40 @@ var
   CmdStr  : TCmdStr;
   StripStr: string[40];
   DynLinkStr : string;
+  GCSectionsStr : string;
+  FlagsStr : string;
+  ExeName: string;
 begin
   StripStr:='';
-  if (cs_link_strip in current_settings.globalswitches) then StripStr:='-s';
+  GCSectionsStr:='';
+  DynLinkStr:='';
+  FlagsStr:='-tos-flags fastload,fastram';
+
+  if (cs_link_strip in current_settings.globalswitches) then
+    StripStr:='-s';
+  if rlinkpath<>'' then
+    DynLinkStr:='--rpath-link '+rlinkpath;
+  if UseVLink then
+    begin
+      if create_smartlink_sections then
+        GCSectionsStr:='-gc-all -sc -sd';
+    end;
+
+  ExeName:=current_module.exefilename;
+  if apptype = app_gui then
+    Replace(ExeName,target_info.exeext,'.prg');
 
   { Call linker }
   SplitBinCmd(Info.ExeCmd[1],BinStr,CmdStr);
   binstr:=FindUtil(utilsprefix+BinStr);
   Replace(cmdstr,'$OPT',Info.ExtraOptions);
-  Replace(cmdstr,'$EXE',maybequoted(ScriptFixFileName(current_module.exefilename)));
+  Replace(cmdstr,'$EXE',maybequoted(ScriptFixFileName(ExeName)));
   Replace(cmdstr,'$RES',maybequoted(ScriptFixFileName(outputexedir+Info.ResName)));
+  Replace(cmdstr,'$FLAGS',FlagsStr);
   Replace(cmdstr,'$STRIP',StripStr);
-  if rlinkpath<>'' Then
-    DynLinkStr:='--rpath-link '+rlinkpath
-  else
-    DynLinkStr:='';
+  Replace(cmdstr,'$GCSECTIONS',GCSectionsStr);
   Replace(cmdstr,'$DYNLINK',DynLinkStr);
+
   MakeAtariExe:=DoExec(BinStr,CmdStr,true,false);
 end;
 
