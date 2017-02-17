@@ -403,6 +403,7 @@ type
   TPascalScanner = class
   private
     FCurrentModeSwitches: TModeSwitches;
+    FForceCaret: Boolean;
     FLastMsg: string;
     FLastMsgArgs: TMessageArgs;
     FLastMsgNumber: integer;
@@ -420,6 +421,7 @@ type
     FOptions: TPOptions;
     FLogEvents: TPScannerLogEvents;
     FOnLog: TPScannerLogHandler;
+    FPreviousToken: TToken;
     FSkipComments: Boolean;
     FSkipWhiteSpace: Boolean;
     TokenStr: PChar;
@@ -472,6 +474,7 @@ type
     Procedure RemoveDefine(S : String);
     Procedure SetCompilerMode(S : String);
     function CurSourcePos: TPasSourcePos;
+    Function SetForceCaret(AValue : Boolean) : Boolean;
 
     property FileResolver: TBaseFileResolver read FFileResolver;
     property CurSourceFile: TLineReader read FCurSourceFile;
@@ -484,6 +487,7 @@ type
 
     property CurToken: TToken read FCurToken;
     property CurTokenString: string read FCurTokenString;
+    Property PreviousToken : TToken Read FPreviousToken;
 
     property Defines: TStrings read FDefines;
     property Macros: TStrings read FMacros;
@@ -497,6 +501,7 @@ type
     property LastMsgPattern: string read FLastMsgPattern write FLastMsgPattern;
     property LastMsgArgs: TMessageArgs read FLastMsgArgs write FLastMsgArgs;
     Property CurrentModeSwitches : TModeSwitches Read FCurrentModeSwitches Write FCurrentModeSwitches;
+    Property ForceCaret : Boolean Read FForceCaret;
   end;
 
 const
@@ -1262,6 +1267,7 @@ function TPascalScanner.FetchToken: TToken;
 var
   IncludeStackItem: TIncludeStackItem;
 begin
+  FPreviousToken:=FCurToken;
   while true do
   begin
     Result := DoFetchToken;
@@ -1403,9 +1409,16 @@ begin
   OldLength:=0;
   FCurTokenString := '';
 
-  while TokenStr[0] in ['#', ''''] do
-  begin
+  repeat
     case TokenStr[0] of
+      '^' :
+        begin
+        TokenStart := TokenStr;
+        Inc(TokenStr);
+        if TokenStr[0] in ['a'..'z','A'..'Z'] then
+          Inc(TokenStr);
+        if Result=tkEOF then Result := tkChar else Result:=tkString;
+        end;
       '#':
         begin
           TokenStart := TokenStr;
@@ -1454,8 +1467,7 @@ begin
     if SectionLength > 0 then
       Move(TokenStart^, FCurTokenString[OldLength + 1], SectionLength);
     Inc(OldLength, SectionLength);
-  end;
-
+  until false;
 end;
 
 procedure TPascalScanner.PushStackItem;
@@ -1769,8 +1781,9 @@ end;
 Procedure TPascalScanner.HandleELSE(Const AParam : String);
 
 begin
+  if AParam='' then;
   if PPSkipStackIndex = 0 then
-     Error(nErrInvalidPPElse,sErrInvalidPPElse);
+    Error(nErrInvalidPPElse,sErrInvalidPPElse);
   if PPSkipMode = ppSkipIfBranch then
     PPIsSkipping := false
   else if PPSkipMode = ppSkipElseBranch then
@@ -1781,6 +1794,7 @@ end;
 Procedure TPascalScanner.HandleENDIF(Const AParam : String);
 
 begin
+  if AParam='' then;
   if PPSkipStackIndex = 0 then
     Error(nErrInvalidPPEndif,sErrInvalidPPEndif);
   Dec(PPSkipStackIndex);
@@ -2173,8 +2187,14 @@ begin
       end;
     '^':
       begin
+      if ForceCaret or PPisSkipping or
+         (PreviousToken in [tkeof,tkComment,tkIdentifier,tkNil,tkOperator,tkBraceClose,tkSquaredBraceClose,tkCARET]) then
+        begin
         Inc(TokenStr);
         Result := tkCaret;
+        end
+      else
+        Result:=DoFetchTextToken;
       end;
     '\':
       begin
@@ -2362,5 +2382,13 @@ begin
   Result.Row:=CurRow;
   Result.Column:=CurColumn;
 end;
+
+Function TPascalScanner.SetForceCaret (AValue : Boolean): Boolean;
+
+begin
+  Result:=FForceCaret;
+  FForceCaret:=AValue;
+end;
+
 
 end.

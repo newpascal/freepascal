@@ -1055,6 +1055,16 @@ begin
                while j<=length(more) do
                 begin
                   case more[j] of
+                    '5' :
+                      if target_info.system in systems_all_windows+systems_nativent-[system_i8086_win16] then
+                        begin
+                          if UnsetBool(More, j, opt, false) then
+                            exclude(init_settings.globalswitches,cs_asm_pre_binutils_2_25)
+                          else
+                            include(init_settings.globalswitches,cs_asm_pre_binutils_2_25);
+                        end
+                      else
+                        IllegalPara(opt);
                     'l' :
                       include(init_settings.globalswitches,cs_asm_source);
                     'r' :
@@ -4162,8 +4172,8 @@ begin
   option.free;
   Option:=nil;
 
-  clearstack_pocalls := [pocall_cdecl,pocall_cppdecl,pocall_syscall,pocall_mwpascal];
-  cdecl_pocalls := [pocall_cdecl, pocall_cppdecl, pocall_mwpascal];
+  clearstack_pocalls := [pocall_cdecl,pocall_cppdecl,pocall_syscall,pocall_mwpascal,pocall_sysv_abi_cdecl,pocall_ms_abi_cdecl];
+  cdecl_pocalls := [pocall_cdecl, pocall_cppdecl, pocall_mwpascal, pocall_sysv_abi_cdecl, pocall_ms_abi_cdecl];
   if (tf_safecall_clearstack in target_info.flags) then
     begin
       include (cdecl_pocalls, pocall_safecall);

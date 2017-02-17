@@ -28,11 +28,12 @@ type
     property T2: LongInt read Test2;
   end;
 
-  (*{$interfaces corba}
+  {$interfaces corba}
   ITestRaw = interface
+    ['Test']
     function Test: LongInt;
     property T: LongInt read Test;
-  end;*)
+  end;
   {$pop}
 
 procedure ErrorHalt(const aMsg: String; const aArgs: array of const);
@@ -133,16 +134,18 @@ begin
     Result.params[i - Low(aParams)] := aParams[i];
 end;
 
-procedure TestInterface(aIntf: PTypeData; aRaw: Boolean; aPropCount: LongInt; aMethods: array of TTestMethod);
+procedure TestInterface(aIntf: PTypeData; aRaw: Boolean; aIIDStr: String; aPropCount: LongInt; aMethods: array of TTestMethod);
 var
   proptable: PPropData;
   methtable: PIntfMethodTable;
   i: LongInt;
 begin
-  {if aRaw then begin
+  if aRaw then begin
     proptable := PInterfaceRawData(aIntf)^.PropertyTable;
     methtable := PInterfaceRawData(aIntf)^.MethodTable;
-  end else }begin
+    if PInterfaceRawData(aIntf)^.IIDStr <> aIIDStr then
+      ErrorHalt('Expected IIDStr ''%s'', but got ''%s''', [aIIDStr, PInterfaceRawData(aIntf)^.IIDStr]);
+  end else begin
     proptable := PInterfaceData(aIntf)^.PropertyTable;
     methtable := PInterfaceData(aIntf)^.MethodTable;
   end;
@@ -169,11 +172,14 @@ const
 {$endif}
 
 begin
-  {TestInterface(GetTypeData(TypeInfo(ITestRaw)), True, 1, [
+  Writeln('Testing interface ITestRaw');
+  { raw interfaces don't support $M+ currently }
+  TestInterface(GetTypeData(TypeInfo(ITestRaw)), True, 'Test', 0{1}, [
       MakeMethod('Test', ccReg, mkFunction, TypeInfo(LongInt), [])
-    ]);}
+    ]);
 
-  TestInterface(GetTypeData(TypeInfo(ITest)), False, 2, [
+  Writeln('Testing interface ITest');
+  TestInterface(GetTypeData(TypeInfo(ITest)), False, '', 2, [
       MakeMethod('Test', DefaultCallingConvention, mkProcedure, Nil, [
           MakeParam('$self', [pfHidden, pfSelf, pfAddress], TypeInfo(ITest))
         ]),

@@ -30,6 +30,8 @@ type
     function IncludeRepositoryTypeForPackageKind(ARepositoryType: TFPRepositoryType;
       APackageKind: TpkgPackageKind): Boolean;
     procedure ScanPackagesOnDisk(ACompilerOptions: TCompilerOptions; APackageKind: TpkgPackageKind; ARepositoryList: TComponentList);
+    function CreateRepository(ARepoOptionSection: TFppkgRepositoryOptionSection;
+      AnOptions: TFppkgOptions; ACompilerOptions: TCompilerOptions): TFPRepository;
     function  FindPackage(ARepositoryList: TComponentList; APackageName: string; APackageKind: TpkgPackageKind): TFPPackage;
 
     function  SelectRemoteMirror:string;
@@ -59,6 +61,7 @@ type
     function PackageRemoteArchive(APackage:TFPPackage): String;
 
     procedure ScanInstalledPackagesForAvailablePackages;
+    procedure CheckFPMakeDependencies;
 
     property Options: TFppkgOptions read FOptions;
     property CompilerOptions: TCompilerOptions read FCompilerOptions;
@@ -72,6 +75,7 @@ type
 implementation
 
 uses
+  fpmkunit,
   pkgrepos;
 
 { TpkgFPpkg }
@@ -119,15 +123,23 @@ begin
           RepoOption := TFppkgRepositoryOptionSection(FOptions.SectionList[i]);
           if IncludeRepositoryTypeForPackageKind(RepoOption.GetRepositoryType, APackageKind) then
             begin
-              Repo := RepoOption.InitRepository(Self, ACompilerOptions);
+              Repo := CreateRepository(RepoOption, FOptions, ACompilerOptions);
               if Assigned(Repo) then
                 begin
                   ARepositoryList.Add(Repo);
-                  Repo.DefaultPackagesStructure.AddPackagesToRepository(Repo);
+                  if Assigned(Repo.DefaultPackagesStructure) then
+                    Repo.DefaultPackagesStructure.AddPackagesToRepository(Repo);
                 end;
             end;
         end;
     end;
+end;
+
+function TpkgFPpkg.CreateRepository(ARepoOptionSection: TFppkgRepositoryOptionSection;
+  AnOptions: TFppkgOptions; ACompilerOptions: TCompilerOptions): TFPRepository;
+begin
+  Result := TFPRepository.Create(Self);
+  Result.InitializeWithOptions(ARepoOptionSection, AnOptions, ACompilerOptions);
 end;
 
 procedure TpkgFPpkg.InitializeGlobalOptions(CfgFile: string);
@@ -249,7 +261,8 @@ begin
       Repo.RepositoryName := 'Available';
       Repo.Description := 'Packages available for download';
       Repo.RepositoryType := fprtAvailable;
-      InstPackages := TFPRemotePackagesStructure.Create(Self, FOptions);
+      InstPackages := TFPRemotePackagesStructure.Create(Self);
+      InstPackages.InitializeWithOptions(Nil, FOptions, FCompilerOptions);
       InstPackages.AddPackagesToRepository(Repo);
       Repo.DefaultPackagesStructure := InstPackages;
     end;
@@ -437,7 +450,7 @@ var
   InstRepositoryName: string;
   Repo: TFPRepository;
 begin
-  Result := GFPpkg.RepositoryByName(GFPpkg.Options.CommandLineSection.InstallRepository);
+  Result := RepositoryByName(Options.CommandLineSection.InstallRepository);
   if Assigned(APackage) and Assigned(APackage.Repository) and Assigned(APackage.Repository.DefaultPackagesStructure) then
     begin
       InstRepositoryName := APackage.Repository.DefaultPackagesStructure.InstallRepositoryName;
@@ -476,8 +489,51 @@ begin
       AvailableRepo.RepositoryName := Repo.RepositoryName + '_source';
       AvailableRepo.Description := Repo.Description + ' (original sources)';
       AvailStruc := TFPOriginalSourcePackagesStructure.Create(Self, Repo);
+      AvailStruc.InitializeWithOptions(nil, FOptions, FCompilerOptions);
       AvailStruc.AddPackagesToRepository(AvailableRepo);
       AvailableRepo.DefaultPackagesStructure := AvailStruc;
+    end;
+end;
+
+procedure TpkgFPpkg.CheckFPMakeDependencies;
+var
+  i : Integer;
+  P,AvailP : TFPPackage;
+  AvailVerStr : string;
+  ReqVer : TFPVersion;
+begin
+  // Reset availability
+  for i:=0 to high(FPMKUnitDeps) do
+    FPMKUnitDeps[i].available:=false;
+  // Not version check needed in Recovery mode, we always need to use
+  // the internal bootstrap procedure
+  if Options.CommandLineSection.RecoveryMode then
+    exit;
+  // Check for fpmkunit dependencies
+  for i:=0 to high(FPMKUnitDeps) do
+    begin
+      P:=FPMakeRepoFindPackage(FPMKUnitDeps[i].package, pkgpkInstalled);
+      if P<>nil then
+        begin
+          AvailP:=FindPackage(FPMKUnitDeps[i].package, pkgpkAvailable);
+          if AvailP<>nil then
+            AvailVerStr:=AvailP.Version.AsString
+          else
+            AvailVerStr:='<not available>';
+          ReqVer:=TFPVersion.Create;
+          try
+            ReqVer.AsString:=FPMKUnitDeps[i].ReqVer;
+            log(llDebug,SLogFPMKUnitDepVersion,[P.Name,ReqVer.AsString,P.Version.AsString,AvailVerStr]);
+            if ReqVer.CompareVersion(P.Version)<=0 then
+              FPMKUnitDeps[i].available:=true
+            else
+              log(llDebug,SLogFPMKUnitDepTooOld,[FPMKUnitDeps[i].package]);
+          finally
+            ReqVer.Free;
+          end;
+        end
+      else
+        log(llDebug,SLogFPMKUnitDepTooOld,[FPMKUnitDeps[i].package]);
     end;
 end;
 
