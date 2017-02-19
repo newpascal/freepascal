@@ -379,11 +379,11 @@
 
       class function TObject.InitInstance(instance : pointer) : tobject; {$ifdef SYSTEMINLINE} inline; {$ENDIF}
 
-{$if FPC_FULLVERSION>30100}
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
         var
            vmt  : PVmt;
            temp : pointer;
-{$endif FPC_FULLVERSION>30100}
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
         begin
            { the size is saved at offset 0 }
            fillchar(instance^, InstanceSize, 0);
@@ -393,8 +393,8 @@
            if {$ifdef VER3_0}PVmt(self)^.vIntfTable <> @emptyintf{$else}assigned(PVmt(self)^.vIntfTable){$endif} then
              InitInterfacePointers(self,instance);
 
-{$if FPC_FULLVERSION>30100}
-           { for record operators like initialize/finalize call int_initialize }
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
+           { for management operators like initialize call int_initialize }
            vmt := PVmt(self);
            while vmt<>nil do
              begin
@@ -405,7 +405,7 @@
                  RecordRTTI(Instance,Temp,@int_initialize);
                vmt:= vmt^.vParent;
              end;
-{$endif FPC_FULLVERSION>30100}
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
 
            InitInstance:=TObject(Instance);
         end;

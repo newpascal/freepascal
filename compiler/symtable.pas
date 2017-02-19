@@ -434,9 +434,9 @@ interface
     { _OP_EXPLICIT   }  'explicit',
     { _OP_ENUMERATOR }  'enumerator',
     { _OP_INITIALIZE }  'initialize',
-    { _OP_FINALIZE   }  'finalize',    
+    { _OP_FINALIZE   }  'finalize',
+    { _OP_ADDREF     }  'addref',
     { _OP_COPY       }  'copy',
-    { _OP_CLONE      }  'clone',
     { _OP_INC        }  'inc',
     { _OP_DEC        }  'dec');
 
@@ -444,9 +444,10 @@ interface
     { mop_none       }  NOTOKEN,
     { mop_initialize }  _OP_INITIALIZE,
     { mop_finalize   }  _OP_FINALIZE,
-    { mop_copy       }  _OP_COPY,
-    { mop_clone      }  _OP_CLONE
+    { mop_addref     }  _OP_ADDREF,
+    { mop_copy       }  _OP_COPY
     );
+
 
 
 implementation
@@ -1758,7 +1759,7 @@ implementation
       end;
 
 
-    procedure trecordsymtable.includemanagementoperator(mop: tmanagementoperator);
+    procedure trecordsymtable.includemanagementoperator(mop:tmanagementoperator);
       begin
         if mop in managementoperators then
           exit;
@@ -3757,7 +3758,7 @@ implementation
     end;
 
 
-    function search_management_operator(mop: tmanagementoperator; pd: Tdef): Tprocdef;
+    function search_management_operator(mop:tmanagementoperator;pd:Tdef):Tprocdef;
       var
         sym : Tprocsym;
         hashedid : THashedIDString;

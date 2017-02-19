@@ -3,103 +3,146 @@ program tmoperator8;
 {$MODE DELPHI}
 
 type
+  TCopyState = (csNone, csSource, csDest);
+  PFoo = ^TFoo;
   TFoo = record
   private
     class operator Initialize(var aFoo: TFoo);
     class operator Finalize(var aFoo: TFoo);
+    class operator AddRef(var aFoo: TFoo);
+    class operator Copy(constref aSrc: TFoo; var aDst: TFoo);
   public
-    I: Integer;
-  public class var
-    InitializeCount: Integer;
-    FinalizeCount: Integer;
+    CopyState: TCopyState;
+    Ref: Boolean;
+    F, Test: Integer;
   end;
 
-  TFooObj = object
-  public
-    F: TFoo;
-  end;  
+  TFooArray = array of TFoo;
 
-  TFooArray = array of TFoo; 
-  TFooObjArray = array of TFooObj; 
-
-{ TFoo }
+procedure TestFoo(const AValue: TFoo; AF, ATest: Integer; ARef: Boolean; ACopyState: TCopyState);
+begin
+  WriteLn('    AValue.F = ', AValue.F);
+  if AValue.F <> AF then
+    Halt(1);
+  WriteLn('    AValue.Test = ', AValue.Test);
+  if AValue.Test <> ATest then
+    Halt(2);
+  WriteLn('    AValue.Ref = ', AValue.Ref);
+  if AValue.Ref <> ARef then
+    Halt(4);
+  WriteLn('    AValue.CopyState = ', Ord(AValue.CopyState));
+  if AValue.CopyState <> ACopyState then
+    Halt(3);
+end;
 
 class operator TFoo.Initialize(var aFoo: TFoo);
 begin
-  Inc(InitializeCount);
-  if aFoo.I <> 0 then // for dyn array and old obj
-    Halt(1);
-    
   WriteLn('TFoo.Initialize');
-  aFoo.I := 1;
+  aFoo.F := 1;
+  aFoo.Ref := False;
+  aFoo.Test := 0;
+  aFoo.CopyState := csNone;
 end;
 
 class operator TFoo.Finalize(var aFoo: TFoo);
 begin
-  Inc(FinalizeCount);
-  if aFoo.I <> 2 then
-    Halt(2);
   WriteLn('TFoo.Finalize');
+  if (aFoo.F <> 2) and not ((aFoo.F = 3) and aFoo.Ref) then
+    Halt(5);
+  aFoo.F := 4;
 end;
 
-procedure CheckFooInit(var AValue: Integer; const AExpectedInitializeCount: Integer);
+class operator TFoo.AddRef(var aFoo: TFoo);
 begin
-  if AValue <> 1 then
-    Halt(3);
-  AValue := 2;
-  
-  if TFoo.InitializeCount <> AExpectedInitializeCount then
-    Halt(4); 
+  WriteLn('TFoo.AddRef');
+  aFoo.F := 3;
+  aFoo.Test := aFoo.Test + 1;
+  aFoo.Ref := True;
 end;
 
-procedure CheckFooFini(const AExpectedFinalizeCount: Integer);
+class operator TFoo.Copy(constref aSrc: TFoo; var aDst: TFoo);
+var
+  LSrc: PFoo;
 begin
-  if TFoo.FinalizeCount <> AExpectedFinalizeCount then
-    Halt(5);   
+  WriteLn('TFoo.Copy');
+  LSrc := @aSrc;
+  LSrc.CopyState := csSource;
+  aDst.CopyState := csDest;
+  aDst.Test := aSrc.Test + 1;
+  aDst.F := aSrc.F;
 end;
 
-procedure FooTest;
+procedure TestValue(Value: TFoo);
+begin
+  writeln('  *Test without modifier:');
+  TestFoo(Value, 3, 1, True, csNone);
+end;
+
+procedure TestOut(out Value: TFoo);
+begin
+  WriteLn('  *Test out modifier:');
+  TestFoo(Value, 1, 0, False, csNone);
+  Value.F := 2;
+end;
+
+procedure TestVar(var Value: TFoo);
+begin
+  writeln('  *Test var modifier:');
+  TestFoo(Value, 2, 0, False, csNone);
+end;
+
+procedure TestConst(const Value: TFoo);
+begin
+  writeln('  *Test const modifier:');
+  TestFoo(Value, 2, 0, False, csNone);
+end;
+
+procedure TestConstref(constref Value: TFoo);
+begin
+  WriteLn('  *Test constref modifier:');
+  TestFoo(Value, 2, 0, False, csNone);
+end;
+
+procedure Test;
 var
   Foos: TFooArray;
-  FoosObj: TFooObjArray;
+  Foos2: TFooArray;
+  A, B, C: TFoo;
+  i: Integer;
 begin
-  WriteLn('=== DynArray of Records ===');
-  
-  SetLength(Foos, 1);
-  CheckFooInit(Foos[0].I, 1);
+  WriteLn('*** Test for variable copy');
+  TestFoo(B, 1, 0, False, csNone);
+  B.F := 2;
+  A := B;
+  TestFoo(B, 2, 0, False, csSource);
+  TestFoo(A, 2, 1, False, csDest);
 
-  SetLength(Foos, 2);
-  CheckFooInit(Foos[1].I, 2);
-    
-  SetLength(Foos, 1);
-  CheckFooFini(1);
+  WriteLn('*** Test for Copy(dyn array)');
+  SetLength(Foos, 5);
+  for i := 0 to 4 do
+  begin
+    Foos[i].F := 2;
+    Foos[i].Test := i;
+  end;
 
-  SetLength(Foos, 2);
-  CheckFooInit(Foos[1].I, 3);
+  Foos2 := Copy(Foos);
 
-  Foos := nil;
-  CheckFooFini(3);
-    
-  WriteLn('=== DynArray of Objects ===');
-  TFoo.InitializeCount := 0;
-  TFoo.FinalizeCount := 0;
-  
-  SetLength(FoosObj, 1);
-  CheckFooInit(FoosObj[0].F.I, 1);
+  for i := 0 to 4 do
+  begin
+    TestFoo(Foos[i], 2, i, False, csNone);
+    TestFoo(Foos2[i], 3, i + 1, True, csNone);
+  end;
 
-  SetLength(FoosObj, 2);
-  CheckFooInit(FoosObj[1].F.I, 2);
-    
-  SetLength(FoosObj, 1);
-  CheckFooFini(1);
-
-  SetLength(FoosObj, 2);
-  CheckFooInit(FoosObj[1].F.I, 3);
-
-  FoosObj := nil;
-  CheckFooFini(3);
+  WriteLn('*** Test for parameters modifiers');
+  TestValue(C);
+  C.F := 2; // reset F to pass finalize before out parameter
+  TestOut(C);
+  TestVar(C);
+  TestConst(C);
+  TestConstref(C);
 end;
 
 begin
-  FooTest;
-end. 
+  Test;
+  WriteLn('end');
+end.

@@ -41,7 +41,7 @@ interface
 
       Ttok2opRec=record
         tok : ttoken;
-        managementoperator: tmanagementoperator;
+        managementoperator : tmanagementoperator;
       end;
 
       pcandidate = ^tcandidate;
@@ -140,18 +140,18 @@ interface
       );
 
       tok2ops=4;
-      tok2op: array[1..tok2ops] of ttok2oprec = (
+      tok2op: array[1..tok2ops] of ttok2oprec=(
         (tok:_OP_INITIALIZE; managementoperator: mop_initialize),
         (tok:_OP_FINALIZE  ; managementoperator: mop_finalize),
-        (tok:_OP_COPY      ; managementoperator: mop_copy),
-        (tok:_OP_CLONE     ; managementoperator: mop_clone)
+        (tok:_OP_ADDREF    ; managementoperator: mop_addref),
+        (tok:_OP_COPY      ; managementoperator: mop_copy)
       );
 
       { true, if we are parsing stuff which allows array constructors }
       allow_array_constructor : boolean = false;
 
     function node2opstr(nt:tnodetype):string;
-    function token2managementoperator(optoken : ttoken): tmanagementoperator;
+    function token2managementoperator(optoken:ttoken):tmanagementoperator;
 
     { check operator args and result type }
     function isbinaryoperatoroverloadable(treetyp:tnodetype;ld:tdef;lt:tnodetype;rd:tdef;rt:tnodetype) : boolean;
@@ -234,7 +234,8 @@ implementation
             end;
        end;
 
-    function token2managementoperator(optoken: ttoken): tmanagementoperator;
+
+    function token2managementoperator(optoken:ttoken):tmanagementoperator;
       var
         i : integer;
       begin
@@ -246,6 +247,7 @@ implementation
               break;
             end;
       end;
+
 
     function isbinaryoperatoroverloadable(treetyp:tnodetype;ld:tdef;lt:tnodetype;rd:tdef;rt:tnodetype) : boolean;
 
