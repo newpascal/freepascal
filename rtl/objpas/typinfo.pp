@@ -340,7 +340,9 @@ unit typinfo;
       record
         Terminator: Pointer;
         Size: Integer;
-        ManagementOp: Pointer;
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
+        RecordOp: Pointer;
+{$endif}
         ManagedFieldCount: Integer;
         { ManagedFields: array[0..ManagedFieldCount - 1] of TInitManagedField ; }
       end;

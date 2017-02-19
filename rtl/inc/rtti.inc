@@ -58,9 +58,10 @@ type
 
   PRecordInfoInit=^TRecordInfoInit;
 {$ifndef VER3_0}
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
   TRTTIRecVarOp=procedure(ARec: Pointer);
-  TRTTIRecCloneOp=procedure(ASrc, ADest: Pointer);
-  TRTTIRecOpType=(rotAny, rotInitialize, rotFinalize, rotCopy, rotClone);
+  TRTTIRecCopyOp=procedure(ASrc, ADest: Pointer);
+  TRTTIRecOpType=(rotAny, rotInitialize, rotFinalize, rotAddRef, rotCopy);
   PRTTIRecordOpVMT=^TRTTIRecordOpVMT;
   TRTTIRecordOpVMT=
 {$ifdef USE_PACKED}
@@ -69,9 +70,10 @@ type
   record
     Initialize: TRTTIRecVarOp;
     Finalize: TRTTIRecVarOp;
-    Copy: TRTTIRecVarOp;
-    Clone: TRTTIRecCloneOp;
+    AddRef: TRTTIRecVarOp;
+    Copy: TRTTIRecCopyOp;
   end;
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
 
   TRecordInfoInit=
 {$ifdef USE_PACKED}
@@ -80,7 +82,9 @@ type
   record
     Terminator: Pointer;
     Size: Longint;
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
     RecordOp: PRTTIRecordOpVMT;
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
     Count: Longint;
     { Elements: array[count] of TRecordElement }
   end;
@@ -130,7 +134,7 @@ begin
   result:=PRecordInfoFull(typeInfo)^.Size;
 end;
 
-{$if FPC_FULLVERSION>30100}
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
 function RTTIRecordOp(typeInfo: Pointer; var initrtti: Pointer): PRecordInfoInit; inline;
 begin
   { find init table and management operators }
@@ -146,17 +150,31 @@ begin
     result:=aligntoqword(initrtti+2+PByte(initrtti)[1]);
   end
 end;
-{$endif FPC_FULLVERSION>30100}
+{$else FPC_HAS_MANAGEMENT_OPERATORS}
+function RTTIRecordRttiInfoToInitInfo(typeInfo: Pointer): Pointer; inline;
+begin
+  result:=typeInfo;
+{$ifndef VER3_0}
+  { find init table }
+  typeInfo:=aligntoqword(typeInfo+2+PByte(typeInfo)[1]);
 
-{$if FPC_FULLVERSION>30100}
+  { check terminator, maybe we are already in init table }
+  if Assigned(PRecordInfoInit(typeInfo)^.Terminator) then
+    { point to more optimal initrtti }
+    result:=PRecordInfoFull(typeInfo)^.InitTable;
+{$endif VER3_0}
+end;
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
+
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
 function RTTISizeAndOp(typeInfo: Pointer;
   const expectedManagementOp: TRTTIRecOpType; out hasManagementOp: boolean): SizeInt;
 begin
   hasManagementOp:=false;
-{$else}
+{$else FPC_HAS_MANAGEMENT_OPERATORS}
 function RTTISize(typeInfo: Pointer): SizeInt;
 begin
-{$endif}
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
   case PByte(typeinfo)^ of
     tkAString,tkWString,tkUString,
     tkInterface,tkDynarray:
@@ -167,7 +185,7 @@ begin
 {$endif FPC_HAS_FEATURE_VARIANTS}
     tkArray:
       result:=RTTIArraySize(typeinfo);
-{$if FPC_FULLVERSION>30100}
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
     tkObject:
       result:=RTTIRecordSize(typeinfo);
     tkRecord:
@@ -179,14 +197,14 @@ begin
             case expectedManagementOp of
               rotInitialize: hasManagementOp:=Assigned(RecordOp^.Initialize);
               rotFinalize: hasManagementOp:=Assigned(RecordOp^.Finalize);
+              rotAddRef: hasManagementOp:=Assigned(RecordOp^.AddRef);
               rotCopy: hasManagementOp:=Assigned(RecordOp^.Copy);
-              rotClone: hasManagementOp:=Assigned(RecordOp^.Clone);
             end;
         end;
-{$else FPC_FULLVERSION>30100}
+{$else FPC_HAS_MANAGEMENT_OPERATORS}
     tkObject,tkRecord:
       result:=RTTIRecordSize(typeinfo);
-{$endif FPC_FULLVERSION>30100}
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
   else
     result:=-1;
   end;
@@ -203,13 +221,8 @@ begin
 {$else VER3_0}
   typeInfo:=aligntoqword(typeInfo+2+PByte(typeInfo)[1]);
 {$endif VER3_0}
-{$if FPC_FULLVERSION>30100}
   Count:=PRecordInfoInit(typeInfo)^.Count;
   Inc(PRecordInfoInit(typeInfo));
-{$else FPC_FULLVERSION>30100}
-  Count:=PRecordInfoFull(typeInfo)^.Count;
-  Inc(PRecordInfoFull(typeInfo));
-{$endif FPC_FULLVERSION>30100}
   { Process elements }
   for i:=1 to count Do
     begin
@@ -277,7 +290,7 @@ begin
     tkObject,
 {$endif FPC_HAS_FEATURE_OBJECTS}
     tkRecord:
-{$if FPC_FULLVERSION>30100}
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
       { if possible try to use more optimal initrtti }
       with RTTIRecordOp(typeinfo, typeinfo)^ do
       begin
@@ -285,9 +298,12 @@ begin
         if Assigned(recordop) and Assigned(recordop^.Initialize) then
           recordop^.Initialize(data);
       end;
-{$else FPC_FULLVERSION>30100}
-      recordrtti(data,typeinfo,@int_initialize);
-{$endif FPC_FULLVERSION>30100}
+{$else FPC_HAS_MANAGEMENT_OPERATORS}
+      begin
+        typeinfo:=RTTIRecordRttiInfoToInitInfo(typeinfo);
+        recordrtti(data,typeinfo,@int_initialize);
+      end;
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
 {$ifdef FPC_HAS_FEATURE_VARIANTS}
     tkVariant:
       variant_init(PVarData(Data)^);
@@ -317,7 +333,7 @@ begin
     tkObject,
 {$endif FPC_HAS_FEATURE_OBJECTS}
     tkRecord:
-{$if FPC_FULLVERSION>30100}
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
       { if possible try to use more optimal initrtti }
       with RTTIRecordOp(typeinfo, typeinfo)^ do
       begin
@@ -325,9 +341,12 @@ begin
           recordop^.Finalize(data);
         recordrtti(data,typeinfo,@int_finalize);
       end;
-{$else FPC_FULLVERSION>30100}
-      recordrtti(data,typeinfo,@int_finalize);
-{$endif FPC_FULLVERSION>30100}
+{$else FPC_HAS_MANAGEMENT_OPERATORS}
+      begin
+        typeinfo:=RTTIRecordRttiInfoToInitInfo(typeinfo);
+        recordrtti(data,typeinfo,@int_finalize);
+      end;
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
     tkInterface:
       Intf_Decr_Ref(PPointer(Data)^);
 {$ifdef FPC_HAS_FEATURE_DYNARRAYS}
@@ -363,17 +382,20 @@ begin
     tkobject,
 {$endif FPC_HAS_FEATURE_OBJECTS}
     tkrecord :
-{$if FPC_FULLVERSION>30100}
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
       { find init table }
       with RTTIRecordOp(typeinfo, typeinfo)^ do
-{$endif FPC_FULLVERSION>30100}
       begin
         recordrtti(data,typeinfo,@int_addref);
-{$if FPC_FULLVERSION>30100}
-        if Assigned(recordop) and Assigned(recordop^.Copy) then
-          recordop^.Copy(Data);
-{$endif FPC_FULLVERSION>30100}
+        if Assigned(recordop) and Assigned(recordop^.AddRef) then
+          recordop^.AddRef(Data);
       end;
+{$else FPC_HAS_MANAGEMENT_OPERATORS}
+      begin
+        typeinfo:=RTTIRecordRttiInfoToInitInfo(typeinfo);
+        recordrtti(data,typeinfo,@int_addref);
+      end;
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
 {$ifdef FPC_HAS_FEATURE_DYNARRAYS}
     tkDynArray:
       fpc_dynarray_incr_ref(PPointer(Data)^);
@@ -448,28 +470,31 @@ begin
     tkobject,
 {$endif FPC_HAS_FEATURE_OBJECTS}
     tkrecord:
-{$if FPC_FULLVERSION>30100}
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
       { find init table }
       with RTTIRecordOp(typeinfo, typeinfo)^ do
-{$endif FPC_FULLVERSION>30100}
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
       begin
+{$ifndef FPC_HAS_MANAGEMENT_OPERATORS}
+        typeInfo:=RTTIRecordRttiInfoToInitInfo(typeInfo);
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
 {$ifdef VER3_0}
         Temp:=aligntoptr(typeInfo+2+PByte(typeInfo)[1]);
 {$else VER3_0}
         Temp:=aligntoqword(typeInfo+2+PByte(typeInfo)[1]);
 {$endif VER3_0}
-{$if FPC_FULLVERSION>30100}
-        if Assigned(recordop) and Assigned(recordop^.Clone) then
-          recordop^.Clone(Src,Dest)
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
+        if Assigned(recordop) and Assigned(recordop^.Copy) then
+          recordop^.Copy(Src,Dest)
         else
           begin
             Result:=Size;
             Inc(PRecordInfoInit(Temp));
-{$else FPC_FULLVERSION>30100}
+{$else FPC_HAS_MANAGEMENT_OPERATORS}
             Result:=PRecordInfoFull(Temp)^.Size;
             Count:=PRecordInfoFull(Temp)^.Count;
             Inc(PRecordInfoFull(Temp));
-{$endif FPC_FULLVERSION>30100}
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
             expectedoffset:=0;
             { Process elements with rtti }
             for i:=1 to Count Do
@@ -485,9 +510,9 @@ begin
             { elements remaining? }
             if result>expectedoffset then
               move((Src+expectedoffset)^,(Dest+expectedoffset)^,Result-expectedoffset);
-{$if FPC_FULLVERSION>30100}
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
           end;
-{$endif FPC_FULLVERSION>30100}
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
       end;
 {$ifdef FPC_HAS_FEATURE_DYNARRAYS}
     tkDynArray:
@@ -517,17 +542,17 @@ end;
 
 procedure fpc_initialize_array(data,typeinfo : pointer;count : SizeInt); [public,alias:'FPC_INITIALIZE_ARRAY']; compilerproc;
   var
-     i, size : SizeInt;
-{$if FPC_FULLVERSION>30100}
+    i, size : SizeInt;
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
     hasManagementOp: boolean;
   begin
     size:=RTTISizeAndOp(typeinfo, rotInitialize, hasManagementOp);
     if (size>0) or hasManagementOp then
-{$else FPC_FULLVERSION>30100}
-  begin    
+{$else FPC_HAS_MANAGEMENT_OPERATORS}
+  begin
     size:=RTTISize(typeInfo);
     if size>0 then
-{$endif FPC_FULLVERSION>30100}
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
       for i:=0 to count-1 do
         int_initialize(data+size*i,typeinfo);
   end;
@@ -536,33 +561,34 @@ procedure fpc_initialize_array(data,typeinfo : pointer;count : SizeInt); [public
 procedure fpc_finalize_array(data,typeinfo : pointer;count : SizeInt); [Public,Alias:'FPC_FINALIZE_ARRAY'];  compilerproc;
   var
      i, size: SizeInt;
-{$if FPC_FULLVERSION>30100}
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
     hasManagementOp: boolean;
   begin
     size:=RTTISizeAndOp(typeinfo, rotFinalize, hasManagementOp);
     if (size>0) or hasManagementOp then
-{$else FPC_FULLVERSION>30100}
-  begin    
+{$else FPC_HAS_MANAGEMENT_OPERATORS}
+  begin
     size:=RTTISize(typeInfo);
     if size>0 then
-{$endif FPC_FULLVERSION>30100}
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
       for i:=0 to count-1 do
         int_finalize(data+size*i,typeinfo);
   end;
 
+
 procedure fpc_addref_array(data,typeinfo: pointer; count: SizeInt); [public,alias:'FPC_ADDREF_ARRAY']; compilerproc;
   var
     i, size: SizeInt;
-{$if FPC_FULLVERSION>30100}
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
     hasManagementOp: boolean;
   begin
-    size:=RTTISizeAndOp(typeinfo, rotCopy, hasManagementOp);
+    size:=RTTISizeAndOp(typeinfo, rotAddRef, hasManagementOp);
     if (size>0) or hasManagementOp then
-{$else FPC_FULLVERSION>30100}
-  begin    
+{$else FPC_HAS_MANAGEMENT_OPERATORS}
+  begin
     size:=RTTISize(typeInfo);
     if size>0 then
-{$endif FPC_FULLVERSION>30100}
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
       for i:=0 to count-1 do
         int_addref(data+size*i,typeinfo);
   end;
@@ -587,16 +613,16 @@ procedure FinalizeArray(p, typeInfo: Pointer; count: SizeInt);
 procedure CopyArray(dest, source, typeInfo: Pointer; count: SizeInt);
   var
     i, size: SizeInt;
-{$if FPC_FULLVERSION>30100}
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
     hasManagementOp: boolean;
   begin
-    size:=RTTISizeAndOp(typeinfo, rotClone, hasManagementOp);
+    size:=RTTISizeAndOp(typeinfo, rotCopy, hasManagementOp);
     if (size>0) or hasManagementOp then
-{$else FPC_FULLVERSION>30100}
-  begin    
+{$else FPC_HAS_MANAGEMENT_OPERATORS}
+  begin
     size:=RTTISize(typeInfo);
     if size>0 then
-{$endif FPC_FULLVERSION>30100}
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
       for i:=0 to count-1 do
         fpc_Copy_internal(source+size*i, dest+size*i, typeInfo);
   end;

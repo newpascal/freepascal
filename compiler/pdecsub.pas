@@ -598,7 +598,7 @@ implementation
                     _DEC:optoken:=_OP_DEC;
                     _INITIALIZE:optoken:=_OP_INITIALIZE;
                     _FINALIZE:optoken:=_OP_FINALIZE;
-                    _CLONE:optoken:=_OP_CLONE;
+                    _ADDREF:optoken:=_OP_ADDREF;
                     _COPY:optoken:=_OP_COPY;
                     else
                     if (m_delphi in current_settings.modeswitches) then
@@ -1440,22 +1440,21 @@ implementation
                   pd.resultname:=stringdup(orgpattern);
                   consume(_ID);
                 end;
-
-              { operators without result }
-              if optoken in [_OP_INITIALIZE, _OP_FINALIZE, _OP_COPY, _OP_CLONE] then
+              { operators without result (management operators) }
+              if optoken in [_OP_INITIALIZE, _OP_FINALIZE, _OP_ADDREF, _OP_COPY] then
                 begin
                   { single var parameter to point the record }
-                  if (optoken in [_OP_INITIALIZE, _OP_FINALIZE, _OP_COPY]) and
+                  if (optoken in [_OP_INITIALIZE, _OP_FINALIZE, _OP_ADDREF]) and
                      (
-                      (pd.parast.SymList.Count <> 1) or
+                      (pd.parast.SymList.Count<>1) or
                       (tparavarsym(pd.parast.SymList[0]).vardef<>pd.struct) or
                       (tparavarsym(pd.parast.SymList[0]).varspez<>vs_var)
                      ) then
                     Message(parser_e_overload_impossible)
                   { constref (source) and var (dest) parameter to point the records }
-                  else if (optoken = _OP_CLONE) and
+                  else if (optoken=_OP_COPY) and
                      (
-                      (pd.parast.SymList.Count <> 2) or
+                      (pd.parast.SymList.Count<>2) or
                       (tparavarsym(pd.parast.SymList[0]).vardef<>pd.struct) or
                       (tparavarsym(pd.parast.SymList[0]).varspez<>vs_constref) or
                       (tparavarsym(pd.parast.SymList[1]).vardef<>pd.struct) or

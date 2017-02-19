@@ -1169,7 +1169,7 @@ implementation
 
             current_asmdata.AsmLists[al_rtti].concatList(
               tcb.get_final_asmlist(rttilab,rttidef,sec_rodata,rttilab.name,
-              const_align(sizeof(pint))));
+              sizeof(pint)));
             tcb.free;
           end;
 
@@ -1188,11 +1188,13 @@ implementation
            if (rt=initrtti) then
              tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype)
            else
-               { we use a direct reference as the init RTTI is always in the same
-                 unit as the full RTTI }
-               tcb.emit_tai(Tai_const.Create_sym(get_rtti_label(def,initrtti,false)),voidpointertype);
+             { we use a direct reference as the init RTTI is always in the same
+               unit as the full RTTI }
+             tcb.emit_tai(Tai_const.Create_sym(get_rtti_label(def,initrtti,false)),voidpointertype);
 
            tcb.emit_ord_const(def.size,u32inttype);
+
+           { store rtti management operators only for init table }
            if (rt=initrtti) then
              if (trecordsymtable(def.symtable).managementoperators=[]) then
                tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype)
@@ -1332,8 +1334,9 @@ implementation
                 internalerror(2017011801);
 
             tcb.emit_ord_const(def.size, u32inttype);
-            { pointer to management operators }
-            tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype);
+            { pointer to management operators available only for initrtti }
+            if (rt=initrtti) then
+              tcb.emit_tai(Tai_const.Create_nil_dataptr,voidpointertype);
             { enclosing record takes care of alignment }
             fields_write_rtti_data(tcb,def,rt);
           end;
@@ -1795,7 +1798,7 @@ implementation
                   include(def.defstates,ds_init_table_used);
                   write_rtti(def, initrtti);
                 end;
-            fields_write_rtti(trecorddef(def).symtable,rt);
+              fields_write_rtti(trecorddef(def).symtable,rt);
             end;
           objectdef :
             begin
@@ -1816,9 +1819,9 @@ implementation
                       write_rtti(def,initrtti);
                     end;
                   if (is_interface(def) or is_dispinterface(def))
-                  and (oo_can_have_published in tobjectdef(def).objectoptions) then
-                methods_write_rtti(tobjectdef(def).symtable,rt,[vis_published],true);
-            end;
+                      and (oo_can_have_published in tobjectdef(def).objectoptions) then
+                    methods_write_rtti(tobjectdef(def).symtable,rt,[vis_published],true);
+                end;
             end;
           classrefdef,
           pointerdef:

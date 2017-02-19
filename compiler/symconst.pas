@@ -591,8 +591,8 @@ type
   tmanagementoperator=(mop_none,
     mop_initialize,
     mop_finalize,
-    mop_copy,
-    mop_clone
+    mop_addref,
+    mop_copy
   );
   tmanagementoperators=set of tmanagementoperator;
 
@@ -715,10 +715,10 @@ type
     itp_rtti_normal_array,
     itp_rtti_dyn_array,
     itp_rtti_proc_param,
-    itp_init_record_operators,
     itp_rtti_enum_size_start_rec,
     itp_rtti_enum_min_max_rec,
     itp_rtti_enum_basetype_array_rec,
+    itp_init_record_operators,
     itp_threadvar_record,
     itp_objc_method_list,
     itp_objc_proto_list,
@@ -858,10 +858,10 @@ inherited_objectoptions : tobjectoptions = [oo_has_virtual,oo_has_private,oo_has
        '$rtti_normal_array$',
        '$rtti_dyn_array$',
        '$rtti_proc_param$',
-       '$init_record_operators$',
        '$rtti_enum_size_start_rec$',
        '$rtti_enum_min_max_rec$',
        '$rtti_enum_basetype_array_rec$',
+       '$init_record_operators$',
        '$threadvar_record$',
        '$objc_method_list$',
        '$objc_proto_list$',
