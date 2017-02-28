@@ -929,6 +929,7 @@ begin
   S:=FindStream(AName,ScanIncludes);
   If (S<>Nil) then
     begin
+    S.Position:=0;
     SL:=TStreamLineReader.Create(AName);
     try
       SL.InitFromStream(S);
@@ -1166,7 +1167,7 @@ end;
 function TFileResolver.FindSourceFile(const AName: string): TLineReader;
 begin
   if not FileExists(AName) then
-    Raise EFileNotFoundError.create(Aname)
+    Raise EFileNotFoundError.create(AName)
   else
     try
       Result := CreateFileReader(AName)
@@ -1182,7 +1183,7 @@ Var
 
 begin
   Result:=Nil;
-  FN:=FindIncludeFileName(ANAme);
+  FN:=FindIncludeFileName(AName);
   If (FN<>'') then
     try
       Result := TFileLineReader.Create(FN);

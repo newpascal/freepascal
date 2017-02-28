@@ -157,11 +157,24 @@ var rtl = {
   },
 
   createCallback: function(scope, fn){
-    var wrapper = function(){
+    var cb = function(){
       return fn.apply(scope,arguments);
     };
-    wrapper.fn = fn;
-    return wrapper;
+    cb.fn = fn;
+    cb.scope = scope;
+    return cb;
+  },
+
+  cloneCallback: function(cb){
+    return rtl.createCallback(cb.scope,cb.fn);
+  },
+
+  eqCallback: function(a,b){
+    if (a==null){
+      return (b==null);
+    } else {
+      return (b!=null) && (a.scope==b.scope) && (a.fn==b.fn);
+    }
   },
 
   createClass: function(owner,name,ancestor,initfn){
@@ -197,7 +210,7 @@ var rtl = {
     throw pas.System.EInvalidCast.$create("create");
   },
 
-  setArrayLength: function(arr,newlength,defaultvalue){
+  arraySetLength: function(arr,newlength,defaultvalue){
     if (newlength == 0) return null;
     if (arr == null) arr = [];
     var oldlen = arr.length;
@@ -205,13 +218,29 @@ var rtl = {
     arr.length = newlength;
     if (rtl.isArray(defaultvalue)){
       for (var i=oldlen; i<newlength; i++) arr[i]=[]; // new array
+    } else if (rtl.isFunction(defaultvalue)){
+      for (var i=oldlen; i<newlength; i++) arr[i]=new defaultvalue(); // new record
     } else {
       for (var i=oldlen; i<newlength; i++) arr[i]=defaultvalue;
     }
     return arr;
   },
 
-  setStringLength: function(s,newlength){
+  arrayNewMultiDim: function(dims,defaultvalue){
+    function create(dim){
+      if (dim == dims.length-1){
+        return rtl.arraySetLength(null,dims[dim],defaultvalue);
+      }
+      var a = [];
+      var count = dims[dim];
+      a.length = count;
+      for(var i=0; i<count; i++) a[i] = create(dim+1);
+      return a;
+    };
+    return create(0);
+  },
+
+  stringSetLength: function(s,newlength){
     s.length = newlength;
   },
 

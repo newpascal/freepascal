@@ -1672,14 +1672,20 @@ begin
           end;
       until false;
       // Needed for TSDOBaseDataObjectClass(Self.ClassType).Create
-      if CurToken in [tkdot,tkas] then
+      if CurToken in [tkDot,tkas] then
         begin
         optk:=CurToken;
         NextToken;
         Expr:=ParseExpIdent(AParent);
         if Expr=nil then
-          Exit; // error
-        AddToBinaryExprChain(Result,Last,Expr,TokenToExprOp(optk));
+          ParseExcExpectedIdentifier;
+        if optk=tkDot then
+          AddToBinaryExprChain(Result,Last,Expr,TokenToExprOp(optk))
+        else
+          begin
+          // a as b
+          Result:=CreateBinaryExpr(AParent,Result,Expr,TokenToExprOp(tkas));
+          end;
       end;
     end;
     ok:=true;
@@ -1939,50 +1945,77 @@ begin
   if CurToken <> tkBraceOpen then
     Result:=DoParseExpression(AParent)
   else begin
+    Result:=nil;
     NextToken;
     x:=DoParseConstValueExpression(AParent);
     case CurToken of
       tkComma: // array of values (a,b,c);
-        begin
+        try
           a:=CreateArrayValues(AParent);
           a.AddValues(x);
+          x:=nil;
           repeat
             NextToken;
             x:=DoParseConstValueExpression(AParent);
             a.AddValues(x);
+            x:=nil;
           until CurToken<>tkComma;
           Result:=a;
+        finally
+          if Result=nil then
+            begin
+            a.Free;
+            x.Free;
+            end;
         end;
 
       tkColon: // record field (a:xxx;b:yyy;c:zzz);
         begin
-          n:=GetExprIdent(x);
-          x.Release;
-          r:=CreateRecordValues(AParent);
-          NextToken;
-          x:=DoParseConstValueExpression(AParent);
-          r.AddField(n, x);
-          if not lastfield then
-            repeat
-              n:=ExpectIdentifier;
-              ExpectToken(tkColon);
-              NextToken;
-              x:=DoParseConstValueExpression(AParent);
-              r.AddField(n, x)
-            until lastfield; // CurToken<>tkSemicolon;
-          Result:=r;
+          r:=nil;
+          try
+            n:=GetExprIdent(x);
+            ReleaseAndNil(TPasElement(x));
+            r:=CreateRecordValues(AParent);
+            NextToken;
+            x:=DoParseConstValueExpression(AParent);
+            r.AddField(n, x);
+            x:=nil;
+            if not lastfield then
+              repeat
+                n:=ExpectIdentifier;
+                ExpectToken(tkColon);
+                NextToken;
+                x:=DoParseConstValueExpression(AParent);
+                r.AddField(n, x);
+                x:=nil;
+              until lastfield; // CurToken<>tkSemicolon;
+            Result:=r;
+          finally
+            if Result=nil then
+              begin
+              r.Free;
+              x.Free;
+              end;
+          end;
         end;
     else
-      // Binary expression!  ((128 div sizeof(longint)) - 3);       ;
+      // Binary expression!  ((128 div sizeof(longint)) - 3);
       Result:=DoParseExpression(AParent,x);
-      if CurToken<>tkBraceClose then ParseExc(nParserExpectedCommaRBracket,SParserExpectedCommaRBracket);
+      if CurToken<>tkBraceClose then
+        begin
+        ReleaseAndNil(TPasElement(Result));
+        ParseExc(nParserExpectedCommaRBracket,SParserExpectedCommaRBracket);
+        end;
       NextToken;
-      if CurToken <> tkSemicolon then // the continue of expresion
+      if CurToken <> tkSemicolon then // the continue of expression
         Result:=DoParseExpression(AParent,Result);
       Exit;
     end;
     if CurToken<>tkBraceClose then
+      begin
+      ReleaseAndNil(TPasElement(Result));
       ParseExc(nParserExpectedCommaRBracket,SParserExpectedCommaRBracket);
+      end;
     NextToken;
   end;
 end;
@@ -3045,7 +3078,7 @@ begin
       VarEl:=TPasVariable(VarList[i]);
       // Writeln(VarEl.Name, AVisibility);
       VarEl.VarType := VarType;
-      //VarType.Parent := VarEl; // this is wrong for references types
+      //VarType.Parent := VarEl; // this is wrong for references
       if (i>=OldListCount) then
         VarType.AddRef;
       end;
@@ -3055,7 +3088,10 @@ begin
     If Full then
       GetVariableValueAndLocation(Parent,Value,Loc);
     if (Value<>nil) and (VarList.Count>OldListCount+1) then
+      begin
+      Value.Release;
       ParseExc(nParserOnlyOneVariableCanBeInitialized,SParserOnlyOneVariableCanBeInitialized);
+      end;
     TPasVariable(VarList[OldListCount]).Expr:=Value;
 
     H:=H+CheckHint(Nil,Full);

@@ -2,23 +2,28 @@ program tmoperator11;
 
 {$MODE DELPHI}
 
-uses
-  TypInfo;
+var
+  i: Integer = 0;
 
 type
   TFoo = record
-  private
     class operator Initialize(var aFoo: TFoo);
+    procedure Foo;
   end;
-  TFooArray = array of TFoo;
 
 class operator TFoo.Initialize(var aFoo: TFoo);
 begin
+  Inc(i);
 end;
 
+procedure TFoo.Foo;
 begin
-  if GetTypeData(TypeInfo(TFooArray))^.ElType = nil then
+end;
+
+var
+  f: TFoo;
+begin
+  if i <> 1 then
     Halt(1);
-  if GetTypeData(TypeInfo(TFooArray))^.ElType2 = nil then
-    Halt(2);
-end. 
+  f.Foo;
+end.
