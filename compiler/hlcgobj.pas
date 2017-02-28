@@ -4535,12 +4535,11 @@ implementation
 
   procedure thlcgobj.gen_initialize_code(list: TAsmList);
     begin
-      { initialize register variables }
+      { initialize global register variables }
       case current_procinfo.procdef.proctypeoption of
-         potype_unitinit:
-           TSymtable(current_module.localsymtable).SymList.ForEachCall(@initialize_regvars,list);
-         potype_proginit:
-           TSymtable(current_module.localsymtable).SymList.ForEachCall(@initialize_regvars,list);
+        potype_unitinit,
+        potype_proginit:
+          TSymtable(current_module.localsymtable).SymList.ForEachCall(@initialize_regvars,list);
       end;
 
       { initialises temp. ansi/wide string data }

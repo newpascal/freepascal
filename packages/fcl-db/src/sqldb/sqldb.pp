@@ -1687,7 +1687,8 @@ begin
   // converts parameter value to connection charset
   if FCodePage = CP_UTF8 then
     Result := Param.AsUTF8String
-  else if FCodePage in [DefaultSystemCodePage, CP_ACP, CP_NONE] then
+  else if (FCodePage = DefaultSystemCodePage) or
+          (FCodePage = CP_ACP) or (FCodePage = CP_NONE) then
     Result := Param.AsAnsiString
   else
   begin
@@ -1963,7 +1964,7 @@ begin
     end;
 end;
 
-procedure TSQLConnection.ApplyFieldUpdate(C : TSQLCursor; P : TSQLDBParam;F : TField; UseOldValue : Boolean);
+procedure TSQLConnection.ApplyFieldUpdate(C : TSQLCursor; P : TSQLDBParam; F : TField; UseOldValue : Boolean);
 
 begin
   if UseOldValue then
@@ -1980,36 +1981,36 @@ var
   s   : string;
   x   : integer;
   Fld : TField;
-  P : TParam;
-  B,ReturningClause : Boolean;
+  Par, P : TParam;
+  UseOldValue, HasReturningClause : Boolean;
 
 begin
   qry:=Nil;
-  ReturningClause:=(sqSupportReturning in ConnOptions) and not (sqoRefreshUsingSelect in Query.Options) and (Trim(Query.RefreshSQL.Text)='');
+  HasReturningClause:=(sqSupportReturning in ConnOptions) and not (sqoRefreshUsingSelect in Query.Options) and (Trim(Query.RefreshSQL.Text)='');
   case UpdateKind of
     ukInsert : begin
                s := Trim(Query.FInsertSQL.Text);
                if s = '' then
-                 s := ConstructInsertSQL(Query, ReturningClause)
+                 s := ConstructInsertSQL(Query, HasReturningClause)
                else
-                 ReturningClause := False;
+                 HasReturningClause := False;
                qry := InitialiseUpdateStatement(Query, Query.FInsertQry);
                end;
     ukModify : begin
                s := Trim(Query.FUpdateSQL.Text);
                if s = '' then begin
                  //if not assigned(Query.FUpdateQry) or (Query.UpdateMode<>upWhereKeyOnly) then // first time or dynamic where part
-                   s := ConstructUpdateSQL(Query, ReturningClause);
+                   s := ConstructUpdateSQL(Query, HasReturningClause);
                end
                else
-                 ReturningClause := False;
+                 HasReturningClause := False;
                qry := InitialiseUpdateStatement(Query, Query.FUpdateQry);
                end;
     ukDelete : begin
                s := Trim(Query.FDeleteSQL.Text);
                if (s='') and (not assigned(Query.FDeleteQry) or (Query.UpdateMode<>upWhereKeyOnly)) then
                  s := ConstructDeleteSQL(Query);
-               ReturningClause := False;
+               HasReturningClause := False;
                qry := InitialiseUpdateStatement(Query, Query.FDeleteQry);
                end;
   end;
@@ -2019,14 +2020,28 @@ begin
   for x:=0 to Qry.Params.Count-1 do
     begin
     P:=Qry.Params[x];
-    S:=p.name;
-    B:=SameText(leftstr(S,4),'OLD_');
-    if B then
+    S:=P.Name;
+    UseOldValue:=SameText(Copy(S,1,4),'OLD_');
+    if UseOldValue then
+      begin
       Delete(S,1,4);
-    Fld:=Query.FieldByName(S);
-    ApplyFieldUpdate(Query.Cursor,P as TSQLDBParam,Fld,B);
+      Fld:=Query.FieldByName(S);
+      end
+    else
+      Fld:=Query.FindField(S);
+    if Assigned(Fld) then
+      ApplyFieldUpdate(Query.Cursor, P as TSQLDBParam, Fld, UseOldValue)
+    else
+      begin
+      // if does not exists field with given name, try look for param
+      Par:=Query.Params.FindParam(S);
+      if Assigned(Par) then
+        P.Assign(Par)
+      else
+        DatabaseErrorFmt(SFieldNotFound,[S],Query); // same error as raised by FieldByName()
+      end;
     end;
-  if ReturningClause then
+  if HasReturningClause then
     begin
     Qry.Close;
     Qry.Open
@@ -2038,7 +2053,7 @@ begin
     Qry.Close;
     DatabaseErrorFmt(SErrFailedToUpdateRecord, [Qry.RowsAffected], Query);
     end;
-  if ReturningClause then
+  if HasReturningClause then
     Query.ApplyReturningResult(Qry,UpdateKind);
 end;
 

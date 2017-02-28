@@ -1226,11 +1226,11 @@ implementation
         for f in tempinfo^.flags do
           begin
             if notfirst then
-              write(',');
-            write(f);
+              write(t,',');
+            write(t,f);
             notfirst:=true;
           end;
-        writeln('])');
+        writeln(t,'])');
       end;
 
 
