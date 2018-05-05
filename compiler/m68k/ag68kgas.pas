@@ -65,7 +65,7 @@ interface
       const
         MachineArgNewOld: array[boolean] of string = ('-march=','-m');
       begin
-        result:=MachineArgNewOld[target_info.system in [system_m68k_amiga]]+GasCpuTypeStr[current_settings.cputype];
+        result:=MachineArgNewOld[target_info.system in [system_m68k_amiga,system_m68k_palmos]]+GasCpuTypeStr[current_settings.cputype];
       end;
 
  {****************************************************************************}
@@ -104,60 +104,68 @@ interface
 
     function getreferencestring(var ref : treference) : string;
       var
-         s,basestr,indexstr : string;
-
+        s: string absolute getreferencestring; { shortcut name to result }
+        basestr, indexstr : string;
       begin
-         s:='';
-         with ref do
-           begin
-             basestr:=gas_regname(base);
-             indexstr:=gas_regname(index);
-             if assigned(symbol) then
-               s:=s+symbol.name;
+        s:='';
+        with ref do
+          begin
+            basestr:=gas_regname(base);
+            indexstr:=gas_regname(index);
 
-             if offset<0 then s:=s+tostr(offset)
-              else if (offset>0) then
-                begin
-                  if (symbol=nil) then s:=tostr(offset)
-                       else s:=s+'+'+tostr(offset);
-                    end
-                  else if (index=NR_NO) and (base=NR_NO) and not assigned(symbol) then
-                    s:=s+'0';
+            if assigned(symbol) then
+              begin
+                s:=s+symbol.name;
+                if (offset <> 0) then
+                  s:=s+tostr_with_plus(offset);
+                if (target_info.system = system_m68k_palmos) and (symbol.typ = AT_DATA) then
+                  s:=s+'@END';
+              end
+            else
+              if (offset <> 0) or ((index=NR_NO) and (base=NR_NO)) then
+                s:=s+tostr(offset);
 
-               if (index<>NR_NO) and (base=NR_NO) and (direction=dir_none) then
+            case direction of
+              dir_none:
                 begin
-                  if (scalefactor = 1) or (scalefactor = 0) then
-                    s:=s+'('+indexstr+'.l)'
-                  else
-                    s:=s+'('+indexstr+'.l*'+tostr(scalefactor)+')'
-                end
-                else if (index=NR_NO) and (base<>NR_NO) and (direction=dir_inc) then
-                begin
-                  if (scalefactor = 1) or (scalefactor = 0) then
-                      s:=s+'('+basestr+')+'
-                  else
-                   InternalError(10002);
-                end
-                else if (index=NR_NO) and (base<>NR_NO) and (direction=dir_dec) then
-                begin
-                  if (scalefactor = 1) or (scalefactor = 0) then
-                      s:=s+'-('+basestr+')'
-                  else
-                   InternalError(10003);
-                end
-                  else if (index=NR_NO) and (base<>NR_NO) and (direction=dir_none) then
-                begin
-                  s:=s+'('+basestr+')'
-                end
-                  else if (index<>NR_NO) and (base<>NR_NO) and (direction=dir_none) then
-                begin
-                  if (scalefactor = 1) or (scalefactor = 0) then
-                    s:=s+'('+basestr+','+indexstr+'.l)'
-                  else
-                    s:=s+'('+basestr+','+indexstr+'.l*'+tostr(scalefactor)+')';
+                  if (base<>NR_NO) and (index=NR_NO) then
+                    begin
+                      if not (scalefactor in [0,1]) then
+                        internalerror(2017011303);
+                      s:=s+'('+basestr+')';
+                      exit;
+                    end;
+                  if (base<>NR_NO) and (index<>NR_NO) then
+                    begin
+                      if scalefactor in [0,1] then
+                        s:=s+'('+basestr+','+indexstr+'.l)'
+                      else
+                        s:=s+'('+basestr+','+indexstr+'.l*'+tostr(scalefactor)+')';
+                      exit;
+                    end;
+                  if (base=NR_NO) and (index<>NR_NO) then
+                    begin
+                      if scalefactor in [0,1] then
+                        s:=s+'('+indexstr+'.l)'
+                      else
+                        s:=s+'('+indexstr+'.l*'+tostr(scalefactor)+')';
+                      exit;
+                    end;
                 end;
-          end;
-         getreferencestring:=s;
+              dir_inc:
+                begin
+                  if (base=NR_NO) or (index<>NR_NO) or not (scalefactor in [0,1]) then
+                    internalerror(2017011301);
+                  s:=s+'('+basestr+')+';
+                end;
+              dir_dec:
+                begin
+                  if (base=NR_NO) or (index<>NR_NO) or not (scalefactor in [0,1]) then
+                    internalerror(2017011302);
+                  s:=s+'-('+basestr+')';
+                end;
+            end;
+        end;
       end;
 
 
@@ -348,7 +356,7 @@ interface
             idtxt  : 'AS';
             asmbin : 'as';
             asmcmd : '$ARCH -o $OBJ $EXTRAOPT $ASM';
-            supported_targets : [system_m68k_Mac,system_m68k_linux,system_m68k_PalmOS,system_m68k_netbsd,system_m68k_openbsd,system_m68k_embedded];
+            supported_targets : [system_m68k_macos,system_m68k_linux,system_m68k_PalmOS,system_m68k_netbsd,system_m68k_embedded];
             flags : [af_needar,af_smartlink_sections];
             labelprefix : '.L';
             comment : '# ';

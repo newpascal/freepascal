@@ -79,7 +79,7 @@ interface
     procedure parse_record_proc_directives(pd:tabstractprocdef);
     function  parse_proc_head(astruct:tabstractrecorddef;potype:tproctypeoption;isgeneric:boolean;genericdef:tdef;generictypelist:tfphashobjectlist;out pd:tprocdef):boolean;
     function  parse_proc_dec(isclassmethod:boolean;astruct:tabstractrecorddef;isgeneric:boolean):tprocdef;
-    procedure parse_proc_dec_finish(pd:tprocdef;isclassmethod:boolean);
+    procedure parse_proc_dec_finish(pd:tprocdef;isclassmethod:boolean;astruct:tabstractrecorddef);
 
     { parse a record method declaration (not a (class) constructor/destructor) }
     function parse_record_method_dec(astruct: tabstractrecorddef; is_classdef: boolean;hadgeneric:boolean): tprocdef;
@@ -111,7 +111,7 @@ implementation
        { parameter handling }
        paramgr,cpupara,
        { pass 1 }
-       fmodule,node,htypechk,ncon,ppu,nld,
+       fmodule,node,htypechk,ncon,nld,
        objcutil,
        { parser }
        scanner,
@@ -410,7 +410,7 @@ implementation
                 consume(_ARRAY);
                 consume(_OF);
                 { define range and type of range }
-                hdef:=carraydef.create(0,-1,sizesinttype);
+                hdef:=carraydef.create_openarray;
                 { array of const ? }
                 if (token=_CONST) and (m_objpas in current_settings.modeswitches) then
                  begin
@@ -1254,7 +1254,7 @@ implementation
       end;
 
 
-    procedure parse_proc_dec_finish(pd:tprocdef;isclassmethod:boolean);
+    procedure parse_proc_dec_finish(pd:tprocdef;isclassmethod:boolean;astruct:tabstractrecorddef);
       var
         locationstr: string;
         i: integer;
@@ -1494,12 +1494,15 @@ implementation
                          else
                            MessagePos(pd.fileinfo,type_e_type_id_expected);
                      end;
-                   if (optoken in [_ASSIGNMENT,_OP_EXPLICIT]) and
-                      equal_defs_assignment_op_dec(pd.returndef,tparavarsym(pd.parast.SymList[0]).vardef) and
-                      (pd.returndef.typ<>undefineddef) and (tparavarsym(pd.parast.SymList[0]).vardef.typ<>undefineddef) then
-                     message(parser_e_no_such_assignment)
-                   else if not isoperatoracceptable(pd,optoken) then
-                     Message(parser_e_overload_impossible);
+                   if not assigned(pd.struct) or assigned(astruct) then
+                     begin
+                       if (optoken in [_ASSIGNMENT,_OP_EXPLICIT]) and
+                          equal_defs(pd.returndef,tparavarsym(pd.parast.SymList[0]).vardef) and
+                          (pd.returndef.typ<>undefineddef) and (tparavarsym(pd.parast.SymList[0]).vardef.typ<>undefineddef) then
+                         message(parser_e_no_such_assignment)
+                       else if not isoperatoracceptable(pd,optoken) then
+                         Message(parser_e_overload_impossible);
+                     end;
                  end;
             end;
           else
@@ -1556,7 +1559,7 @@ implementation
                 begin
                   { pd=nil when it is a interface mapping }
                   if assigned(pd) then
-                    parse_proc_dec_finish(pd,isclassmethod)
+                    parse_proc_dec_finish(pd,isclassmethod,astruct)
                   else
                     finish_intf_mapping;
                 end
@@ -1576,7 +1579,7 @@ implementation
                 begin
                   { pd=nil when it is an interface mapping }
                   if assigned(pd) then
-                    parse_proc_dec_finish(pd,isclassmethod)
+                    parse_proc_dec_finish(pd,isclassmethod,astruct)
                   else
                     finish_intf_mapping;
                 end
@@ -1592,7 +1595,7 @@ implementation
               else
                 recover:=not parse_proc_head(astruct,potype_constructor,false,nil,nil,pd);
               if not recover then
-                parse_proc_dec_finish(pd,isclassmethod);
+                parse_proc_dec_finish(pd,isclassmethod,astruct);
             end;
 
           _DESTRUCTOR :
@@ -1603,7 +1606,7 @@ implementation
               else
                 recover:=not parse_proc_head(astruct,potype_destructor,false,nil,nil,pd);
               if not recover then
-                parse_proc_dec_finish(pd,isclassmethod);
+                parse_proc_dec_finish(pd,isclassmethod,astruct);
             end;
         else
           if (token=_OPERATOR) or
@@ -1618,7 +1621,7 @@ implementation
               parse_proc_head(astruct,potype_operator,false,nil,nil,pd);
               block_type:=old_block_type;
               if assigned(pd) then
-                parse_proc_dec_finish(pd,isclassmethod)
+                parse_proc_dec_finish(pd,isclassmethod,astruct)
               else
                 begin
                   { recover }
@@ -2100,6 +2103,8 @@ procedure pd_syscall(pd:tabstractprocdef);
         syscall: psyscallinfo;
       begin
         case target_info.system of
+          system_arm_palmos,
+          system_m68k_palmos,
           system_m68k_atari,
           system_m68k_amiga,
           system_powerpc_amiga:
@@ -2175,6 +2180,24 @@ begin
   tprocdef(pd).forwarddef:=false;
 {$if defined(powerpc) or defined(m68k) or defined(i386) or defined(x86_64) or defined(arm)}
   include_po_syscall;
+
+  if target_info.system in [system_arm_palmos, system_m68k_palmos] then
+    begin
+      v:=get_intconst;
+      tprocdef(pd).extnumber:=longint(v.svalue);
+      if ((v<0) or (v>high(word))) then
+        message(parser_e_range_check_error);
+
+      if try_to_consume(_COMMA) then
+        begin
+          v:=get_intconst;
+          if ((v<0) or (v>high(word))) then
+            message(parser_e_range_check_error);
+          tprocdef(pd).import_nr:=longint(v.svalue);
+          include(pd.procoptions,po_syscall_has_importnr);
+        end;
+      exit;
+    end;
 
   if target_info.system = system_m68k_atari then
     begin
@@ -2359,7 +2382,7 @@ type
    end;
 const
   {Should contain the number of procedure directives we support.}
-  num_proc_directives=50;
+  num_proc_directives=51;
   proc_direcdata:array[1..num_proc_directives] of proc_dir_rec=
    (
     (
@@ -2680,7 +2703,7 @@ const
       pooption : [po_staticmethod];
       mutexclpocall : [pocall_internproc];
       mutexclpotype : [potype_constructor,potype_destructor,potype_class_constructor,potype_class_destructor];
-      mutexclpo     : [po_interrupt,po_exports]
+      mutexclpo     : [po_interrupt,po_exports,po_virtualmethod]
     ),(
       idtok:_STDCALL;
       pd_flags : [pd_interface,pd_implemen,pd_body,pd_procvar];
@@ -2710,7 +2733,7 @@ const
       pooption : [po_virtualmethod];
       mutexclpocall : [pocall_internproc];
       mutexclpotype : [potype_class_constructor,potype_class_destructor];
-      mutexclpo     : [po_interrupt,po_exports,po_overridingmethod,po_inline]
+      mutexclpo     : [po_interrupt,po_exports,po_overridingmethod,po_inline,po_staticmethod]
     ),(
       idtok:_CPPDECL;
       pd_flags : [pd_interface,pd_implemen,pd_body,pd_procvar];
@@ -2826,6 +2849,15 @@ const
       mutexclpocall : [];
       mutexclpotype : [potype_constructor,potype_destructor,potype_class_constructor,potype_class_destructor];
       mutexclpo     : [po_interrupt]
+    ),(
+      idtok:_VECTORCALL;
+      pd_flags : [pd_interface,pd_implemen,pd_body,pd_procvar];
+      handler  : nil;
+      pocall   : pocall_vectorcall;
+      pooption : [];
+      mutexclpocall : [];
+      mutexclpotype : [potype_constructor,potype_destructor,potype_class_constructor,potype_class_destructor];
+      mutexclpo     : [po_interrupt]
     )
    );
 
@@ -2848,18 +2880,26 @@ const
       end;
 
 
+    function find_proc_directive_index(tok: ttoken): longint; inline;
+      begin
+        result:=-1;
+        for result:=1 to num_proc_directives do
+          if proc_direcdata[result].idtok=tok then
+            exit;
+        result:=-1;
+      end;
+
+
     function parse_proc_direc(pd:tabstractprocdef;var pdflags:tpdflags):boolean;
       {
         Parse the procedure directive, returns true if a correct directive is found
       }
       var
         p     : longint;
-        found : boolean;
         name  : TIDString;
       begin
         parse_proc_direc:=false;
         name:=tokeninfo^[idtoken].str;
-        found:=false;
 
       { Hint directive? Then exit immediatly }
         if (m_hintdirective in current_settings.modeswitches) then
@@ -2890,15 +2930,10 @@ const
           exit;
 
       { retrieve data for directive if found }
-        for p:=1 to num_proc_directives do
-         if proc_direcdata[p].idtok=idtoken then
-          begin
-            found:=true;
-            break;
-          end;
+      p:=find_proc_directive_index(idtoken);
 
       { Check if the procedure directive is known }
-        if not found then
+        if p=-1 then
          begin
             { parsing a procvar type the name can be any
               next variable !! }
@@ -3490,6 +3525,7 @@ const
         fwparacnt,
         curridx,
         fwidx,
+        virtualdirinfo,
         i       : longint;
         po_comp : tprocoptions;
         paracompopt: tcompare_paras_options;
@@ -3497,6 +3533,7 @@ const
         symentry: TSymEntry;
         item : tlinkedlistitem;
       begin
+        virtualdirinfo:=-1;
         forwardfound:=false;
 
         { check overloaded functions if the same function already exists }
@@ -3674,7 +3711,21 @@ const
                    if (po_external in fwpd.procoptions) then
                      MessagePos(currpd.fileinfo,parser_e_proc_already_external);
 
-                   { Check parameters }
+                   { check for conflicts with "virtual" if this is a virtual
+                     method, as "virtual" cannot be repeated in the
+                     implementation and hence does not get checked against }
+                   if (po_virtualmethod in fwpd.procoptions) then
+                     begin
+                       if virtualdirinfo=-1 then
+                         begin
+                           virtualdirinfo:=find_proc_directive_index(_VIRTUAL);
+                           if virtualdirinfo=-1 then
+                             internalerror(2018010101);
+                         end;
+                       if (proc_direcdata[virtualdirinfo].mutexclpo * currpd.procoptions)<>[] then
+                         MessagePos1(currpd.fileinfo,parser_e_proc_dir_conflict,tokeninfo^[_VIRTUAL].str);
+                     end;
+                    { Check parameters }
                    if (m_repeat_forward in current_settings.modeswitches) or
                       (currpd.minparacount>0) then
                     begin

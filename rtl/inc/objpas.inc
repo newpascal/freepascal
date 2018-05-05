@@ -1044,8 +1044,20 @@
       begin
          _Release:=interlockeddecrement(frefcount);
          if _Release=0 then
-           self.destroy;
+           begin
+           if interlockedincrement(fdestroycount)=1 then
+             self.destroy;
+           end;
       end;
+
+   destructor TInterfacedObject.destroy;
+
+   begin
+     // We must explicitly reset. Bug ID 32353
+     FRefCount:=0;
+     FDestroyCount:=0;
+     inherited destroy;
+   end;
 
     procedure TInterfacedObject.AfterConstruction;
 

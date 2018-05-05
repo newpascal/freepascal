@@ -82,8 +82,6 @@ Const
    ControllerSupport = true;
    { Size of native extended type }
    extended_size = 10;
-   { Size of a multimedia register }
-   mmreg_size = 16;
    { target cpu string (used by compiler options) }
    target_cpu_string = 'x86_64';
 
@@ -110,7 +108,8 @@ Const
      pocall_sysv_abi_default,
      pocall_sysv_abi_cdecl,
      pocall_ms_abi_default,
-     pocall_ms_abi_cdecl
+     pocall_ms_abi_cdecl,
+     pocall_vectorcall
    ];
 
    cputypestr : array[tcputype] of string[10] = ('',
@@ -155,6 +154,7 @@ type
    tcpuflags =
       (CPUX86_HAS_CMOV,
        CPUX86_HAS_SSEUNIT,
+       CPUX86_HAS_SSE2,
        CPUX86_HAS_BMI1,
        CPUX86_HAS_BMI2,
        CPUX86_HAS_POPCNT,
@@ -168,10 +168,10 @@ type
  const
    cpu_capabilities : array[tcputype] of set of tcpuflags = (
      { cpu_none      } [],
-     { Athlon64      } [CPUX86_HAS_CMOV,CPUX86_HAS_SSEUNIT],
-     { cpu_core_i    } [CPUX86_HAS_CMOV,CPUX86_HAS_SSEUNIT,CPUX86_HAS_POPCNT],
-     { cpu_core_avx  } [CPUX86_HAS_CMOV,CPUX86_HAS_SSEUNIT,CPUX86_HAS_POPCNT,CPUX86_HAS_AVXUNIT],
-     { cpu_core_avx2 } [CPUX86_HAS_CMOV,CPUX86_HAS_SSEUNIT,CPUX86_HAS_POPCNT,CPUX86_HAS_AVXUNIT,CPUX86_HAS_BMI1,CPUX86_HAS_BMI2,CPUX86_HAS_LZCNT,CPUX86_HAS_MOVBE,CPUX86_HAS_FMA]
+     { Athlon64      } [CPUX86_HAS_CMOV,CPUX86_HAS_SSEUNIT,CPUX86_HAS_SSE2],
+     { cpu_core_i    } [CPUX86_HAS_CMOV,CPUX86_HAS_SSEUNIT,CPUX86_HAS_SSE2,CPUX86_HAS_POPCNT],
+     { cpu_core_avx  } [CPUX86_HAS_CMOV,CPUX86_HAS_SSEUNIT,CPUX86_HAS_SSE2,CPUX86_HAS_POPCNT,CPUX86_HAS_AVXUNIT],
+     { cpu_core_avx2 } [CPUX86_HAS_CMOV,CPUX86_HAS_SSEUNIT,CPUX86_HAS_SSE2,CPUX86_HAS_POPCNT,CPUX86_HAS_AVXUNIT,CPUX86_HAS_BMI1,CPUX86_HAS_BMI2,CPUX86_HAS_LZCNT,CPUX86_HAS_MOVBE,CPUX86_HAS_FMA]
    );
 
 Implementation

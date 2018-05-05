@@ -50,6 +50,13 @@ implementation
     {$ifndef NOTARGETBSD}
       ,t_bsd
     {$endif}
+    {$ifndef NOTARGETMACOS}
+      ,t_macos
+    {$endif}
+    {$ifndef NOTARGETEMBEDDED}
+      ,t_embed
+    {$endif}
+
 
 {**************************************
           Assembler Readers

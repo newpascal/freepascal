@@ -23,7 +23,7 @@
 {$inline on}
 {$define VARIANTINLINE}
 
-unit variants;
+unit Variants;
 
 interface
 
@@ -3494,8 +3494,6 @@ procedure DynArrayFromVariant(var DynArray: Pointer; const V: Variant; TypeInfo:
     vararraybounds : PVarArrayBoundArray;
     dynarraybounds : tdynarraybounds;
     i : SizeInt;
-  type
-    TDynArray = array of Pointer;
   begin
     VarArrayDims:=VarArrayDimCount(V);
 
@@ -3584,8 +3582,10 @@ function FindCustomVariantType(const aVarType: TVarType; out CustomVariantType: 
     Result:=(aVarType>=CMinVarType);
     if Result then
       begin
+{$ifdef FPC_HAS_FEATURE_THREADING}
         EnterCriticalSection(customvarianttypelock);
         try
+{$endif}
           Result:=(aVarType-CMinVarType)<=high(customvarianttypes);
           if Result then
             begin
@@ -3593,9 +3593,11 @@ function FindCustomVariantType(const aVarType: TVarType; out CustomVariantType: 
               Result:=assigned(CustomVariantType) and
                (CustomVariantType<>InvalidCustomVariantType);
             end;
+{$ifdef FPC_HAS_FEATURE_THREADING}
         finally
           LeaveCriticalSection(customvarianttypelock);
         end;
+{$endif}
       end;
   end;
 
@@ -3608,8 +3610,10 @@ function FindCustomVariantType(const TypeName: string;  out CustomVariantType: T
   begin
     ShortTypeName:=TypeName;  // avoid conversion in the loop
     result:=False;
+{$ifdef FPC_HAS_FEATURE_THREADING}
     EnterCriticalSection(customvarianttypelock);
     try
+{$endif}
       for i:=low(customvarianttypes) to high(customvarianttypes) do
         begin
           tmp:=customvarianttypes[i];
@@ -3621,9 +3625,11 @@ function FindCustomVariantType(const TypeName: string;  out CustomVariantType: T
               Exit;
             end;
         end;
+{$ifdef FPC_HAS_FEATURE_THREADING}
     finally
       LeaveCriticalSection(customvarianttypelock);
     end;
+{$endif}
   end;
 
 function Unassigned: Variant; // Unassigned standard constant
@@ -3869,8 +3875,10 @@ procedure RegisterCustomVariantType(obj: TCustomVariantType; RequestedVarType: T
 var
   index,L: Integer;
 begin
+{$ifdef FPC_HAS_FEATURE_THREADING}
   EnterCriticalSection(customvarianttypelock);
   try
+{$endif}
     L:=Length(customvarianttypes);
     if UseFirstAvailable then
     begin
@@ -3887,7 +3895,7 @@ begin
 
     index:=RequestedVarType-CMinVarType;
     if index>=L then
-      SetLength(customvarianttypes,L+1);
+      SetLength(customvarianttypes,index+1);
     if Assigned(customvarianttypes[index]) then
     begin
       if customvarianttypes[index]=InvalidCustomVariantType then
@@ -3898,9 +3906,11 @@ begin
     end;
     customvarianttypes[index]:=obj;
     obj.FVarType:=RequestedVarType;
+{$ifdef FPC_HAS_FEATURE_THREADING}
   finally
     LeaveCriticalSection(customvarianttypelock);
   end;
+{$endif}
 end;
 
 constructor TCustomVariantType.Create;
@@ -3916,13 +3926,17 @@ end;
 
 destructor TCustomVariantType.Destroy;
 begin
+{$ifdef FPC_HAS_FEATURE_THREADING}
   EnterCriticalSection(customvarianttypelock);
   try
+{$endif}
     if FVarType<>0 then
       customvarianttypes[FVarType-CMinVarType]:=InvalidCustomVariantType;
+{$ifdef FPC_HAS_FEATURE_THREADING}
   finally
     LeaveCriticalSection(customvarianttypelock);
   end;
+{$endif}
   inherited Destroy;
 end;
 
@@ -4648,7 +4662,9 @@ var
   i : LongInt;
 
 Initialization
+{$ifdef FPC_HAS_FEATURE_THREADING}
   InitCriticalSection(customvarianttypelock);
+{$endif}
   // start with one-less value, so first increment yields CFirstUserType
   customvariantcurrtype:=CFirstUserType-1;
   SetSysVariantManager;
@@ -4664,14 +4680,20 @@ Initialization
   InvalidCustomVariantType:=TCustomVariantType(-1);
   SetLength(customvarianttypes,CFirstUserType);
 Finalization
+{$ifdef FPC_HAS_FEATURE_THREADING}
   EnterCriticalSection(customvarianttypelock);
   try
+{$endif}
     for i:=0 to high(customvarianttypes) do
       if customvarianttypes[i]<>InvalidCustomVariantType then
         customvarianttypes[i].Free;
+{$ifdef FPC_HAS_FEATURE_THREADING}
   finally
     LeaveCriticalSection(customvarianttypelock);
   end;
+{$endif}
   UnSetSysVariantManager;
+{$ifdef FPC_HAS_FEATURE_THREADING}
   DoneCriticalSection(customvarianttypelock);
+{$endif}
 end.

@@ -226,6 +226,8 @@ unit aoptcpu;
                  op   ???, %reg0 }
               if MatchOperand(taicpu(p).oper[1]^,taicpu(next).oper[taicpu(next).ops-1]^) then
                 begin
+                  {
+                  Disabled, because it breaks some tests... :( (KB)
                   DebugMsg('Optimizer: '+opstr+' + OP + '+opstr+' to OP #1',next);
                   taicpu(next).loadOper(taicpu(next).ops-1,taicpu(p).oper[0]^);
                   asml.remove(p);
@@ -233,6 +235,7 @@ unit aoptcpu;
                   p.free;
                   next2.free;
                   result:=true;
+                  }
                 end;
             end;
         end;
@@ -288,9 +291,9 @@ unit aoptcpu;
                         begin
                           DebugMsg('Optimizer: SUB/ADD #val,Ax to LEA val(Ax),Ax',p);
                           if taicpu(p).opcode in [A_SUB,A_SUBA] then
-                            reference_reset_base(tmpref,taicpu(p).oper[1]^.reg,-taicpu(p).oper[0]^.val,0,[])
+                            reference_reset_base(tmpref,taicpu(p).oper[1]^.reg,-taicpu(p).oper[0]^.val,ctempposinvalid,0,[])
                           else
-                            reference_reset_base(tmpref,taicpu(p).oper[1]^.reg,taicpu(p).oper[0]^.val,0,[]);
+                            reference_reset_base(tmpref,taicpu(p).oper[1]^.reg,taicpu(p).oper[0]^.val,ctempposinvalid,0,[]);
                           taicpu(p).opcode:=A_LEA;
                           taicpu(p).loadref(0,tmpref);
                           result:=true;

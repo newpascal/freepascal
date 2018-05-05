@@ -89,8 +89,7 @@ implementation
        symtable,
        aasmtai,aasmdata,
        defutil,
-       paramgr,
-       wpobase
+       paramgr
        ;
 
 
@@ -185,7 +184,7 @@ implementation
         def : tprocdef;
         para : tparavarsym;
       begin
-        tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PtrInt)),
+        tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PInt)),
           targetinfos[target_info.system]^.alignment.recordalignmin,
           targetinfos[target_info.system]^.alignment.maxCrecordalign);
 
@@ -221,7 +220,7 @@ implementation
 
                       def.init_paraloc_info(callerside);
 
-                      tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PtrInt)),
+                      tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PInt)),
                         targetinfos[target_info.system]^.alignment.recordalignmin,
                         targetinfos[target_info.system]^.alignment.maxCrecordalign);
 
@@ -236,11 +235,11 @@ implementation
                         begin
                           para:=tparavarsym(def.paras[k]);
 
-                          tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PtrInt)),
+                          tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PInt)),
                             targetinfos[target_info.system]^.alignment.recordalignmin,
                             targetinfos[target_info.system]^.alignment.maxCrecordalign);
 
-                          if is_open_array(para.vardef) then
+                          if is_open_array(para.vardef) or is_array_of_const(para.vardef) then
                             write_rtti_reference(tcb,tarraydef(para.vardef).elementdef,fullrtti)
                           else
                             write_rtti_reference(tcb,para.vardef,fullrtti);
@@ -336,7 +335,8 @@ implementation
          { pocall_sysv_abi_default } 14,
          { pocall_sysv_abi_cdecl }   15,
          { pocall_ms_abi_default }   16,
-         { pocall_ms_abi_cdecl }     17
+         { pocall_ms_abi_cdecl }     17,
+         { pocall_vectorcall }       18
         );
       begin
         tcb.emit_ord_const(ProcCallOptionToCallConv[def.proccalloption],u8inttype);
@@ -351,13 +351,13 @@ implementation
         locs:=paramanager.cgparalocs_to_rttiparalocs(para^.location);
         if length(locs)>high(byte) then
           internalerror(2017010601);
-        tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PtrInt)),
+        tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PInt)),
           targetinfos[target_info.system]^.alignment.recordalignmin,
           targetinfos[target_info.system]^.alignment.maxCrecordalign);
         tcb.emit_ord_const(length(locs),u8inttype);
         for i:=low(locs) to high(locs) do
           begin
-            tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PtrInt)),
+            tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PInt)),
               targetinfos[target_info.system]^.alignment.recordalignmin,
               targetinfos[target_info.system]^.alignment.maxCrecordalign);
             tcb.emit_ord_const(locs[i].loctype,u8inttype);
@@ -387,7 +387,7 @@ implementation
         { Kylix also seems to always add both pfArray and pfReference
           in this case
         }
-        if is_open_array(parasym.vardef) then
+        if is_open_array(parasym.vardef) or is_array_of_const(parasym.vardef) then
           paraspec:=paraspec or pfArray or pfReference;
         { and these for classes and interfaces (maybe because they
           are themselves addresses?)
@@ -519,7 +519,7 @@ implementation
             sym:=tparavarsym(def.paras[i]);
             if not (vo_is_hidden_para in sym.varoptions) or allow_hidden then
               begin
-                if is_open_array(sym.vardef) then
+                if is_open_array(sym.vardef) or is_array_of_const(sym.vardef) then
                   write_rtti(tarraydef(sym.vardef).elementdef,rt)
                 else
                   write_rtti(sym.vardef,rt);
@@ -713,7 +713,7 @@ implementation
         end;
 
       begin
-        tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PtrInt)),
+        tcb.begin_anonymous_record('',defaultpacking,min(reqalign,SizeOf(PInt)),
           targetinfos[target_info.system]^.alignment.recordalignmin,
           targetinfos[target_info.system]^.alignment.maxCrecordalign);
         tcb.emit_ord_const(published_properties_count(st),u16inttype);
@@ -734,7 +734,7 @@ implementation
                   alignment), but it starts aligned }
                 tcb.begin_anonymous_record(
                   propdefname,
-                  1,min(reqalign,SizeOf(PtrInt)),
+                  1,min(reqalign,SizeOf(PInt)),
                   targetinfos[target_info.system]^.alignment.recordalignmin,
                   targetinfos[target_info.system]^.alignment.maxCrecordalign);
                 if ppo_indexed in tpropertysym(sym).propoptions then
@@ -999,7 +999,7 @@ implementation
         begin
            write_header(tcb,def,tkSet);
            tcb.begin_anonymous_record(
-             internaltypeprefixName[itp_1byte],
+             internaltypeprefixName[itp_rtti_set_outer],
              defaultpacking,reqalign,
              targetinfos[target_info.system]^.alignment.recordalignmin,
              targetinfos[target_info.system]^.alignment.maxCrecordalign);
@@ -1013,11 +1013,14 @@ implementation
              else
                tcb.emit_ord_const(otUByte,u8inttype);
            end;
-           tcb.end_anonymous_record;
-           tcb.begin_anonymous_record('',defaultpacking,reqalign,
-            targetinfos[target_info.system]^.alignment.recordalignmin,
-            targetinfos[target_info.system]^.alignment.maxCrecordalign);
+           tcb.begin_anonymous_record(
+             internaltypeprefixName[itp_rtti_set_inner],
+             defaultpacking,reqalign,
+             targetinfos[target_info.system]^.alignment.recordalignmin,
+             targetinfos[target_info.system]^.alignment.maxCrecordalign);
+           tcb.emit_ord_const(def.size,sizesinttype);
            write_rtti_reference(tcb,def.elementdef,rt);
+           tcb.end_anonymous_record;
            tcb.end_anonymous_record;
         end;
 
@@ -1107,7 +1110,7 @@ implementation
         begin
           write_header(tcb,def,tkClassRef);
           tcb.begin_anonymous_record(
-            '',
+            internaltypeprefixName[itp_rtti_ref],
             defaultpacking,reqalign,
             targetinfos[target_info.system]^.alignment.recordalignmin,
             targetinfos[target_info.system]^.alignment.maxCrecordalign);
@@ -1119,7 +1122,7 @@ implementation
         begin
           write_header(tcb,def,tkPointer);
           tcb.begin_anonymous_record(
-            '',
+            internaltypeprefixName[itp_rtti_ref],
             defaultpacking,reqalign,
             targetinfos[target_info.system]^.alignment.recordalignmin,
             targetinfos[target_info.system]^.alignment.maxCrecordalign);
@@ -1169,7 +1172,7 @@ implementation
 
             current_asmdata.AsmLists[al_rtti].concatList(
               tcb.get_final_asmlist(rttilab,rttidef,sec_rodata,rttilab.name,
-              sizeof(pint)));
+              sizeof(PInt)));
             tcb.free;
           end;
 
@@ -1236,13 +1239,16 @@ implementation
                    { every parameter is expected to start aligned }
                    tcb.begin_anonymous_record(
                      internaltypeprefixName[itp_rtti_proc_param]+tostr(length(parasym.realname)),
-                     defaultpacking,min(reqalign,SizeOf(PtrInt)),
+                     defaultpacking,min(reqalign,SizeOf(PInt)),
                      targetinfos[target_info.system]^.alignment.recordalignmin,
                      targetinfos[target_info.system]^.alignment.maxCrecordalign);
                    { write flags for current parameter }
                    write_param_flag(tcb,parasym);
                    { write param type }
-                   write_rtti_reference(tcb,parasym.vardef,fullrtti);
+                   if is_open_array(parasym.vardef) or is_array_of_const(parasym.vardef) then
+                     write_rtti_reference(tcb,tarraydef(parasym.vardef).elementdef,fullrtti)
+                   else
+                     write_rtti_reference(tcb,parasym.vardef,fullrtti);
                    { write name of current parameter }
                    tcb.emit_shortstring_const(parasym.realname);
                    tcb.end_anonymous_record;
@@ -1287,7 +1293,12 @@ implementation
                { write params typeinfo }
                for i:=0 to def.paras.count-1 do
                  if not(vo_is_hidden_para in tparavarsym(def.paras[i]).varoptions) then
-                   write_rtti_reference(tcb,tparavarsym(def.paras[i]).vardef,fullrtti);
+                   begin
+                     if is_open_array(tparavarsym(def.paras[i]).vardef) or is_array_of_const(tparavarsym(def.paras[i]).vardef) then
+                       write_rtti_reference(tcb,tarraydef(tparavarsym(def.paras[i]).vardef).elementdef,fullrtti)
+                     else
+                       write_rtti_reference(tcb,tparavarsym(def.paras[i]).vardef,fullrtti);
+                   end;
                tcb.end_anonymous_record;
             end
           else
@@ -1627,7 +1638,7 @@ implementation
           { now emit the data: first the mode }
           tcb.emit_tai(Tai_const.create_32bit(longint(mode)),u32inttype);
           { align }
-          tcb.begin_anonymous_record('',defaultpacking,min(reqalign,sizeof(pointer)),
+          tcb.begin_anonymous_record('',defaultpacking,min(reqalign,sizeof(PInt)),
             targetinfos[target_info.system]^.alignment.recordalignmin,
             targetinfos[target_info.system]^.alignment.maxCrecordalign);
           if mode=lookup then
@@ -1654,7 +1665,7 @@ implementation
           else
             begin
               tcb.emit_ord_const(sym_count,u32inttype);
-              tcb.begin_anonymous_record('',defaultpacking,min(reqalign,sizeof(pointer)),
+              tcb.begin_anonymous_record('',defaultpacking,min(reqalign,sizeof(PInt)),
                 targetinfos[target_info.system]^.alignment.recordalignmin,
                 targetinfos[target_info.system]^.alignment.maxCrecordalign);
               for i:=0 to sym_count-1 do
@@ -1677,7 +1688,7 @@ implementation
             rttilab:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_o2s',AB_GLOBAL,AT_DATA_NOINDIRECT,tabledef);
             current_asmdata.asmlists[al_rtti].concatlist(tcb.get_final_asmlist(
               rttilab,tabledef,sec_rodata,
-              rttilab.name,sizeof(pint)));
+              rttilab.name,sizeof(PInt)));
             tcb.free;
 
             current_module.add_public_asmsym(rttilab);
@@ -1698,12 +1709,12 @@ implementation
           { write rtti data }
           tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable,tcalo_data_force_indirect]);
           { begin of Tstring_to_ord }
-          tcb.begin_anonymous_record('',defaultpacking,min(reqalign,sizeof(pointer)),
+          tcb.begin_anonymous_record('',defaultpacking,min(reqalign,sizeof(PInt)),
             targetinfos[target_info.system]^.alignment.recordalignmin,
             targetinfos[target_info.system]^.alignment.maxCrecordalign);
           tcb.emit_ord_const(syms.count,s32inttype);
           { begin of "data" array in Tstring_to_ord }
-          tcb.begin_anonymous_record('',defaultpacking,min(reqalign,sizeof(pointer)),
+          tcb.begin_anonymous_record('',defaultpacking,min(reqalign,sizeof(PInt)),
             targetinfos[target_info.system]^.alignment.recordalignmin,
             targetinfos[target_info.system]^.alignment.maxCrecordalign);
           for i:=0 to syms.count-1 do
@@ -1724,7 +1735,7 @@ implementation
           rttilab:=current_asmdata.DefineAsmSymbol(Tstoreddef(def).rtti_mangledname(rt)+'_s2o',AB_GLOBAL,AT_DATA_NOINDIRECT,tabledef);
           current_asmdata.asmlists[al_rtti].concatlist(tcb.get_final_asmlist(
             rttilab,tabledef,sec_rodata,
-            rttilab.name,sizeof(pint)));
+            rttilab.name,sizeof(PInt)));
           tcb.free;
 
           current_module.add_public_asmsym(rttilab);
@@ -1910,7 +1921,7 @@ implementation
       begin
         if tf_requires_proper_alignment in target_info.flags then
           begin
-            reqalign:=min(sizeof(qword),target_info.alignment.maxCrecordalign);
+            reqalign:=min(sizeof(QWord),target_info.alignment.maxCrecordalign);
             defaultpacking:=C_alignment;
           end
         else

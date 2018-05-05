@@ -26,13 +26,16 @@ unit parabase;
 
     uses
        cclasses,globtype,
-       aasmbase,cpubase,cgbase,cgutils,
-       symtype, ppu;
+{$ifdef llvm}
+       aasmbase,
+{$endif}
+       cgbase,cgutils,
+       symtype;
 
     type
        TCGParaReference = record
           index       : tregister;
-          offset      : aint;
+          offset      : asizeint;
        end;
 
        PCGParaLocation = ^TCGParaLocation;

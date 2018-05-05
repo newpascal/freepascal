@@ -758,6 +758,16 @@ begin
   Result:=AddObject(Format(Fmt,Args),AObject);
 end;
 
+function TStrings.AddPair(const AName, AValue: string): TStrings;
+begin
+  Result:=AddPair(AName,AValue,Nil);
+end;
+
+function TStrings.AddPair(const AName, AValue: string; AObject: TObject): TStrings;
+begin
+  Result := Self;
+  AddObject(Concat(AName, NameValueSeparator, AValue), AObject);
+end;
 
 Procedure TStrings.Append(const S: string);
 
@@ -976,12 +986,18 @@ end;
 
 
 Procedure TStrings.LoadFromFile(const FileName: string);
+
+begin
+  LoadFromFile(FileName,False)
+end;
+
+Procedure TStrings.LoadFromFile(const FileName: string; IgnoreEncoding : Boolean);
 Var
         TheStream : TFileStream;
 begin
   TheStream:=TFileStream.Create(FileName,fmOpenRead or fmShareDenyWrite);
   try
-    LoadFromStream(TheStream);
+    LoadFromStream(TheStream, IgnoreEncoding);
   finally
     TheStream.Free;
   end;
@@ -1001,9 +1017,13 @@ begin
   end;
 end;
 
-
-
 Procedure TStrings.LoadFromStream(Stream: TStream);
+
+begin
+  LoadFromStream(Stream,False);
+end;
+
+Procedure TStrings.LoadFromStream(Stream: TStream; IgnoreEncoding : Boolean);
 {
    Borlands method is no good, since a pipe for
    instance doesn't have a size.
@@ -1019,6 +1039,11 @@ Var
   BufLen,
   I,BufDelta     : Longint;
 begin
+  if not IgnoreEncoding then
+    begin
+    LoadFromStream(Stream,Nil);
+    Exit;
+    end;
   // reread into a buffer
   beginupdate;
   try

@@ -250,11 +250,15 @@ Implementation
 {$ifdef memdebug}
       cclasses,
 {$endif memdebug}
-      script,fmodule,verbose,
+{$if defined(cpuextended) and defined(FPC_HAS_TYPE_EXTENDED)}
+{$else}
+{$ifdef FPC_SOFT_FPUX80}
+      sfpux80,
+{$endif FPC_SOFT_FPUX80}
+{$endif}
+      cscript,fmodule,verbose,
       cpuinfo,
-      aasmcpu,
-      owar,owomflib
-      ;
+      aasmcpu;
 
     var
       CAssembler : array[tasm] of TAssemblerClass;
@@ -1047,6 +1051,10 @@ Implementation
         ccomp: comp;
 {$if defined(cpuextended) and defined(FPC_HAS_TYPE_EXTENDED)}
         eextended: extended;
+{$else}
+{$ifdef FPC_SOFT_FPUX80}
+	eextended: floatx80;
+{$endif}
 {$endif cpuextended}
       begin
         if do_line then
@@ -1060,6 +1068,20 @@ Implementation
               { can't write full 80 bit floating point constants yet on non-x86 }
               aitrealconst_s80bit:
                 writer.AsmWriteLn(asminfo^.comment+'value: '+extended2str(tai_realconst(hp).value.s80val));
+{$else}
+{$ifdef FPC_SOFT_FPUX80}
+{$push}{$warn 6018 off} { Unreachable code due to compile time evaluation }
+             aitrealconst_s80bit:
+               begin
+     	         if sizeof(tai_realconst(hp).value.s80val) = sizeof(double) then
+                   writer.AsmWriteLn(asminfo^.comment+'value: '+double2str(tai_realconst(hp).value.s80val))
+     	         else if sizeof(tai_realconst(hp).value.s80val) = sizeof(single) then
+                   writer.AsmWriteLn(asminfo^.comment+'value: '+single2str(tai_realconst(hp).value.s80val))
+                else
+     	         internalerror(2017091901);
+       	      end;
+{$pop}
+{$endif}
 {$endif cpuextended}
               aitrealconst_s64comp:
                 writer.AsmWriteLn(asminfo^.comment+'value: '+extended2str(tai_realconst(hp).value.s64compval));
@@ -1089,6 +1111,21 @@ Implementation
               eextended:=extended(tai_realconst(hp).value.s80val);
               pdata:=@eextended;
             end;
+{$else}
+{$ifdef FPC_SOFT_FPUX80}
+{$push}{$warn 6018 off} { Unreachable code due to compile time evaluation }
+          aitrealconst_s80bit:
+            begin
+	      if sizeof(tai_realconst(hp).value.s80val) = sizeof(double) then
+                eextended:=float64_to_floatx80(float64(double(tai_realconst(hp).value.s80val)))
+	      else if sizeof(tai_realconst(hp).value.s80val) = sizeof(single) then
+	        eextended:=float32_to_floatx80(float32(single(tai_realconst(hp).value.s80val)))
+	      else
+	        internalerror(2017091901);
+              pdata:=@eextended;
+            end;
+{$pop}
+{$endif}
 {$endif cpuextended}
           aitrealconst_s64comp:
             begin
@@ -1782,6 +1819,10 @@ Implementation
         ddouble : double;
         {$if defined(cpuextended) and defined(FPC_HAS_TYPE_EXTENDED)}
         eextended : extended;
+	{$else}
+        {$ifdef FPC_SOFT_FPUX80}
+	eextended : floatx80;
+        {$endif}
         {$endif}
         ccomp : comp;
         tmp    : word;
@@ -1852,6 +1893,21 @@ Implementation
                        eextended:=extended(tai_realconst(hp).value.s80val);
                        pdata:=@eextended;
                      end;
+         {$else}
+         {$ifdef FPC_SOFT_FPUX80}
+           {$push}{$warn 6018 off} { Unreachable code due to compile time evaluation }
+                   aitrealconst_s80bit:
+                     begin
+		       if sizeof(tai_realconst(hp).value.s80val) = sizeof(double) then
+                         eextended:=float64_to_floatx80(float64(double(tai_realconst(hp).value.s80val)))
+		       else if sizeof(tai_realconst(hp).value.s80val) = sizeof(single) then
+			 eextended:=float32_to_floatx80(float32(single(tai_realconst(hp).value.s80val)))
+		       else
+			 internalerror(2017091901);
+                       pdata:=@eextended;
+                     end;
+           {$pop}
+	 {$endif}
          {$endif cpuextended}
                    aitrealconst_s64comp:
                      begin

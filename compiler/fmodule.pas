@@ -29,7 +29,7 @@ unit fmodule;
 {$ifdef watcom}
   {$define shortasmprefix}
 {$endif}
-{$ifdef tos}
+{$ifdef atari}
   {$define shortasmprefix}
 {$endif}
 {$ifdef OS2}
@@ -44,9 +44,9 @@ interface
     uses
        cutils,cclasses,cfileutl,
        globtype,finput,ogbase,fpkg,
-       symbase,symconst,symsym,
+       symbase,symsym,
        wpobase,
-       aasmbase,aasmtai,aasmdata;
+       aasmbase,aasmdata;
 
 
     const

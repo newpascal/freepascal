@@ -28,10 +28,10 @@ unit paramgr;
   interface
 
     uses
-       cclasses,globtype,
+       globtype,
        cpubase,cgbase,cgutils,
        parabase,
-       aasmtai,aasmdata,
+       aasmdata,
        symconst,symtype,symsym,symdef;
 
     type
@@ -46,6 +46,8 @@ unit paramgr;
           function param_use_paraloc(const cgpara:tcgpara):boolean;virtual;
           { Returns true if the return value is actually a parameter pointer }
           function ret_in_param(def:tdef;pd:tabstractprocdef):boolean;virtual;
+          { Returns true if a result variable should be allocated for an assembler routine }
+          function asm_result_var(def:tdef;pd:tabstractprocdef):boolean;virtual;
 
           function push_high_param(varspez:tvarspez;def : tdef;calloption : tproccalloption) : boolean;virtual;
           function keep_para_array_range(varspez:tvarspez;def : tdef;calloption : tproccalloption) : boolean;virtual;
@@ -80,8 +82,17 @@ unit paramgr;
           function get_volatile_registers_fpu(calloption : tproccalloption):tcpuregisterset;virtual;
           function get_volatile_registers_flags(calloption : tproccalloption):tcpuregisterset;virtual;
           function get_volatile_registers_mm(calloption : tproccalloption):tcpuregisterset;virtual;
+          {# Registers which must be saved when calling a routine declared as
+            cppdecl, cdecl, stdcall, safecall, palmossyscall. The registers
+            saved should be the ones as defined in the target ABI and / or GCC.
 
-          procedure get_para_regoff(proccalloption: tproccalloption; paraloc: pcgparalocation; out reg: Byte; out off: LongInt);virtual;
+            This value can be deduced from the CALLED_USED_REGISTERS array in the
+            GCC source.
+          }
+          function get_saved_registers_int(calloption : tproccalloption):tcpuregisterarray;virtual;
+          function get_saved_registers_address(calloption : tproccalloption):tcpuregisterarray;virtual;
+          function get_saved_registers_fpu(calloption : tproccalloption):tcpuregisterarray;virtual;
+          function get_saved_registers_mm(calloption : tproccalloption):tcpuregisterarray;virtual;
 
           procedure getintparaloc(list: TAsmList; pd: tabstractprocdef; nr : longint; var cgpara: tcgpara);virtual;
 
@@ -177,8 +188,9 @@ implementation
 
     uses
        systems,
-       cgobj,hlcgobj,tgobj,
-       defutil,verbose;
+       cgobj,tgobj,
+       defutil,verbose,
+       hlcgobj;
 
     { true if the location in paraloc can be reused as localloc }
     function tparamanager.param_use_paraloc(const cgpara:tcgpara):boolean;
@@ -199,6 +211,15 @@ implementation
            ((def.typ=procvardef) and not tprocvardef(def).is_addressonly) or
            ((def.typ=objectdef) and (is_object(def))) or
            ((def.typ=setdef) and not is_smallset(def));
+      end;
+
+
+    { true if a result variable should be allocated for an assembler routine }
+    function tparamanager.asm_result_var(def:tdef;pd:tabstractprocdef):boolean;
+      begin
+        if not(po_assembler in pd.procoptions) then
+          internalerror(2018021501);
+        result:=true;
       end;
 
 
@@ -289,11 +310,37 @@ implementation
         result:=[];
       end;
 
-    procedure tparamanager.get_para_regoff(proccalloption: tproccalloption; paraloc: pcgparalocation; out reg: Byte; out off: LongInt);
-    begin
-      reg:=0;
-      off:=0;
-    end;
+
+    function tparamanager.get_saved_registers_int(calloption : tproccalloption):tcpuregisterarray;
+      const
+        inv: array [0..0] of tsuperregister = (RS_INVALID);
+      begin
+        result:=inv;
+      end;
+
+
+    function tparamanager.get_saved_registers_address(calloption : tproccalloption):tcpuregisterarray;
+      const
+        inv: array [0..0] of tsuperregister = (RS_INVALID);
+      begin
+        result:=inv;
+      end;
+
+
+    function tparamanager.get_saved_registers_fpu(calloption : tproccalloption):tcpuregisterarray;
+      const
+        inv: array [0..0] of tsuperregister = (RS_INVALID);
+      begin
+        result:=inv;
+      end;
+
+
+    function tparamanager.get_saved_registers_mm(calloption : tproccalloption):tcpuregisterarray;
+      const
+        inv: array [0..0] of tsuperregister = (RS_INVALID);
+      begin
+        result:=inv;
+      end;
 
 {$if first_mm_imreg = 0}
   {$WARN 4044 OFF} { Comparison might be always false ... }
@@ -378,6 +425,7 @@ implementation
                       fillchar(href,sizeof(href),0);
                       href.base:=paraloc^.reference.index;
                       href.offset:=paraloc^.reference.offset;
+                      href.temppos:=ctempposinvalid;
                       tg.ungetiftemp(list,href);
                     end;
                 end;
@@ -634,7 +682,7 @@ implementation
         if ((tf_safecall_exceptions in target_info.flags) and
             (pd.proccalloption=pocall_safecall)) or
            (
-             (pd.proctypeoption=potype_constructor)and
+             (pd.proctypeoption=potype_constructor) and
              (
                is_record(def) or
                (

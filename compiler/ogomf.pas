@@ -80,7 +80,7 @@ interface
         FMZExeUnifiedLogicalSegment: TMZExeUnifiedLogicalSegment;
         function GetOmfAlignment: TOmfSegmentAlignment;
       public
-        constructor create(AList:TFPHashObjectList;const Aname:string;Aalign:shortint;Aoptions:TObjSectionOptions);override;
+        constructor create(AList:TFPHashObjectList;const Aname:string;Aalign:longint;Aoptions:TObjSectionOptions);override;
         function MemPosStr(AImageBase: qword): string;override;
         property ClassName: string read FClassName;
         property OverlayName: string read FOverlayName;
@@ -100,7 +100,7 @@ interface
       public
         constructor create(const n:string);override;
         function sectiontype2options(atype:TAsmSectiontype):TObjSectionOptions;override;
-        function sectiontype2align(atype:TAsmSectiontype):shortint;override;
+        function sectiontype2align(atype:TAsmSectiontype):longint;override;
         function sectiontype2class(atype:TAsmSectiontype):string;
         function sectionname(atype:TAsmSectiontype;const aname:string;aorder:TAsmSectionOrder):string;override;
         function createsection(atype:TAsmSectionType;const aname:string='';aorder:TAsmSectionOrder=secorder_default):TObjSection;override;
@@ -318,6 +318,24 @@ implementation
        version
        ;
 
+    const win16stub : array[0..255] of byte=(
+      $4d,$5a,$00,$01,$01,$00,$00,$00,$08,$00,$10,$00,$ff,$ff,$08,$00,
+      $00,$01,$00,$00,$00,$00,$00,$00,$40,$00,$00,$00,$00,$00,$00,$00,
+      $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,
+      $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$00,$00,
+      $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,
+      $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,
+      $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,
+      $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,
+      $ba,$10,$00,$0e,$1f,$b4,$09,$cd,$21,$b8,$01,$4c,$cd,$21,$90,$90,
+      $54,$68,$69,$73,$20,$70,$72,$6f,$67,$72,$61,$6d,$20,$72,$65,$71,
+      $75,$69,$72,$65,$73,$20,$4d,$69,$63,$72,$6f,$73,$6f,$66,$74,$20,
+      $57,$69,$6e,$64,$6f,$77,$73,$2e,$0d,$0a,$24,$20,$20,$20,$20,$20,
+      $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,
+      $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,
+      $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,
+      $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20);
+
 {****************************************************************************
                                 TOmfObjSymbol
 ****************************************************************************}
@@ -466,13 +484,17 @@ implementation
             result:=saRelocatableDWordAligned;
           16:
             result:=saRelocatableParaAligned;
+          256:
+            result:=saRelocatablePageAligned;
+          4096:
+            result:=saNotSupported;
           else
             internalerror(2015041504);
         end;
       end;
 
     constructor TOmfObjSection.create(AList: TFPHashObjectList;
-          const Aname: string; Aalign: shortint; Aoptions: TObjSectionOptions);
+          const Aname: string; Aalign: longint; Aoptions: TObjSectionOptions);
       begin
         inherited create(AList, Aname, Aalign, Aoptions);
         FCombination:=scPublic;
@@ -521,7 +543,7 @@ implementation
           Result:=Result+[oso_data,oso_sparse_data];
       end;
 
-    function TOmfObjData.sectiontype2align(atype: TAsmSectiontype): shortint;
+    function TOmfObjData.sectiontype2align(atype: TAsmSectiontype): longint;
       begin
         Result:=omf_sectiontype2align(atype);
       end;
@@ -1088,7 +1110,7 @@ implementation
       var
         SegDefRec: TOmfRecord_SEGDEF;
         SegmentName,SegClassName,OverlayName: string;
-        SecAlign: ShortInt;
+        SecAlign: LongInt;
         secoptions: TObjSectionOptions;
         objsec: TOmfObjSection;
       begin
@@ -1127,18 +1149,15 @@ implementation
           saRelocatableDWordAligned:
             SecAlign:=4;
           saRelocatablePageAligned:
-            begin
-              InputError('Page segment alignment not supported');
-              SegDefRec.Free;
-              exit;
-            end;
+            SecAlign:=256;
+          saNotSupported:
+            SecAlign:=4096;
           saAbsolute:
             begin
               InputError('Absolute segment alignment not supported');
               SegDefRec.Free;
               exit;
             end;
-          saNotSupported,
           saNotDefined:
             begin
               InputError('Invalid (unsupported/undefined) OMF segment alignment');
@@ -1666,7 +1685,7 @@ implementation
             end;
             if RelocType=RELOC_NONE then
               begin
-                InputError('Unsupported fixup location type '+tostr(Ord(Fixup.LocationType))+' with location type '+tostr(ord(Fixup.LocationType))+' in reference to segment '+target_section.Name);
+                InputError('Unsupported fixup location type '+tostr(Ord(Fixup.LocationType))+' with mode '+tostr(ord(Fixup.Mode))+' in external reference to '+sym.Name);
                 exit;
               end;
             reloc:=TOmfRelocation.CreateSection(Fixup.LocationOffset,target_section,RelocType);
@@ -1731,7 +1750,7 @@ implementation
             end;
             if RelocType=RELOC_NONE then
               begin
-                InputError('Unsupported fixup location type '+IntToStr(Ord(Fixup.LocationType))+'with mode '+tostr(Ord(Fixup.Mode))+' in reference to group '+target_group.Name);
+                InputError('Unsupported fixup location type '+tostr(Ord(Fixup.LocationType))+' with mode '+tostr(ord(Fixup.Mode))+' in external reference to '+sym.Name);
                 exit;
               end;
             reloc:=TOmfRelocation.CreateGroup(Fixup.LocationOffset,target_group,RelocType);

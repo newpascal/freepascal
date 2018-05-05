@@ -53,14 +53,14 @@ Interface
       { aasm }
       cpubase,aasmbase,aasmtai,aasmdata,aasmcpu,
       { symtable }
-      symconst,symsym,
+      symconst,symsym,symdef,
       { parser }
       scanner,
       procinfo,
       rabase,
       rgbase,
       itcpugas,
-      cgobj
+      cgobj,paramgr
       ;
 
 
@@ -116,7 +116,7 @@ Interface
     Procedure TMipsReader.BuildOperand(oper : TOperand);
       var
         expr : string;
-        typesize,l : aint;
+        typesize,l : tcgint;
 
         procedure AddLabelOperand(hl:tasmlabel);
           begin
@@ -140,7 +140,7 @@ Interface
             hasdot  : boolean;
             l,
             toffset,
-            tsize   : aint;
+            tsize   : tcgint;
           begin
             if not(actasmtoken in [AS_DOT,AS_PLUS,AS_MINUS]) then
              exit;
@@ -167,10 +167,8 @@ Interface
                   { don't allow direct access to fields of parameters, because that
                     will generate buggy code. Allow it only for explicit typecasting }
                   if hasdot and
-                     (not oper.hastype) and
-                     (tabstractnormalvarsym(oper.opr.localsym).owner.symtabletype=parasymtable) and
-                     (current_procinfo.procdef.proccalloption<>pocall_register) then
-                    Message(asmr_e_cannot_access_field_directly_for_parameters);
+                     (not oper.hastype) then
+                     checklocalsubscript(oper.opr.localsym);
                   inc(oper.opr.localsymofs,l)
                 end;
               OPR_CONSTANT :

@@ -109,6 +109,44 @@ end;
 {$endif FPC_SYSTEM_HAS_FILLDWORD}
 
 
+procedure MoveData(srcseg,srcoff,destseg,destoff:Word;n:Word);assembler;nostackframe;
+asm
+  mov bx, sp
+  mov cx, ss:[bx + 2 + extra_param_offset]  // count
+  jcxz @@Done
+
+  mov ax, ds  // backup ds
+  lds si, ss:[bx + 8 + extra_param_offset]  // @source
+  les di, ss:[bx + 4 + extra_param_offset]  // @dest
+
+  cmp si, di
+  jb @@BackwardsMove
+
+{$ifdef FPC_ENABLED_CLD}
+  cld
+{$endif FPC_ENABLED_CLD}
+  shr cx, 1
+  rep movsw
+  adc cx, cx
+  rep movsb
+  jmp @@AfterMove  // todo, add mov ds,ax & ret here for performance reasons
+
+@@BackwardsMove:
+  std
+  add si, cx
+  add di, cx
+  dec si
+  dec di
+  rep movsb  // todo: movsw
+  cld
+
+@@AfterMove:
+  mov ds, ax
+
+@@Done:
+end;
+
+
 {$ifndef FPC_SYSTEM_HAS_MOVE}
 {$define FPC_SYSTEM_HAS_MOVE}
 procedure Move(const source;var dest;count:SizeUInt);[public, alias: 'FPC_MOVE'];assembler;nostackframe;
@@ -601,6 +639,9 @@ asm
   jz @@Lgnf_null
   xchg ax, si  // 1 byte shorter than a mov
   seges lodsw
+ {$ifdef WIN16}
+  and al, $FE
+ {$endif WIN16}
   mov dx, es
 @@Lgnf_null:
 {$endif FPC_X86_DATA_NEAR}
@@ -797,8 +838,8 @@ asm
   mov cx, ds
   lds bx, [Target]  // Target
 {$endif FPC_X86_DATA_NEAR}
-  mov di, [Comperand]
-  mov si, [Comperand+2]
+  mov di, word [Comperand]
+  mov si, word [Comperand+2]
   pushf
   cli
   mov ax, [bx]
@@ -807,8 +848,8 @@ asm
   jne @@not_equal
   cmp dx, si
   jne @@not_equal
-  mov di, [NewValue]
-  mov si, [NewValue+2]
+  mov di, word [NewValue]
+  mov si, word [NewValue+2]
   mov [bx], di
   mov [bx+2], si
 @@not_equal:
@@ -1042,6 +1083,36 @@ begin
   HexStr:=HexStr(Word(Val),4);
 end;
 
+function HexStr(Val: NearCsPointer): ShortString;
+begin
+  HexStr:='CS:'+HexStr(Word(Val),4);
+end;
+
+function HexStr(Val: NearDsPointer): ShortString;
+begin
+  HexStr:='DS:'+HexStr(Word(Val),4);
+end;
+
+function HexStr(Val: NearEsPointer): ShortString;
+begin
+  HexStr:='ES:'+HexStr(Word(Val),4);
+end;
+
+function HexStr(Val: NearSsPointer): ShortString;
+begin
+  HexStr:='SS:'+HexStr(Word(Val),4);
+end;
+
+function HexStr(Val: NearFsPointer): ShortString;
+begin
+  HexStr:='FS:'+HexStr(Word(Val),4);
+end;
+
+function HexStr(Val: NearGsPointer): ShortString;
+begin
+  HexStr:='GS:'+HexStr(Word(Val),4);
+end;
+
 function HexStr(Val: FarPointer): ShortString;
 type
   TFarPointerRec = record
@@ -1124,6 +1195,7 @@ procedure DetectFPU;
       Default8087CW:=$1332;
   end;
 
+{$ifndef FPC_SYSTEM_HAS_SYSINITFPU}
 {$define FPC_SYSTEM_HAS_SYSINITFPU}
 Procedure SysInitFPU;
   var
@@ -1138,6 +1210,7 @@ Procedure SysInitFPU;
     end;
   end;
 
+{$endif ndef FPC_SYSTEM_HAS_SYSINITFPU}
 
 {$define FPC_SYSTEM_HAS_SYSRESETFPU}
 Procedure SysResetFPU;

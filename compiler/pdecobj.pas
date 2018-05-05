@@ -47,14 +47,14 @@ implementation
       sysutils,cutils,
       globals,verbose,systems,tokens,
       symbase,symsym,symtable,symcreat,defcmp,
-      node,nld,nmem,ncon,ncnv,ncal,
+      node,ncon,
       fmodule,scanner,
-      pbase,pexpr,pdecsub,pdecvar,ptype,pdecl,pgenutil,ppu,
+      pbase,pexpr,pdecsub,pdecvar,ptype,pdecl,pgenutil,ppu
 {$ifdef jvm}
-      pjvm,
-{$endif}
-      parabase
+      ,pjvm;
+{$else}
       ;
+{$endif}
 
     const
       { Please leave this here, this module should NOT use
@@ -701,8 +701,12 @@ implementation
 
       procedure validate_extendeddef_typehelper(var def:tdef);
         begin
-          if def.typ in [undefineddef,procvardef,procdef,objectdef,recorddef,
-              filedef,classrefdef,abstractdef,forwarddef,formaldef] then
+          if (def.typ in [undefineddef,procvardef,procdef,
+              filedef,classrefdef,abstractdef,forwarddef,formaldef]) or
+              (
+                (def.typ=objectdef) and
+                not (tobjectdef(def).objecttype in objecttypes_with_helpers)
+              ) then
             begin
               Message1(type_e_type_not_allowed_for_type_helper,def.typename);
               def:=generrordef;
@@ -716,6 +720,21 @@ implementation
               if def<>current_objectdef.childof.extendeddef then
                 begin
                   Message1(type_e_record_helper_must_extend_same_record,current_objectdef.childof.extendeddef.typename);
+                  def:=generrordef;
+                end;
+            end;
+        end;
+
+      procedure check_inheritance_class_helper(var def:tdef);
+        begin
+          if (def.typ<>errordef) and assigned(current_objectdef.childof) then
+            begin
+              if (current_objectdef.childof.extendeddef.typ<>objectdef) or
+                 not (tobjectdef(current_objectdef.childof.extendeddef).objecttype in objecttypes_with_helpers) then
+                Internalerror(2011021101);
+              if not def_is_related(def,current_objectdef.childof.extendeddef) then
+                begin
+                  Message1(type_e_class_helper_must_extend_subclass,current_objectdef.childof.extendeddef.typename);
                   def:=generrordef;
                 end;
             end;
@@ -753,13 +772,7 @@ implementation
                   begin
                     { a class helper must extend the same class or a subclass
                       of the class extended by the parent class helper }
-                    if assigned(current_objectdef.childof) then
-                      begin
-                        if not is_class(current_objectdef.childof.extendeddef) then
-                          Internalerror(2011021101);
-                        if not def_is_related(hdef,current_objectdef.childof.extendeddef) then
-                          Message1(type_e_class_helper_must_extend_subclass,current_objectdef.childof.extendeddef.typename);
-                      end;
+                    check_inheritance_class_helper(hdef);
                   end;
               ht_record:
                 if (hdef.typ=objectdef) or
@@ -767,7 +780,7 @@ implementation
                       { primitive types are allowed for record helpers in mode
                         delphi }
                       (hdef.typ<>recorddef) and
-                      not (m_type_helpers in current_settings.modeswitches)
+                      not (m_delphi in current_settings.modeswitches)
                     ) then
                   Message1(type_e_record_type_expected,hdef.typename)
                 else
@@ -783,9 +796,13 @@ implementation
               ht_type:
                 begin
                   validate_extendeddef_typehelper(hdef);
-                  { a type helper must extend the same type as the
-                    parent helper }
-                  check_inheritance_record_type_helper(hdef);
+                  if (hdef.typ=objectdef) and
+                      (tobjectdef(hdef).objecttype in objecttypes_with_helpers) then
+                    check_inheritance_class_helper(hdef)
+                  else
+                    { a type helper must extend the same type as the
+                      parent helper }
+                    check_inheritance_record_type_helper(hdef);
                 end;
             end;
           end;
@@ -899,7 +916,10 @@ implementation
                   { for record and type helpers only static class methods are
                     allowed }
                   if is_objectpascal_helper(astruct) and
-                     (tobjectdef(astruct).extendeddef.typ<>objectdef) and
+                     (
+                       (tobjectdef(astruct).extendeddef.typ<>objectdef) or
+                       (tobjectdef(tobjectdef(astruct).extendeddef).objecttype<>odt_class)
+                     ) and
                      is_classdef and not (po_staticmethod in result.procoptions) then
                     MessagePos(result.fileinfo,parser_e_class_methods_only_static_in_records);
 
@@ -1361,6 +1381,7 @@ implementation
 
             { create new class }
             current_structdef:=cobjectdef.create(objecttype,n,nil,true);
+            tobjectdef(current_structdef).helpertype:=helpertype;
 
             { include always the forward flag, it'll be removed after the parent class have been
               added. This is to prevent circular childof loops }

@@ -12,7 +12,7 @@
 
  **********************************************************************}
 
-unit sqldb;
+unit SQLDB;
 
 {$mode objfpc}
 {$H+}
@@ -296,7 +296,7 @@ type
     property HostName : string Read FHostName Write FHostName;
     Property OnLog : TDBLogNotifyEvent Read FOnLog Write FOnLog;
     Property LogEvents : TDBEventTypes Read FLogEvents Write FLogEvents Default LogAllEvents;
-    Property Options : TSQLConnectionOptions Read FOptions Write SetOptions;
+    Property Options : TSQLConnectionOptions Read FOptions Write SetOptions default [];
     Property Role :  String read FRole write FRole;
     property Connected;
     property DatabaseName;
@@ -346,7 +346,7 @@ type
     property Action : TCommitRollbackAction read FAction write FAction Default caRollBack;
     property Database;
     property Params : TStringList read FParams write SetParams;
-    Property Options : TSQLTransactionOptions Read FOptions Write SetOptions;
+    Property Options : TSQLTransactionOptions Read FOptions Write SetOptions default [];
   end;
 
 
@@ -604,7 +604,7 @@ type
     property UpdateSQL : TStringList read FUpdateSQL write SetUpdateSQL;
     property DeleteSQL : TStringList read FDeleteSQL write SetDeleteSQL;
     property RefreshSQL : TStringList read FRefreshSQL write SetRefreshSQL;
-    Property Options : TSQLQueryOptions Read FOptions Write SetOptions;
+    Property Options : TSQLQueryOptions Read FOptions Write SetOptions default [];
     property Params : TParams read GetParams Write SetParams;
     Property ParamCheck : Boolean Read GetParamCheck Write SetParamCheck default true;
     property ParseSQL : Boolean read GetParseSQL write SetParseSQL default true;
@@ -1403,7 +1403,7 @@ function TSQLConnection.GetConnectionCharSet: string;
 begin
   // default implementation returns user supplied FCharSet
   // (can be overriden by descendants, which are able retrieve current connection charset using client API)
-  Result := FCharSet;
+  Result := LowerCase(FCharSet);
 end;
 
 function TSQLConnection.RowsAffected(cursor: TSQLCursor): TRowsCount;
@@ -1702,9 +1702,9 @@ begin
   if (not assigned(Field)) or Field.IsNull then Result := 'Null'
   else case Field.DataType of
     ftString   : Result := QuotedStr(Field.AsString);
-    ftDate     : Result := '''' + FormatDateTime('yyyy-mm-dd',Field.AsDateTime,FSqlFormatSettings) + '''';
-    ftDateTime : Result := '''' + FormatDateTime('yyyy-mm-dd hh:nn:ss.zzz',Field.AsDateTime,FSqlFormatSettings) + '''';
-    ftTime     : Result := QuotedStr(TimeIntervalToString(Field.AsDateTime));
+    ftDate     : Result := '''' + FormatDateTime('yyyy-mm-dd',Field.AsDateTime,FSQLFormatSettings) + '''';
+    ftDateTime : Result := '''' + FormatDateTime('yyyy-mm-dd hh:nn:ss.zzz',Field.AsDateTime,FSQLFormatSettings) + '''';
+    ftTime     : Result := '''' + TimeIntervalToString(Field.AsDateTime) + '''';
   else
     Result := Field.AsString;
   end; {case}
@@ -1718,8 +1718,8 @@ begin
     ftMemo,
     ftFixedChar,
     ftString   : Result := QuotedStr(GetAsString(Param));
-    ftDate     : Result := '''' + FormatDateTime('yyyy-mm-dd',Param.AsDateTime,FSQLFormatSettings) + '''';
-    ftTime     : Result := QuotedStr(TimeIntervalToString(Param.AsDateTime));
+    ftDate     : Result := '''' + FormatDateTime('yyyy-mm-dd', Param.AsDateTime, FSQLFormatSettings) + '''';
+    ftTime     : Result := '''' + TimeIntervalToString(Param.AsDateTime) + '''';
     ftDateTime : Result := '''' + FormatDateTime('yyyy-mm-dd hh:nn:ss.zzz', Param.AsDateTime, FSQLFormatSettings) + '''';
     ftCurrency,
     ftBcd      : Result := CurrToStr(Param.AsCurrency, FSQLFormatSettings);

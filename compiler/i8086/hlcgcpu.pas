@@ -67,7 +67,7 @@ interface
      public
       function getaddressregister(list:TAsmList;size:tdef):Tregister;override;
 
-      procedure reference_reset_base(var ref: treference; regsize: tdef; reg: tregister; offset, alignment: longint; volatility: tvolatilityset); override;
+      procedure reference_reset_base(var ref: treference; regsize: tdef; reg: tregister; offset: longint; temppos: treftemppos; alignment: longint; volatility: tvolatilityset); override;
 
       function a_call_name(list : TAsmList;pd : tprocdef;const s : TSymStr; const paras: array of pcgpara; forceresdef: tdef; weak: boolean): tcgpara;override;
 
@@ -149,10 +149,10 @@ implementation
                      (cgpara.location^.reference.index=NR_STACK_POINTER_REG) then
                     begin
                       cg.g_stackpointer_alloc(list,stacksize);
-                      reference_reset_base(href,voidstackpointertype,NR_STACK_POINTER_REG,0,voidstackpointertype.size,[]);
+                      reference_reset_base(href,voidstackpointertype,NR_STACK_POINTER_REG,0,ctempposinvalid,voidstackpointertype.size,[]);
                     end
                   else
-                    reference_reset_base(href,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,cgpara.alignment,[]);
+                    reference_reset_base(href,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,ctempposinvalid,cgpara.alignment,[]);
                   cg.a_loadfpu_reg_ref(list,locsize,locsize,l.register,href);
                 end;
               LOC_FPUREGISTER:
@@ -194,10 +194,10 @@ implementation
                      (cgpara.location^.reference.index=NR_STACK_POINTER_REG) then
                     begin
                       cg.g_stackpointer_alloc(list,stacksize);
-                      reference_reset_base(href,voidstackpointertype,NR_STACK_POINTER_REG,0,voidstackpointertype.size,[]);
+                      reference_reset_base(href,voidstackpointertype,NR_STACK_POINTER_REG,0,ctempposinvalid,voidstackpointertype.size,[]);
                     end
                   else
-                    reference_reset_base(href,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,cgpara.alignment,[]);
+                    reference_reset_base(href,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,ctempposinvalid,cgpara.alignment,[]);
                   cg.a_loadmm_reg_ref(list,locsize,locsize,l.register,href,mms_movescalar);
                 end;
               LOC_FPUREGISTER:
@@ -223,7 +223,7 @@ implementation
                     cg.a_load_ref_cgpara(list,locsize,l.reference,cgpara)
                   else
                     begin
-                      reference_reset_base(href,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,cgpara.alignment,[]);
+                      reference_reset_base(href,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,ctempposinvalid,cgpara.alignment,[]);
                       cg.g_concatcopy(list,l.reference,href,stacksize);
                     end;
                 end;
@@ -266,7 +266,8 @@ implementation
 
 
   procedure thlcgcpu.reference_reset_base(var ref: treference; regsize: tdef;
-    reg: tregister; offset, alignment: longint; volatility: tvolatilityset);
+    reg: tregister; offset: longint; temppos: treftemppos; alignment: longint;
+    volatility: tvolatilityset);
     begin
       inherited;
 
@@ -294,7 +295,7 @@ implementation
           x86pt_far,
           x86pt_huge:
             if reg<>NR_NO then
-              ref.segment:=GetNextReg(reg);
+              ref.segment:=cg.GetNextReg(reg);
         end;
     end;
 
@@ -345,7 +346,7 @@ implementation
           if loc.registerhi<>tregister(0) then
             cg.a_load_reg_ref(list,OS_16,OS_16,loc.registerhi,tmpref)
           else
-            cg.a_load_reg_ref(list,OS_16,OS_16,GetNextReg(loc.register),tmpref);
+            cg.a_load_reg_ref(list,OS_16,OS_16,cg.GetNextReg(loc.register),tmpref);
         end
       else
         inherited a_load_loc_ref(list, fromsize, tosize, loc, ref);
@@ -372,9 +373,9 @@ implementation
           if ref.segment<>NR_NO then
             begin
               if is_segment_reg(ref.segment) then
-                list.concat(Taicpu.op_reg_reg(A_MOV,S_W,ref.segment,GetNextReg(r)))
+                list.concat(Taicpu.op_reg_reg(A_MOV,S_W,ref.segment,cg.GetNextReg(r)))
               else
-                cg.a_load_reg_reg(list,OS_16,OS_16,ref.segment,GetNextReg(r));
+                cg.a_load_reg_reg(list,OS_16,OS_16,ref.segment,cg.GetNextReg(r));
             end
           { references relative to a symbol use the segment of the symbol,
             which can be obtained by the SEG directive }
@@ -382,10 +383,10 @@ implementation
             begin
               reference_reset_symbol(segref,ref.symbol,0,ref.alignment,ref.volatility);
               segref.refaddr:=addr_seg;
-              cg.a_load_ref_reg(current_asmdata.CurrAsmList,OS_16,OS_16,segref,GetNextReg(r));
+              cg.a_load_ref_reg(current_asmdata.CurrAsmList,OS_16,OS_16,segref,cg.GetNextReg(r));
             end
           else if ref.base=NR_BP then
-            list.concat(Taicpu.op_reg_reg(A_MOV,S_W,NR_SS,GetNextReg(r)))
+            list.concat(Taicpu.op_reg_reg(A_MOV,S_W,NR_SS,cg.GetNextReg(r)))
           else
             internalerror(2014032801);
         end;
@@ -519,7 +520,7 @@ implementation
             if current_settings.x86memorymodel in x86_far_code_models then
               inc(selfoffsetfromsp,2);
             list.concat(taicpu.op_reg_reg(A_mov,S_W,NR_SP,NR_DI));
-            reference_reset_base(href,voidnearpointertype,NR_DI,selfoffsetfromsp+offs+2,2,[]);
+            reference_reset_base(href,voidnearpointertype,NR_DI,selfoffsetfromsp+offs+2,ctempposinvalid,2,[]);
             if not segment_regs_equal(NR_SS,NR_DS) then
               href.segment:=NR_SS;
             if current_settings.x86memorymodel in x86_near_data_models then
@@ -540,12 +541,12 @@ implementation
         { mov  0(%bx),%bx ; load vmt}
         if current_settings.x86memorymodel in x86_near_data_models then
           begin
-            reference_reset_base(href,voidnearpointertype,NR_BX,0,2,[]);
+            reference_reset_base(href,voidnearpointertype,NR_BX,0,ctempposinvalid,2,[]);
             cg.a_load_ref_reg(list,OS_16,OS_16,href,NR_BX);
           end
         else
           begin
-            reference_reset_base(href,voidnearpointertype,NR_BX,0,2,[]);
+            reference_reset_base(href,voidnearpointertype,NR_BX,0,ctempposinvalid,2,[]);
             href.segment:=NR_ES;
             list.concat(taicpu.op_ref_reg(A_LES,S_W,href,NR_BX));
           end;
@@ -566,12 +567,12 @@ implementation
         if current_settings.x86memorymodel in x86_far_code_models then
           begin
             { mov vmtseg(%bx),%si ; method seg }
-            reference_reset_base(href,voidnearpointertype,NR_BX,tobjectdef(procdef.struct).vmtmethodoffset(procdef.extnumber)+2,2,[]);
+            reference_reset_base(href,voidnearpointertype,NR_BX,tobjectdef(procdef.struct).vmtmethodoffset(procdef.extnumber)+2,ctempposinvalid,2,[]);
             href.segment:=srcseg;
             cg.a_load_ref_reg(list,OS_16,OS_16,href,NR_SI);
           end;
         { mov vmtoffs(%bx),%bx ; method offs }
-        reference_reset_base(href,voidnearpointertype,NR_BX,tobjectdef(procdef.struct).vmtmethodoffset(procdef.extnumber),2,[]);
+        reference_reset_base(href,voidnearpointertype,NR_BX,tobjectdef(procdef.struct).vmtmethodoffset(procdef.extnumber),ctempposinvalid,2,[]);
         href.segment:=srcseg;
         cg.a_load_ref_reg(list,OS_16,OS_16,href,NR_BX);
       end;
@@ -625,9 +626,9 @@ implementation
           { set target address
             "mov %bx,4(%sp)" }
           if current_settings.x86memorymodel in x86_far_code_models then
-            reference_reset_base(href,voidnearpointertype,NR_DI,6,2,[])
+            reference_reset_base(href,voidnearpointertype,NR_DI,6,ctempposinvalid,2,[])
           else
-            reference_reset_base(href,voidnearpointertype,NR_DI,4,2,[]);
+            reference_reset_base(href,voidnearpointertype,NR_DI,4,ctempposinvalid,2,[]);
           if not segment_regs_equal(NR_DS,NR_SS) then
             href.segment:=NR_SS;
           list.concat(taicpu.op_reg_reg(A_MOV,S_W,NR_SP,NR_DI));
@@ -702,7 +703,7 @@ implementation
           if l.registerhi<>tregister(0) then
             cg.a_load_reg_ref(list,OS_16,OS_16,l.registerhi,tmpref)
           else
-            cg.a_load_reg_ref(list,OS_16,OS_16,GetNextReg(l.register),tmpref);
+            cg.a_load_reg_ref(list,OS_16,OS_16,cg.GetNextReg(l.register),tmpref);
 
           location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment,[]);
           l.reference:=r;

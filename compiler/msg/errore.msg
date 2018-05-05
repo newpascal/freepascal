@@ -1,6 +1,6 @@
 #
 #   This file is part of the Free Pascal Compiler
-#   Copyright (c) 1999-2013 by the Free Pascal Development team
+#   Copyright (c) 1999-2018 by the Free Pascal Development team
 #
 #   English (default) Language File for Free Pascal
 #
@@ -11,6 +11,9 @@
 #   but WITHOUT ANY WARRANTY; without even the implied warranty of
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
+
+# CodePage 20127
+
 #
 # The constants are build in the following order:
 # <part>_<type>_<txtidentifier>
@@ -139,7 +142,7 @@ general_e_exception_raised=01026_E_Compilation raised exception internally
 #
 # Scanner
 #
-# 02101 is the last used one
+# 02105 is the last used one
 #
 % \section{Scanner messages.}
 % This section lists the messages that the scanner emits. The scanner takes
@@ -418,6 +421,13 @@ scan_w_syscall_convention_not_useable_on_target=02100_W_Specified syscall conven
 % is not useable on the current target system.
 scan_w_syscall_convention_invalid=02101_W_Invalid syscall convention specified
 % The compiler did not recognize the syscall convention specified by the \var{\{\$SYSCALL xxx\}} directive.
+scan_w_setpeuserversion_not_support=02102_W_SETPEUSERVERSION is not supported by the target OS
+% The \var{\{\$SETPEUSERVERSION\}} directive is not supported by the target OS.
+scan_w_setpeosversion_not_support=02103_W_SETPEOSVERSION is not supported by the target OS
+% The \var{\{\$SETPEOSVERSION\}} directive is not supported by the target OS.
+scan_w_setpesubsysversion_not_support=02104_W_SETPESUBSYSVERSION is not supported by the target OS
+% The \var{\{\$SETPESUBSYSVERSION\}} directive is not supported by the target OS.
+scan_n_changecputype=02105_N_Changed CPU type to be consistent with specified controller
 % \end{description}
 #
 # Parser
@@ -1567,7 +1577,7 @@ parser_e_invalid_internal_function_index=03346_E_Index $1 is not a valid interna
 %
 # Type Checking
 #
-# 04123 is the last used one
+# 04124 is the last used one
 #
 % \section{Type checking errors}
 % This section lists all errors that can occur when type checking is
@@ -2000,6 +2010,9 @@ type_w_instance_abstract_class=04122_W_Creating an instance of abstract class "$
 type_e_function_reference_kind=04123_E_Subroutine references cannot be declared as "of object" or "is nested", they can always refer to any kind of subroutine
 % Subroutine references can refer to any kind of subroutine and hence do not
 % require specialisation for methods or nested subroutines.
+type_e_seg_procvardef_wrong_memory_model=04124_E_Procedure variables in that memory model do not store segment information
+type_w_empty_constant_range_set=04125_W_The first value of a set constructur range is greater then the second value, so the range describes an empty set.
+% If a set is constructed like this: \var{s:=[9..7];]}, then an empty set is generated. As this is something normally not desired, the compiler warns about it.
 % \end{description}
 #
 # Symtable
@@ -2468,13 +2481,17 @@ cg_e_function_not_support_by_selected_instruction_set=06056_E_The function used,
 cg_f_max_units_reached=06057_F_Maximum number of units ($1) reached for the current target
 % Depending of target architecture, the number of units is limited. This limit
 % has been reached. A unit counts only if it contains initialization or finalization count.
+cg_n_no_inline=06058_N_Call to subroutine "$1" marked as inline is not inlined
+% The directive inline is only a hint to the compiler. Sometimes the compiler ignores this hint, a subroutine
+% marked as inline is not inlined. In this case, this hint is given. Compiling with \var{-vd} might result in more information why
+% the directive inline is ignored.
 %
 % \end{description}
 # EndOfTeX
 #
 # Assembler reader
 #
-# 07129 is the last used one
+# 07141 is the last used one
 #
 asmr_d_start_reading=07000_DL_Starting $1 styled assembler parsing
 % This informs you that an assembler block is being parsed
@@ -2643,7 +2660,7 @@ asmr_w_32bit_const_for_address=07079_W_32bit constant created for address
 asmr_n_align_is_target_specific=07080_N_.align is target specific, use .balign or .p2align
 % Using the .align directive is platform specific, and its meaning will vary
 % from one platform to another.
-asmr_e_cannot_access_field_directly_for_parameters=07081_E_Can't access fields directly for parameters
+asmr_e_cannot_access_field_directly_for_parameters=07081_E_Cannot directly access fields of pointer-based parameters
 % You should load the parameter first into a register and then access the
 % fields using that register.
 asmr_e_cannot_access_object_field_directly=07082_E_Can't access fields of objects/classes directly
@@ -2794,10 +2811,29 @@ asmr_w_unable_to_determine_constant_size_using_word=07131_W_No size specified an
 % You should specify explicitly a size for the reference, because
 % the compiler is unable to determine what size (byte, word, dword, etc.) it
 % should use for the constant. Based on its value, WORD is used.
+asmr_e_cannot_override_es_segment=07132_E_Cannot override ES segment
+% The ES segment in the ES:[EDI] reference of the x86 string instructions
+% cannot be overridden.
+asmr_w_invalid_reference=07133_W_Reference is not valid here (expected "$1")
+% Certain x86 instructions require a fixed source or destination reference
+% (e.g. [ESI] or [EDI] for the string instructions source and destination)
+asmr_e_address_sizes_do_not_match=07134_E_Address sizes do not match
+% Caused by using two memory operands in the same instruction with mismatched
+% address sizes (e.g. movs byte ptr [EDI], byte ptr [SI] )
+asmr_e_pop_cs_not_valid=07135_E_Instruction "POP CS" is not valid for the current target
+% The 'pop cs' instruction works only on the 8086 and 8088 CPUs, which are not
+% supported on the i386 or x86_64 targets.
+asmr_w_pop_cs_not_portable=07136_W_Instruction "POP CS" is not portable (it only works on 8086 and 8088 CPUs)
+% The 'pop cs' instruction doesn't work on any CPU, except 8086 and 8088.
+asmr_e_public_must_be_used_before_label_definition=07137_E_Label $1 can only be declared public before it's defined
+asmr_e_local_label_cannot_be_declared_public=07138_E_Local label $1 cannot be declared public
+asmr_e_multiple_segment_overrides=07139_E_Cannot use multiple segment overrides
+asmr_w_multiple_segment_overrides=07140_W_Multiple segment overrides (only the last one will take effect)
+asmr_w_segment_override_ignored_in_64bit_mode=07141_W_Segment base $1 will be generated, but is ignored by the CPU in 64-bit mode
 #
 # Assembler/binary writers
 #
-# 08032 is the last used one
+# 08033 is the last used one
 #
 asmw_f_too_many_asm_files=08000_F_Too many assembler files
 % With smartlinking enabled, there are too many assembler
@@ -2851,6 +2887,7 @@ asmw_e_32bit_not_supported=08029_E_Asm: 32 Bit references not supported
 asmw_f_code_segment_too_large=08030_F_Code segment too large
 asmw_f_data_segment_too_large=08031_F_Data segment too large
 asmw_e_instruction_not_supported_by_cpu=08032_E_Instruction not supported by the selected instruction set
+asmw_e_brxx_out_of_range=08033_E_Asm: conditional branch destination is out of range
 #
 # Executing linker/assembler
 #
@@ -2986,7 +3023,7 @@ execinfo_x_stackcommit=09134_X_Stack space committed: $1 bytes
 #
 # Internal linker messages
 #
-# 09208 is the last used one
+# 09220 is the last used one
 #
 # BeginOfTeX
 % \section{Linker messages}
@@ -3016,6 +3053,36 @@ link_e_com_program_uses_segment_relocations=09207_E_Cannot create a .COM file, b
 % directive (either in pascal's built-in inline assembler, or in an externally
 % linked assembly module).
 link_w_program_uses_checkpointer=09208_W_Program "$1" uses experimental CheckPointer option
+link_e_duplicate_symbol=09209_E_Multiple defined symbol "$1"
+% The specified symbol is already defined inside the whole collection of object files.
+link_e_comdat_select_unsupported=09210_E_COMDAT selection mode $1 not supported (section: "$1")
+% The specified COMDAT selection mode is not supported.
+link_e_comdat_associative_section_expected=09211_E_Associative section expected for COMDAT section "$1"
+% The specified COMDAT section is specified as expecting an associative section,
+% but none is specified.
+link_e_comdat_not_matching=09212_E_COMDAT section selection mode doesn't match for section "$1" and symbol "$2"
+% All COMDAT symbols/sections need to use the same selection mode.
+link_e_comdat_associative_section_not_found=09213_E_Associative COMDAT section for section "$1" not found
+% The COMDAT section expects an associative section, but it was not found inside the object file.
+link_d_comdat_discard_any=09214_D_Discarding duplicate symbol "$1" due to COMDAT selection mode
+% The COMDAT section specifies that any section with the same name might be selected and this
+% specific section was selected to be discarded.
+link_d_comdat_discard_size=09215_D_Discarding duplicate symbol "$1" with same size due to COMDAT selection mode
+% The COMDAT section specifies that any section with the same name and size might be selected
+% and this specific section was selected to be discarded.
+link_d_comdat_discard_content=09216_D_Discarding duplicate symbol "$1" with same content due to COMDAT selection mode
+% The COMDAT section specifies that any section with the same name and content might be selected
+% and this specific section was selected to be discarded.
+link_d_comdat_replace_size=09217_D_Replacing duplicate symbol "$1" with smaller size due to COMDAT selection mode
+% The COMDAT section specifies that the largest section with the same name should be selected
+% this specific section was larger than the previous largest one.
+link_e_comdat_size_differs=09218_E_Size of duplicate COMDAT symbol "$1" differs
+% The COMDAT section specifies that all sections with the same name need to have the same size,
+% but this section had a different size.
+link_e_comdat_content_differs=09219_E_Content of duplicate COMDAT symbol "$1" differs
+% The COMDAT section specifies that all sections with the same name need to have the same content,
+% but this section had a different size.
+link_e_comdat_selection_differs=09220_E_COMDAT selection mode for symbol "$1" differs
 %\end{description}
 # EndOfTeX
 
@@ -3075,8 +3142,13 @@ unit_f_ppu_invalid_entry=10016_F_Invalid PPU-File entry: $1
 % newer version of the compiler.
 unit_f_ppu_dbx_count_problem=10017_F_PPU Dbx count problem
 % There is an inconsistency in the debugging information of the unit.
-unit_e_illegal_unit_name=10018_E_Illegal unit name: $1
+unit_e_illegal_unit_name=10018_E_Illegal unit name: $1 (expecting $2)
 % The name of the unit does not match the file name.
+% There might to two reasons: either there is a spelling mistake in the unit name
+% or there is a unit with a 8.3 name where the 8 characters are equal to first 8 characters of
+% the name of a unit with a longer name. However, this unit is not found. Example: Program contains
+% \var{uses mytestunit;}, the unit file or source of mytestunit are not available but there is a source
+% with the name \var{mytestun}. Then compiler tries to compile and use that one, however the expected unit name does not match.
 unit_f_too_much_units=10019_F_Too much units
 % \fpc has a limit of 1024 units in a program. You can change this behavior
 % by changing the \var{maxunits} constant in the \file{fmodule.pas} file of the
@@ -3245,7 +3317,7 @@ cg_f_internal_type_does_not_match=10066_F_Internal type "$1" does not look as ex
 #
 #  Options
 #
-# 11058 is the last used one
+# 11060 is the last used one
 #
 option_usage=11000_O_$1 [options] <inputfile> [options]
 # BeginOfTeX
@@ -3394,8 +3466,12 @@ option_com_files_require_tiny_model=11057_E_Creating .COM files is not supported
 % Do not enable experimental -gc option if -Ur option is given.
 option_gc_incompatible_with_release_flag=11058_W_Experimental CheckPointer option not enabled because it is incomptatible with -Ur option.
 % The compiler binary only supports a single target architecture. Invoke the fpc binary if you wish to select a compiler binary for a different target architecture.
-option_invalid_target_architecture=11059_E_Unsupported target architecture -P$1, invoke the the "fpc" compiler driver instead.
-
+option_invalid_target_architecture=11059_E_Unsupported target architecture -P$1, invoke the "fpc" compiler driver instead.
+% The ppc<target> executables support only a single target architecture. They do not support the -P switch. The compiler driver "fpc"
+% handles this switch, so you have to invoke compiling by using "fpc" instead
+option_features_only_for_system_unit=11060_E_Feature switches are only supported while compiling the system unit.
+% To selected a certain feature, the system unit must be compiled with this feature enabled. All other units inherited the features set by the
+% system unit through the ppu of the system unit.
 %\end{description}
 # EndOfTeX
 
@@ -3574,7 +3650,7 @@ package_u_ppl_filename=13029_U_PPL filename $1
 #
 option_logo=11023_[
 Free Pascal Compiler version $FPCFULLVERSION [$FPCDATE] for $FPCCPU
-Copyright (c) 1993-2017 by Florian Klaempfl and others
+Copyright (c) 1993-2018 by Florian Klaempfl and others
 ]
 
 #
@@ -3645,6 +3721,7 @@ new features, etc.):
 #    P = PowerPC targets
 #    p = PowerPC64 targets
 #    S = Sparc targets
+#    s = Sparc64 targets
 #    V = AVR
 # The second character also indicates who will display this line,
 # (if the above character was TRUE) the current possibilities are :
@@ -3655,9 +3732,11 @@ new features, etc.):
 #  The third character represents the indentation level.
 #
 option_help_pages=11025_[
+# It is also possible to insert comments in that section
 F*0*_Only options valid for the default or selected platform are listed.
 **0*_Put + after a boolean switch option to enable it, - to disable it.
 **1@<x>_Read compiler options from <x> in addition to the default fpc.cfg
+# Assembler related options
 **1a_The compiler does not delete the generated assembler file
 **2a5_Don't generate Big Obj COFF files for GNU Binutils older than 2.25 (Windows, NativeNT)
 **2al_List sourcecode lines in assembler file
@@ -3666,6 +3745,7 @@ F*0*_Only options valid for the default or selected platform are listed.
 *L2ap_Use pipes instead of creating temporary assembler files
 **2ar_List register allocation/release info in assembler file
 **2at_List temp allocation/release info in assembler file
+# Choice of assembler used
 **1A<x>_Output format:
 **2Adefault_Use default assembler
 3*2Aas_Assemble using GNU AS
@@ -3693,7 +3773,7 @@ F*0*_Only options valid for the default or selected platform are listed.
 4*2Apecoff_PE-COFF (Win64) using internal writer
 4*2Aelf_ELF (Linux-64bit) using internal writer
 4*2Ayasm_Assemble using Yasm (experimental)
-4*2Anasm_Assemble  using Nasm (experimental)
+4*2Anasm_Assemble using Nasm (experimental)
 4*2Anasmwin64_Assemble Win64 object file using Nasm (experimental)
 4*2Anasmelf_Assemble Linux-64bit object file using Nasm (experimental)
 4*2Anasmdarwin_Assemble darwin macho64 object file using Nasm (experimental)
@@ -3704,6 +3784,7 @@ F*0*_Only options valid for the default or selected platform are listed.
 A*2Aas_Assemble using GNU AS
 P*2Aas_Assemble using GNU AS
 S*2Aas_Assemble using GNU AS
+# Used only internally by IDE
 **1b_Generate browser info
 **2bl_Generate local symbol info
 **1B_Build all modules
@@ -3717,7 +3798,7 @@ S*2Aas_Assemble using GNU AS
 **2Cf<x>_Select fpu instruction set to use; see fpc -i or fpc -if for possible values
 **2CF<x>_Minimal floating point constant precision (default, 32, 64)
 **2Cg_Generate PIC code
-**2Ch<n>_<n> bytes heap (between 1023 and 67107840)
+**2Ch<n>[,m]_<n> bytes min heap size (between 1023 and 67107840) and optionally [m] max heap size
 **2Ci_IO-checking
 A*2CI<x>_Select instruction set on ARM: ARM or THUMB
 **2Cn_Omit linking stage
@@ -3777,6 +3858,7 @@ J*2Cv_Var/out parameter copy-out checking
 **2FL<x>_Use <x> as dynamic linker
 **2Fm<x>_Load unicode conversion table from <x>.txt in the compiler dir
 **2FM<x>_Set the directory where to search for unicode binary files
+**2FN<x>_Add <x> to list of default namespaces
 **2Fo<x>_Add <x> to object path
 **2Fr<x>_Load error message file <x>
 **2FR<x>_Set resource (.res) linker to <x>
@@ -3872,6 +3954,7 @@ F*2P<x>_Set target CPU (aarch64,arm,avr,i386,i8086,jvm,m68k,mips,mipsel,powerpc,
 **2Sg_Enable LABEL and GOTO (default in -Mtp and -Mdelphi)
 **2Sh_Use reference counted strings (ansistring by default) instead of shortstrings
 **2Si_Turn on inlining of procedures/functions declared as "inline"
+**2Sj_Allows typed constants to be writeable (default in all modes)
 **2Sk_Load fpcylix unit
 **2SI<x>_Set interface style to <x>
 **3SIcom_COM compatible interface (default)
@@ -3888,6 +3971,7 @@ F*2P<x>_Set target CPU (aarch64,arm,avr,i386,i8086,jvm,m68k,mips,mipsel,powerpc,
 **2st_Generate script to link on target
 **2sr_Skip register allocation phase (use with -alr)
 **1T<x>_Target operating system:
+# i386 targets
 3*2Tandroid_Android
 3*2Taros_AROS
 3*2Tbeos_BeOS
@@ -3897,7 +3981,7 @@ F*2P<x>_Set target CPU (aarch64,arm,avr,i386,i8086,jvm,m68k,mips,mipsel,powerpc,
 3*2Tfreebsd_FreeBSD
 3*2Tgo32v2_Version 2 of DJ Delorie DOS extender
 3*2Thaiku_Haiku
-3*2Tiphonesim_ iPhoneSimulator from iOS SDK 3.2+ (older versions: -Tdarwin)
+3*2Tiphonesim_iPhoneSimulator from iOS SDK 3.2+ (older versions: -Tdarwin)
 3*2Tlinux_Linux
 3*2Tnativent_Native NT API (experimental)
 3*2Tnetbsd_NetBSD
@@ -3905,56 +3989,85 @@ F*2P<x>_Set target CPU (aarch64,arm,avr,i386,i8086,jvm,m68k,mips,mipsel,powerpc,
 3*2Tnetwlibc_Novell Netware Module (libc)
 3*2Topenbsd_OpenBSD
 3*2Tos2_OS/2 / eComStation
-3*2Tsunos_SunOS/Solaris
 3*2Tsymbian_Symbian OS
 3*2Tsolaris_Solaris
 3*2Twatcom_Watcom compatible DOS extender
 3*2Twdosx_WDOSX DOS extender
 3*2Twin32_Windows 32 Bit
 3*2Twince_Windows CE
+# x86_64 targets
+4*2Taros_AROS
 4*2Tdarwin_Darwin/Mac OS X
+4*2Tdragonfly_DragonFly BSD
+4*2Tembedded_Embedded
 4*2Tfreebsd_FreeBSD
-4*2Tiphonesim_ iPhoneSimulator
+4*2Tiphonesim_iPhoneSimulator
 4*2Tlinux_Linux
 4*2Tnetbsd_NetBSD
 4*2Topenbsd_OpenBSD
 4*2Tsolaris_Solaris
 4*2Twin64_Win64 (64 bit Windows systems)
+# m68k targets
 6*2Tamiga_Commodore Amiga
 6*2Tatari_Atari ST/STe/TT
+6*2Tembedded_Embedded
 6*2Tlinux_Linux
+6*2Tnetbsd_NetBSD
+6*2Tmacos_Mac OS
 6*2Tpalmos_PalmOS
+# i8086 targets
+8*2Tembedded_Embedded
 8*2Tmsdos_MS-DOS (and compatible)
-a*2Tdarwin_Darwin/iOS
+8*2Twin16_Windows 16 Bit
+# arm targets
 A*2Tandroid_Android
+A*2Taros_AROS
 A*2Tdarwin_Darwin/iPhoneOS/iOS
 A*2Tembedded_Embedded
 A*2Tgba_Game Boy Advance
 A*2Tlinux_Linux
 A*2Tnds_Nintendo DS
+A*2Tnetbsd_NetBSD
+A*2Tpalmos_PalmOS
 A*2Tsymbian_Symbian
 A*2Twince_Windows CE
+# aarch64 targets
+a*2Tdarwin_Darwin/iOS
+a*2Tlinux_Linux
+# jvm targets
 J*2Tandroid_Android
 J*2Tjava_Java
+# mipsel targets
+m*2Tandroid_Android
 m*2Tembedded_Embedded
 m*2Tlinux_Linux
-M*2Tandroid_Android
+# mipseb targets
 M*2Tembedded_Embedded
 M*2Tlinux_Linux
+# powerpc targets
 P*2Taix_AIX
 P*2Tamiga_AmigaOS
 P*2Tdarwin_Darwin/Mac OS X
+P*2Tembedded_Embedded
 P*2Tlinux_Linux
 P*2Tmacos_Mac OS (classic)
 P*2Tmorphos_MorphOS
 P*2Tnetbsd_NetBSD
 P*2Twii_Wii
+# powerpc64 targets
 p*2Taix_AIX
 p*2Tdarwin_Darwin/Mac OS X
+p*2Tembedded_Embedded
 p*2Tlinux_Linux
-S*2Tsolaris_Solaris
+# sparc targets
 S*2Tlinux_Linux
+S*2Tsolaris_Solaris
+# sparc64 targets
+s*2Tlinux_Linux
+# not yet ready s*2Tsolaris_Solaris
+# avr targets
 V*2Tembedded_Embedded
+# end of targets section
 **1u<x>_Undefines the symbol <x>
 **1U_Unit options:
 **2Un_Do not check where the unit name matches the file name
@@ -4017,6 +4130,7 @@ p*2Wi_Use internal resources (Darwin)
 3*2WI_Turn on/off the usage of import sections (Windows)
 4*2WI_Turn on/off the usage of import sections (Windows)
 A*2WI_Turn on/off the usage of import sections (Windows)
+8*2Wh_Use huge code for units (ignored for models with CODE in a unique segment)
 8*2Wm<x>_Set memory model
 8*3WmTiny_Tiny memory model
 8*3WmSmall_Small memory model (default)

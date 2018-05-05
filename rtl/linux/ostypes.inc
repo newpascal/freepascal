@@ -173,7 +173,7 @@ type
                 l_start : kernel_off_t; { starting offset }
                 l_len   : kernel_off_t; { len = 0 means until end of file }
                 l_pid   : pid_t;        { lock owner }
-{$ifdef cpusparc}
+{$if defined(cpusparc) or defined(cpusparc64)}
                 __pad   : cshort;
 {$endif}
                End;
@@ -200,8 +200,9 @@ type
    TTms      = tms;
    PTms      = ^tms;
 
- TFDSet    = ARRAY[0..(FD_MAXFDSET div BITSINWORD)-1] of cuLong;
- pFDSet    = ^TFDSet;
+  TFDSetEl  = cuLong;
+  TFDSet    = ARRAY[0..(FD_MAXFDSET div BITSINWORD)-1] of TFDSetEl;
+  pFDSet    = ^TFDSet;
 
   timezone = record
     tz_minuteswest,tz_dsttime:cint;
@@ -250,7 +251,7 @@ CONST
     O_RDONLY  =          0;        { Open read-only.  }
     O_WRONLY  =          1;        { Open write-only. }
     O_RDWR    =          2;        { Open read/write. }
-{$ifdef cpusparc}
+{$if defined(cpusparc) or defined(cpusparc64)}
     O_APPEND  =          8;
     O_CREAT   =       $200;
     O_TRUNC   =       $400;
@@ -262,7 +263,7 @@ CONST
     O_DIRECTORY =   $10000;
     O_NOFOLLOW =    $20000;
     O_DIRECT  =    $100000;
-{$else : not cpusparc}
+{$else : not (cpusparc or cpusparc64)}
 {$ifdef cpumips}
     O_CREAT   =       $100;
     O_EXCL    =       $400;
@@ -288,7 +289,7 @@ CONST
     O_DIRECTORY =   $10000;
     O_NOFOLLOW =    $20000;
 {$endif not cpumips}
-{$endif not cpusparc}
+{$endif not (cpusparc or cpusparc64)}
 
     AT_FDCWD = -100;
     AT_REMOVEDIR = $200;

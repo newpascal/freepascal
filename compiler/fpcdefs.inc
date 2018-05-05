@@ -19,6 +19,14 @@
   exceptions in the constructors }
 {$IMPLICITEXCEPTIONS OFF}
 
+{ This define enables codepage-aware compiler messages handling. Turning it on
+  forces code page conversion from the codepage, specified in the .msg file to
+  CP_ACP, before printing the message to the console. Enable this for host
+  platforms, that have code page conversion support in their RTL. }
+{$if defined(win32) or defined(win64) or defined(unix)}
+  {$define cpawaremessages}
+{$endif}
+
 { Inline small functions, but not when EXTDEBUG is used }
 {$ifndef EXTDEBUG}
   {$define USEINLINE}
@@ -50,7 +58,7 @@
   {//$define SUPPORT_MMX}
   {$define cpumm}
   {$define fewintregisters}
-  {//$define cpurox}
+  {$define cpurox}
   {$define cpurefshaveindexreg}
   {$define SUPPORT_SAFECALL}
   {$define cpuneedsmulhelper}
@@ -58,6 +66,7 @@
   {$define cpuneedsdivhelper}
   {$define VOLATILE_ES}
   {$define SUPPORT_GET_FRAME}
+  {$define cpucg64shiftsupport}
 {$endif i8086}
 
 {$ifdef i386}
@@ -75,6 +84,7 @@
   {$define SUPPORT_SAFECALL}
   {$define SUPPORT_GET_FRAME}
   {$define cpucapabilities}
+  {$define cpucg64shiftsupport}
 {$endif i386}
 
 {$ifdef x86_64}
@@ -100,8 +110,26 @@
   {$define cpuflags}
   {$define cputargethasfixedstack}
   {$define cpurefshaveindexreg}
+  {$define cpudelayslot}
   {$define SUPPORT_SAFECALL}
+  {$define sparcgen}
+
+  { the official name of the 32 Bit SPARC port is still "sparc" but
+    using the sparc32 define makes things more clear }
+  {$define sparc32}
 {$endif sparc}
+
+{$ifdef sparc64}
+  {$define cpu64bit}
+  {$define cpu64bitaddr}
+  {$define cpu64bitalu}
+  {$define cpuflags}
+  {$define cputargethasfixedstack}
+  {$define cpurefshaveindexreg}
+  {$define cpudelayslot}
+  {$define SUPPORT_SAFECALL}
+  {$define sparcgen}
+{$endif sparc64}
 
 {$ifdef powerpc}
   {$define cpu32bit}
@@ -112,6 +140,7 @@
   {$define cpumm}
   {$define cpurox}
   {$define cpurefshaveindexreg}
+  {$define SUPPORT_GET_FRAME}
 {$endif powerpc}
 
 {$ifdef powerpc64}
@@ -161,11 +190,15 @@
   {$define cpu32bitaddr}
   {$define cpu32bitalu}
   {$define cpuflags}
+  {$define cpurox}
   {$define cpufpemu}
   {$define cpurefshaveindexreg}
   {$define cpucapabilities}
+  {$define cpuneedsmulhelper}
   {$define cpuneedsdivhelper}
   {$define cpu_uses_separate_address_registers}
+  {$define SUPPORT_SAFECALL}
+  {$define SUPPORT_GET_FRAME}
 {$endif m68k}
 
 {$ifdef avr}
@@ -208,6 +241,7 @@
   {$define cpurequiresproperalignment}
   { define cpumm}
   {$define cpurefshaveindexreg}
+  {$define cpudelayslot}
   {$define SUPPORT_GET_FRAME}
   {$define SUPPORT_SAFECALL}
 {$endif mips}
@@ -246,7 +280,9 @@
 {$endif}
 
 {$if not defined(FPC_HAS_TYPE_EXTENDED) and defined(i386)}
+{$ifndef FPC_SOFT_FPUX80}
 {$error Cross-compiling from systems without support for an 80 bit extended floating point type to i386 is not yet supported at this time }
+{$endif}
 {$endif}
 
 { llvm backends partially use other backends for parameter info calculation,

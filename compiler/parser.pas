@@ -40,17 +40,16 @@ implementation
 {$ELSE}
       fksysutl,
 {$ENDIF}
-      cutils,cclasses,
-      globtype,version,tokens,systems,globals,verbose,switches,globstat,
-      symbase,symtable,symdef,symsym,
+      cclasses,
+      globtype,tokens,systems,globals,verbose,switches,globstat,
+      symbase,symtable,symdef,
       finput,fmodule,fppu,
-      aasmbase,aasmtai,aasmdata,
-      cgbase,
-      script,gendef,
+      aasmdata,
+      cscript,gendef,
       comphook,
       scanner,scandir,
-      pbase,ptype,psystem,pmodules,psub,ncgrtti,htypechk,
-      cresstr,cpuinfo,procinfo;
+      pbase,psystem,pmodules,psub,ncgrtti,
+      cpuinfo,procinfo;
 
 
     procedure initparser;
@@ -116,12 +115,14 @@ implementation
 
          { target specific stuff }
          case target_info.system of
+           system_arm_aros,
+           system_arm_palmos,
+           system_m68k_amiga,
            system_m68k_atari,
+           system_m68k_palmos,
+           system_i386_aros,
            system_powerpc_amiga,
            system_powerpc_morphos,
-           system_m68k_amiga,
-           system_arm_aros,
-           system_i386_aros,
            system_x86_64_aros:
              include(supported_calling_conventions,pocall_syscall);
 {$ifdef i8086}
@@ -324,7 +325,6 @@ implementation
          named_args_allowed:=false;
          got_addrn:=false;
          getprocvardef:=nil;
-         allow_array_constructor:=false;
 
        { show info }
          Message1(parser_i_compiling,filename);

@@ -355,6 +355,8 @@ type
     po_syscall_basereg,
     { Used to record the fact that a symbol is associated to this syscall }
     po_syscall_has_libsym,
+    { Syscall uses the import Nr. }
+    po_syscall_has_importnr,
     { Procedure can be inlined }
     po_inline,
     { Procedure is used for internal compiler calls }
@@ -398,6 +400,8 @@ type
     po_auto_raised_visibility,
     { procedure is far (x86 only) }
     po_far,
+    { near/far call model is specified explicitly (x86 only) }
+    po_hasnearfarcallmodel,
     { the procedure never returns, this information is usefull for dfa }
     po_noreturn,
     { procvar is a function reference }
@@ -584,7 +588,9 @@ type
     vo_force_finalize,
     { this is an internal variable that is used for Default() intrinsic in code
       sections }
-    vo_is_default_var
+    vo_is_default_var,
+    { i8086 'external far' (can only be used in combination with vo_is_external) }
+    vo_is_far
   );
   tvaroptions=set of tvaroption;
 
@@ -718,6 +724,9 @@ type
     itp_rtti_enum_size_start_rec,
     itp_rtti_enum_min_max_rec,
     itp_rtti_enum_basetype_array_rec,
+    itp_rtti_ref,
+    itp_rtti_set_outer,
+    itp_rtti_set_inner,
     itp_init_record_operators,
     itp_threadvar_record,
     itp_objc_method_list,
@@ -861,6 +870,9 @@ inherited_objectoptions : tobjectoptions = [oo_has_virtual,oo_has_private,oo_has
        '$rtti_enum_size_start_rec$',
        '$rtti_enum_min_max_rec$',
        '$rtti_enum_basetype_array_rec$',
+       '$rtti_ref$',
+       '$rtti_set_outer$',
+       '$rtti_set_inner$',
        '$init_record_operators$',
        '$threadvar_record$',
        '$objc_method_list$',
@@ -885,6 +897,8 @@ inherited_objectoptions : tobjectoptions = [oo_has_virtual,oo_has_private,oo_has
 {$else not jvm}
      default_class_type=odt_javaclass;
 {$endif not jvm}
+
+     objecttypes_with_helpers=[odt_class,odt_interfacecom,odt_interfacecorba,odt_dispinterface];
 
 { !! Be sure to keep these in sync with ones in rtl/inc/varianth.inc }
       varempty = 0;

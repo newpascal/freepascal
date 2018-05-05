@@ -422,6 +422,8 @@ implementation
                       end;
                     ait_align:
                       inc(CurrOffset,tai_align(curtai).aligntype);
+                    ait_const:
+                      inc(CurrOffset,tai_const(curtai).size);
                     ait_symbolpair,
                     ait_marker:
                       ;
@@ -443,15 +445,20 @@ implementation
                   ait_instruction:
                     case taicpu(curtai).opcode of
                       A_BRxx:
-                        if (taicpu(curtai).InsOffset-taicpu(curtai).oper[0]^.ref^.symbol.offset>64) or
-                          (taicpu(curtai).InsOffset-taicpu(curtai).oper[0]^.ref^.symbol.offset<-63) then
+                        if (taicpu(curtai).oper[0]^.typ=top_ref) and ((taicpu(curtai).InsOffset-taicpu(curtai).oper[0]^.ref^.symbol.offset>64) or
+                          (taicpu(curtai).InsOffset-taicpu(curtai).oper[0]^.ref^.symbol.offset<-63)) then
                           begin
-                            current_asmdata.getjumplabel(l);
-                            list.insertafter(tai_label.create(l),curtai);
-                            list.insertafter(taicpu.op_sym(A_JMP,taicpu(curtai).oper[0]^.ref^.symbol),curtai);
-                            taicpu(curtai).oper[0]^.ref^.symbol:=l;
-                            taicpu(curtai).condition:=inverse_cond(taicpu(curtai).condition);
-                            again:=true;
+                            if inasmblock then
+                              Message(asmw_e_brxx_out_of_range)
+                            else
+                              begin
+                                current_asmdata.getjumplabel(l);
+                                list.insertafter(tai_label.create(l),curtai);
+                                list.insertafter(taicpu.op_sym(A_JMP,taicpu(curtai).oper[0]^.ref^.symbol),curtai);
+                                taicpu(curtai).oper[0]^.ref^.symbol:=l;
+                                taicpu(curtai).condition:=inverse_cond(taicpu(curtai).condition);
+                                again:=true;
+                              end;
                           end;
                       A_JMP:
                         { replace JMP by RJMP? ...

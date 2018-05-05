@@ -28,7 +28,7 @@ interface
 
     uses
       globtype,
-      aasmbase,aasmdata,node,nflw,
+      aasmbase,aasmdata,nflw,
       pass_2,cgutils,ncgutil;
 
     type
@@ -125,11 +125,11 @@ implementation
 
     uses
       cutils,
-      verbose,globals,systems,constexp,
+      verbose,globals,systems,
       symconst,symdef,symsym,symtable,symtype,aasmtai,aasmcpu,defutil,
       procinfo,cgbase,parabase,
       fmodule,
-      cpubase,ncon,
+      cpubase,
       tgobj,paramgr,
       cgobj,hlcgobj,nutils
       ;
@@ -173,7 +173,6 @@ implementation
          oldclabel,oldblabel : tasmlabel;
          truelabel,falselabel : tasmlabel;
          oldflowcontrol : tflowcontrol;
-         oldexecutionweight : longint;
       begin
          location_reset(location,LOC_VOID,OS_NO);
 
@@ -205,10 +204,6 @@ implementation
          current_procinfo.CurrContinueLabel:=lcont;
          current_procinfo.CurrBreakLabel:=lbreak;
 
-         { calc register weight }
-         oldexecutionweight:=cg.executionweight;
-         cg.executionweight:=max(cg.executionweight,1)*8;
-
          if assigned(right) then
            secondpass(right);
 
@@ -230,7 +225,6 @@ implementation
          secondpass(left);
 
          hlcg.maketojumpboollabels(current_asmdata.CurrAsmList,left,truelabel,falselabel);
-         cg.executionweight:=oldexecutionweight;
          hlcg.a_label(current_asmdata.CurrAsmList,lbreak);
 
          sync_regvars(false);
@@ -251,7 +245,6 @@ implementation
       var
          hl : tasmlabel;
          oldflowcontrol: tflowcontrol;
-         oldexecutionweight : longint;
 (*
          org_regvar_loaded_other,
          then_regvar_loaded_other,
@@ -290,12 +283,6 @@ implementation
              org_regvar_loaded_other := rg.regvar_loaded_other;
            end;
 *)
-         { determines registers weigths }
-         oldexecutionweight:=cg.executionweight;
-         cg.executionweight:=cg.executionweight div 2;
-         if cg.executionweight<1 then
-           cg.executionweight:=1;
-
          if assigned(right) then
            begin
               hlcg.a_label(current_asmdata.CurrAsmList,left.location.truelabel);
@@ -402,8 +389,6 @@ implementation
              current_asmdata.CurrAsmList := org_list;
            end;
 *)
-
-         cg.executionweight:=oldexecutionweight;
 
          flowcontrol := oldflowcontrol + (flowcontrol - [fc_inflowcontrol]);
       end;
@@ -1114,7 +1099,6 @@ implementation
          oldContinueLabel,
          oldBreakLabel : tasmlabel;
          finallyexceptionstate: tcgexceptionstatehandler.texceptionstate;
-         prefinallyflowcontrol : tflowcontrol;
          excepttemps : tcgexceptionstatehandler.texceptiontemps;
          reasonreg : tregister;
       begin

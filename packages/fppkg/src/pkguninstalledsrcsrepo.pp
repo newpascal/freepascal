@@ -8,8 +8,8 @@ uses
   Classes,
   SysUtils,
   fpmkunit,
-  fpTemplate,
   pkgoptions,
+  pkgFppkg,
   pkgglobals,
   pkgmessages,
   fprepos,
@@ -22,6 +22,8 @@ type
   { TFppkgUninstalledSourceRepositoryOptionSection }
 
   TFppkgUninstalledSourceRepositoryOptionSection = class(TFppkgRepositoryOptionSection)
+  protected
+    class function GetKey: string; override;
   public
     function GetRepositoryType: TFPRepositoryType; override;
   end;
@@ -43,10 +45,13 @@ type
   TFppkgUninstalledRepositoryOptionSection = class(TFppkgRepositoryOptionSection)
   private
     FSourceRepositoryName: string;
+  protected
+    class function GetKey: string; override;
   public
     procedure AddKeyValue(const AKey, AValue: string); override;
     procedure LogValues(ALogLevel: TLogLevel); override;
     function GetRepositoryType: TFPRepositoryType; override;
+    procedure SaveToStrings(AStrings: TStrings); override;
     property SourceRepositoryName: string read FSourceRepositoryName write FSourceRepositoryName;
   end;
 
@@ -55,6 +60,7 @@ type
   TFPUninstalledSourcesPackagesStructure = class(TFPCustomFileSystemPackagesStructure)
   private
     FSourceRepositoryName: string;
+    FLinkedRepositoryName: string;
   public
     class function GetRepositoryOptionSectionClass: TFppkgRepositoryOptionSectionClass; override;
     procedure InitializeWithOptions(ARepoOptionSection: TFppkgRepositoryOptionSection; AnOptions: TFppkgOptions; ACompilerOptions: TCompilerOptions); override;
@@ -70,11 +76,11 @@ type
 implementation
 
 const
-  KeyScanForUnits      = 'ScanForUnits';
-  KeyUnitPath          = 'UnitPath';
   KeySourceRepository  = 'SourceRepository';
-
   SLogSourceRepository = '  SourceRepository:%s';
+  KeySrcRepositorySection = 'UninstalledSourceRepository';
+  KeyUninstalledRepository = 'UninstalledRepository';
+  KeyRepositorySection = 'Repository';
 
 { TFPUninstalledSourcesPackagesStructure }
 
@@ -93,30 +99,16 @@ begin
   RepoOptionSection := ARepoOptionSection as TFppkgUninstalledRepositoryOptionSection;
   path := RepoOptionSection.Path;
   SourceRepositoryName := RepoOptionSection.SourceRepositoryName;
+  FLinkedRepositoryName := RepoOptionSection.RepositoryName;
 end;
 
 function TFPUninstalledSourcesPackagesStructure.AddPackagesToRepository(ARepository: TFPRepository): Boolean;
-
-  procedure LoadPackagefpcFromFile(APackage:TFPPackage;const AFileName: String);
-  Var
-    L : TStrings;
-    V : String;
-  begin
-    L:=TStringList.Create;
-    Try
-      ReadIniFile(AFileName,L);
-      V:=L.Values['version'];
-      APackage.Version.AsString:=V;
-    Finally
-      L.Free;
-    end;
-  end;
 
 var
   SRD : TSearchRec;
   SRF : TSearchRec;
   P  : TFPPackage;
-  UF,UD : String;
+  UD : String;
 begin
   Result:=false;
   log(llDebug,SLogFindInstalledPackages,[Path]);
@@ -129,25 +121,21 @@ begin
           if FindFirst(UD+'*'+FpmkExt,faAnyFile,SRF)=0 then
             begin
               repeat
-                UF := UD+SRF.Name;
-                P:=ARepository.AddPackage(ChangeFileExt(SRF.Name,''));
-                P.LoadUnitConfigFromFile(UF);
-                P.PackagesStructure:=Self;
-                if P.IsFPMakeAddIn then
-                  AddFPMakeAddIn(P);
+                AddPackageToRepository(ARepository, ChangeFileExt(SRF.Name,''), UD+SRF.Name);
               until FindNext(SRF)<>0;
             end;
           FindClose(SRF);
       until FindNext(SRD)<>0;
     end;
-  FindClose(SRF);
+  FindClose(SRD);
 
   Result:=true;
 end;
 
 function TFPUninstalledSourcesPackagesStructure.IsInstallationNeeded(APackage: TFPPackage): TFPInstallationNeeded;
 begin
-  if APackage.Repository.RepositoryName=SourceRepositoryName then
+  if (APackage.Repository.RepositoryName=SourceRepositoryName) or
+    (Assigned(APackage.Repository.DefaultPackagesStructure) and (APackage.Repository.DefaultPackagesStructure.InstallRepositoryName=FLinkedRepositoryName)) then
     Result := fpinNoInstallationNeeded
   else
     Result := fpinInstallationImpossible;
@@ -165,10 +153,15 @@ begin
   else
     Result := IncludeTrailingPathDelimiter(GetBaseInstallDir)+APackage.Name+PathDelim;
 
-  Result := Result +APackage.Name+'-'+GFPpkg.CompilerOptions.CompilerTarget+FpmkExt;
+  Result := Result +APackage.Name+'-'+FCompilerOptions.CompilerTarget+FpmkExt;
 end;
 
 { TFppkgUninstalledRepositoryOptionSection }
+
+class function TFppkgUninstalledRepositoryOptionSection.GetKey: string;
+begin
+  Result := KeyUninstalledRepository;
+end;
 
 procedure TFppkgUninstalledRepositoryOptionSection.AddKeyValue(const AKey, AValue: string);
 begin
@@ -189,7 +182,19 @@ begin
   Result := fprtInstalled;
 end;
 
+procedure TFppkgUninstalledRepositoryOptionSection.SaveToStrings(AStrings: TStrings);
+begin
+  inherited SaveToStrings(AStrings);
+   if SourceRepositoryName<>'' then
+     AStrings.Add(KeySourceRepository+'='+SourceRepositoryName);
+end;
+
 { TFppkgUninstalledSourceRepositoryOptionSection }
+
+class function TFppkgUninstalledSourceRepositoryOptionSection.GetKey: string;
+begin
+  Result := KeySrcRepositorySection;
+end;
 
 function TFppkgUninstalledSourceRepositoryOptionSection.GetRepositoryType: TFPRepositoryType;
 begin
@@ -220,6 +225,7 @@ var
   TempPackagesStructure: TFPTemporaryDirectoryPackagesStructure;
   TempRepo: TFPRepository;
   PackageName: string;
+  PackageManager: TpkgFppkg;
 begin
   Result:=false;
 
@@ -231,8 +237,14 @@ begin
   TempRepo.RepositoryType := fprtAvailable;
   TempRepo.DefaultPackagesStructure := TempPackagesStructure;
   TempPackagesStructure.AddPackagesToRepository(TempRepo);
-  GFPpkg.RepositoryList.Add(TempRepo);
 
+  if Owner is TPkgFppkg then
+    PackageManager := TPkgfppkg(owner)
+  else
+    PackageManager := GFPpkg;
+
+  if Assigned(PackageManager) then
+    PackageManager.RepositoryList.Add(TempRepo);
   try
     log(llDebug,SLogFindInstalledPackages,[Path]);
     if FindFirst(Path+AllFiles,faDirectory,SR)=0 then
@@ -247,18 +259,25 @@ begin
                   if not FileExists(AManifestFile) or (FileAge(AManifestFile) < FileAge(AFPMakeFile)) then
                     begin
                       // (Re-)create manifest
-                      try
-                        TempPackagesStructure.SetTempPath(Path+SR.Name);
-                        PackageName :=  SR.Name + '_create_manifest';
-                        TempPackagesStructure.TempPackageName := PackageName;
-                        pkghandler.ExecuteAction(PackageName,'fpmakemanifest',GFPpkg);
-                      except
-                        on E: Exception do
-                          begin
-                            log(llWarning, SLogFailedToCreateManifest ,[AFPMakeFile, E.Message]);
-                            Continue;
+                      if assigned(PackageManager) then
+                        begin
+                          try
+                            TempPackagesStructure.SetTempPath(Path+SR.Name);
+                            PackageName :=  SR.Name + '_create_manifest';
+                            TempPackagesStructure.TempPackageName := PackageName;
+                            pkghandler.ExecuteAction(PackageName,'fpmakemanifest',PackageManager);
+                          except
+                            on E: Exception do
+                              begin
+                              log(llWarning, SLogFailedToCreateManifest ,[AFPMakeFile, E.Message]);
+                                Continue;
+                              end;
                           end;
-                      end;
+                        end
+                      else
+                        begin
+                          log(llError, SLogFailedToCreateManifest ,[AFPMakeFile, 'No packagemanager available']);
+                        end;
                     end;
                   ARepository.AddPackagesFromManifestFile(AManifestFile);
                   for i := 0 to ARepository.PackageCount -1 do
@@ -270,7 +289,8 @@ begin
       end;
     FindClose(SR);
   finally
-    GFPpkg.RepositoryList.Remove(TempRepo);
+    if Assigned(PackageManager) then
+      PackageManager.RepositoryList.Remove(TempRepo);
     TempRepo.Free;
     TempPackagesStructure.Free;
   end;
@@ -290,5 +310,6 @@ end;
 
 initialization
   TFPCustomPackagesStructure.RegisterPackagesStructureClass(TFPUninstalledSourcesAvailablePackagesStructure);
+  TFPCustomPackagesStructure.RegisterPackagesStructureClass(TFPUninstalledSourcesPackagesStructure);
 end.
 

@@ -350,6 +350,18 @@ begin
 {$include libcurl/fpmake.pp}
 end;
 
+procedure add_libcups(const ADirectory: string);
+begin
+  with Installer do
+{$include libcups/fpmake.pp}
+end;
+
+procedure add_libffi(const ADirectory: string);
+begin
+  with Installer do
+{$include libffi/fpmake.pp}
+end;
+
 procedure add_libgbafpc(const ADirectory: string);
 begin
   with Installer do
@@ -390,6 +402,12 @@ procedure add_libsee(const ADirectory: string);
 begin
   with Installer do
 {$include libsee/fpmake.pp}
+end;
+
+procedure add_libusb(const ADirectory: string);
+begin
+  with Installer do
+{$include libusb/fpmake.pp}
 end;
 
 procedure add_libtar(const ADirectory: string);
@@ -746,3 +764,29 @@ begin
 end;
 
 {$include odata/fpmake.pp}
+
+procedure add_pastojs(const ADirectory: string);
+begin
+  with Installer do
+{$include pastojs/fpmake.pp}
+end;
+
+procedure add_libgc(const ADirectory: string);
+begin
+  with Installer do
+{$include libgc/fpmake.pp}
+end;
+
+procedure add_libfontconfig(const ADirectory: string);
+begin
+  with Installer do
+{$include libfontconfig/fpmake.pp}
+end;
+
+procedure add_fcl_report(const ADirectory: string);
+begin
+  with Installer do
+{$include fcl-report/fpmake.pp}
+end;
+
+{$include ide/fpmake.pp}

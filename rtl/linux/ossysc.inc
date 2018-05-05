@@ -68,7 +68,6 @@ begin
   result:=do_syscall(syscall_nr_lseek,tsysparam(fd),tsysparam(offset),tsysparam(whence));
 {$else}
   if do_syscall(syscall_nr__llseek,tsysparam(fd),
-//      {$ifdef FPC_ABI_EABI}      0,  { align parameters as required with dummy } {$endif FPC_ABI_EABI}
       tsysparam(hi(offset)),tsysparam(lo(offset)),
       tsysparam(@result), tsysparam(whence)) = -1 then
     result:=off_t(-1);
@@ -86,19 +85,7 @@ function Fpwrite(fd: cint;buf:pchar; nbytes : size_t): ssize_t; [public, alias :
 begin
  Fpwrite:=do_syscall(syscall_nr_write,Fd,TSysParam(buf),nbytes);
 end;
-{
-function Fppread(fd: cint; buf: pchar; nbytes : size_t; offset:Toff): ssize_t; [public, alias : 'FPC_SYSC_PREAD'];
-   !! check 64 bit off_t sycall
-begin
-  Fpread:=do_syscall(syscall_nr_pread,Fd,TSysParam(buf),nbytes,offset);
-end;
 
-function Fppwrite(fd: cint;buf:pchar; nbytes : size_t; offset:Toff): ssize_t; [public, alias : 'FPC_SYSC_PWRITE'];
-   !! check 64 bit off_t sycall
-begin
- Fpwrite:=do_syscall(syscall_nr_pwrite,Fd,TSysParam(buf),nbytes,offset);
-end;
-}
 function Fpunlink(path: pchar): cint; [public, alias : 'FPC_SYSC_UNLINK'];
 
 begin
@@ -122,7 +109,8 @@ end;
 function Fpstat(path: pchar; var buf: stat):cint; [public, alias : 'FPC_SYSC_STAT'];
 
 begin
-{$if defined(cpu64)}
+{ standard stat call is 32 bit on sparc64, so explicitly force a stat64 call }
+{$if defined(cpu64) and not(defined(cpusparc64))}
   {$if defined(generic_linux_syscalls)}
     Fpstat:=do_syscall(syscall_nr_fstatat,AT_FDCWD,TSysParam(path),TSysParam(@buf),0);
   {$else}
@@ -249,20 +237,26 @@ end;
 }
 
 
-{$ifdef cpusparc}
+{$if defined(cpusparc) or defined(cpusparc64)}
 procedure Fprt_sigreturn_stub;assembler;nostackframe;
 asm
   mov syscall_nr_rt_sigreturn,%g1
+  {$ifdef cpusparc}
   ta  0x10
+  {$else}
+  ta 0x6d
+  {$endif}
 end;
-{$endif cpusparc}
+{$endif cpusparc or cpusparc64}
 
+{$ifndef android}
 {$if defined(cpui386) or defined(cpuarm) or defined(cpux86_64)}
   {$define NEED_USER_TRAMPOLINE}
 {$endif}
 {$if defined(cpui386) or defined(cpuarm)}
   {$define NEED_USER_TRAMPOLINE_RT_DIFFERENT}
 {$endif}
+{$endif android}
 
 {$ifdef NEED_USER_TRAMPOLINE}
 
@@ -335,7 +329,7 @@ function Fpsigaction(sig: cint; new_action, old_action: psigactionrec): cint; [p
   If OldAct is non-nil the previous action is saved there.
 }
 begin
-{$ifdef cpusparc}
+{$if defined(cpusparc) or defined(cpusparc64)}
   { Sparc has an extra stub parameter }
   Fpsigaction:=do_syscall(syscall_nr_rt_sigaction,TSysParam(sig),TSysParam(new_action),TSysParam(old_action),TSysParam(ptruint(@Fprt_sigreturn_stub)-8),TSysParam(8));
 {$else cpusparc}
@@ -366,6 +360,11 @@ begin
 {$endif cpusparc}
 end;
 
+{ this is used by the FpFtruncate below. for more information,
+  check the syscall() Linux man page (KB) }
+{$if defined(FPC_ABI_EABI) or defined(CPUMIPS32) or defined(CPUMIPSEL32) or defined(CPUPOWERPC32)}
+{$define FPC_ALIGN_DUMMY}
+{$endif}
 
 function Fpftruncate(fd : cint; flength : off_t): cint; [public, alias : 'FPC_SYSC_FTRUNCATE'];
 { See notes lseek. This one is completely similar for the parameter (but
@@ -376,17 +375,19 @@ begin
  Fpftruncate:=Do_syscall(syscall_nr_ftruncate,TSysParam(fd),TSysParam(flength));
 {$else}
  Fpftruncate:=Do_syscall(syscall_nr_ftruncate64,TSysParam(fd),
-   {$ifdef FPC_ABI_EABI}      0,  { align parameters as required with dummy } {$endif FPC_ABI_EABI}
+   {$ifdef FPC_ALIGN_DUMMY}   0,  {$endif FPC_ALIGN_DUMMY} { align parameters as required with dummy }
    {$ifdef FPC_BIG_ENDIAN}    tsysparam(hi(flength)),tsysparam(lo(flength)){$endif}
    {$ifdef FPC_LITTLE_ENDIAN} tsysparam(lo(flength)),tsysparam(hi(flength)){$endif}
    );
 {$endif}
 end;
 
+{$undef FPC_ALIGN_DUMMY}
+
 function Fpfstat(fd : cint; var sb : stat): cint;  [public, alias : 'FPC_SYSC_FSTAT'];
 
 begin
-{$if defined(cpu64)}
+{$if defined(cpu64) and not(defined(cpusparc64))}
   {$if defined(generic_linux_syscalls)}
     FpFStat:=do_SysCall(syscall_nr_fstat,TSysParam(fd),TSysParam(@sb));
   {$else}

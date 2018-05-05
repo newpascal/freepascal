@@ -55,10 +55,10 @@ Unit racpugas;
       globtype,verbose,
       systems,aasmbase,aasmtai,aasmdata,aasmcpu,
       { symtable }
-      symconst,symsym,
+      symconst,symsym,symdef,
       procinfo,
       rabase,rautils,
-      cgbase,cgutils;
+      cgbase,cgutils,paramgr;
 
 
     function taarch64attreader.is_register(const s:string):boolean;
@@ -607,10 +607,8 @@ Unit racpugas;
                   { don't allow direct access to fields of parameters, because that
                     will generate buggy code. Allow it only for explicit typecasting }
                   if hasdot and
-                     (not oper.hastype) and
-                     (tabstractnormalvarsym(oper.opr.localsym).owner.symtabletype=parasymtable) and
-                     (current_procinfo.procdef.proccalloption<>pocall_register) then
-                    Message(asmr_e_cannot_access_field_directly_for_parameters);
+                     (not oper.hastype) then
+                    checklocalsubscript(oper.opr.localsym);
                   inc(oper.opr.localsymofs,l)
                 end;
               OPR_CONSTANT :

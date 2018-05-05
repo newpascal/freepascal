@@ -45,6 +45,16 @@ type
     procedure TestPrimitiveIntegerOctal;
     procedure TestPrimitiveIntegerBinary;
     procedure TestPrimitiveDouble;
+    procedure TestPrimitiveDouble2;
+    procedure TestPrimitiveDouble3;
+    procedure TestPrimitiveDouble4;
+    procedure TestPrimitiveDouble5;
+    procedure TestPrimitiveDouble6;
+    procedure TestPrimitiveDouble7;
+    procedure TestPrimitiveDouble8;
+    procedure TestPrimitiveDouble9;
+    procedure TestPrimitiveDouble10;
+    procedure TestPrimitiveDouble11;
     procedure TestPrimitiveString;
     procedure TestPrimitiveIdent;
     procedure TestPrimitiveBooleanFalse;
@@ -93,6 +103,7 @@ type
     Procedure TestFunctionCall;
     Procedure TestFunctionCall2args;
     Procedure TestFunctionCallNoArgs;
+    Procedure ParseStrWithFormatFullyQualified;
     Procedure TestRange;
     Procedure TestBracketsTotal;
     Procedure TestBracketsLeft;
@@ -124,6 +135,13 @@ type
     Procedure TestTypeCast;
     procedure TestTypeCast2;
     Procedure TestCreate;
+    procedure TestChainedPointers;
+    procedure TestChainedPointers2;
+    procedure TestChainedPointers3;
+    Procedure TestNilCaret;
+    Procedure TestExpCaret;
+    Procedure TestArrayAccess;
+    Procedure TestHelperOnLiteral;
   end;
 
 implementation
@@ -162,6 +180,66 @@ procedure TTestExpressions.TestPrimitiveDouble;
 begin
   ParseExpression('1.2');
   AssertExpression('Simple double',theExpr,pekNumber,'1.2');
+end;
+
+procedure TTestExpressions.TestPrimitiveDouble2;
+begin
+  ParseExpression('1.200');
+  AssertExpression('Simple double',theExpr,pekNumber,'1.200');
+end;
+
+procedure TTestExpressions.TestPrimitiveDouble3;
+begin
+  ParseExpression('01.2');
+  AssertExpression('Simple double',theExpr,pekNumber,'01.2');
+end;
+
+procedure TTestExpressions.TestPrimitiveDouble4;
+begin
+  ParseExpression('1.2e10');
+  AssertExpression('Simple double',theExpr,pekNumber,'1.2e10');
+end;
+
+procedure TTestExpressions.TestPrimitiveDouble5;
+begin
+  ParseExpression('1.2e-10');
+  AssertExpression('Simple double',theExpr,pekNumber,'1.2e-10');
+end;
+
+procedure TTestExpressions.TestPrimitiveDouble6;
+begin
+  ParseExpression('12e10');
+  AssertExpression('Simple double',theExpr,pekNumber,'12e10');
+end;
+
+procedure TTestExpressions.TestPrimitiveDouble7;
+begin
+  ParseExpression('12e-10');
+  AssertExpression('Simple double',theExpr,pekNumber,'12e-10');
+end;
+
+procedure TTestExpressions.TestPrimitiveDouble8;
+begin
+  ParseExpression('8.5');
+  AssertExpression('Simple double',theExpr,pekNumber,'8.5');
+end;
+
+procedure TTestExpressions.TestPrimitiveDouble9;
+begin
+  ParseExpression('8.E5');
+  AssertExpression('Simple double',theExpr,pekNumber,'8.E5');
+end;
+
+procedure TTestExpressions.TestPrimitiveDouble10;
+begin
+  ParseExpression('8.E-5');
+  AssertExpression('Simple double',theExpr,pekNumber,'8.E-5');
+end;
+
+procedure TTestExpressions.TestPrimitiveDouble11;
+begin
+  ParseExpression('8E+5');
+  AssertExpression('Simple double',theExpr,pekNumber,'8E+5');
 end;
 
 procedure TTestExpressions.TestPrimitiveString;
@@ -508,6 +586,91 @@ procedure TTestExpressions.TestCreate;
 begin
   DeclareVar('ESDOSerializationException');
   ParseExpression('ESDOSerializationException.CreateFmt(SERR_InvalidDataTypeInContext,[IntToStr(Ord(AOwner^.DataType))])');
+end;
+
+procedure TTestExpressions.TestChainedPointers;
+begin
+  // From bug report 31719
+  Source.Add('type');
+  Source.Add('    PTResourceManager=^TResourceManager;');
+  Source.Add('    TResourceManager=object');
+  Source.Add('      function LoadResourceFromFile(filename:string):PTResourceManager;');
+  Source.Add('    end;');
+  Source.Add('    function TResourceManager.LoadResourceFromFile(filename:string):PTResourceManager;');
+  Source.Add('    begin');
+  Source.Add('      result:=@self;');
+  Source.Add('    end;');
+  Source.Add('');
+  Source.Add('  var');
+  Source.Add('    ResourceManager:TResourceManager;');
+  Source.Add('');
+  Source.Add('  begin');
+  Source.Add('    ResourceManager.LoadResourceFromFile(''file1'')');
+  Source.Add('                  ^.LoadResourceFromFile(''file2'');');
+  Source.Add('  end.');
+  ParseModule;
+end;
+
+procedure TTestExpressions.TestChainedPointers2;
+begin
+  Source.Add('program afile;');
+  Source.Add('procedure test;');
+  Source.Add('begin');
+  Source.Add('ResourcePool.Shared^.Register(TypeOf(tTexture), @LoadTexture)^.Tag(GLResourceTag)');
+  Source.Add(' ^.Register(TypeOf(tShader), @LoadShader)^.Tag(GLResourceTag)//space - works');
+  Source.Add('^.Register(TypeOf(ShaderProgram), @LoadShaderProgram)^.Tag(GLResourceTag);//without space - does not work');
+  Source.Add('end;');
+  Source.Add('begin');
+  Source.Add('end.');
+  ParseModule;
+end;
+
+procedure TTestExpressions.TestChainedPointers3;
+begin
+  Source.Add('program afile;');
+  Source.Add('procedure test;');
+  Source.Add('begin');
+  Source.Add('ResourcePool.Shared^.Register(TypeOf(tTexture), @LoadTexture)^.Tag(GLResourceTag)');
+  Source.Add(' ^.Register(TypeOf(tShader), @LoadShader)^.Tag(GLResourceTag)//space - works');
+  Source.Add(#9'^.Register(TypeOf(ShaderProgram), @LoadShaderProgram)^.Tag(GLResourceTag);// tab - does not work');
+  Source.Add('end;');
+  Source.Add('begin');
+  Source.Add('end.');
+  ParseModule;
+end;
+
+procedure TTestExpressions.TestNilCaret;
+begin
+  Source.Add('{$mode objfpc}');
+  Source.Add('begin');
+  Source.Add('FillChar(nil^,10,10);');
+  Source.Add('end.');
+  ParseModule;
+end;
+
+procedure TTestExpressions.TestExpCaret;
+begin
+  Source.Add('{$mode objfpc}');
+  Source.Add('begin');
+  Source.Add('A:=B^;');
+  Source.Add('end.');
+  ParseModule;
+end;
+
+procedure TTestExpressions.TestArrayAccess;
+begin
+  Source.Add('begin');
+  Source.Add('DoSomething((pb + 10)[4]);');
+  Source.Add('end.');
+  ParseModule;
+end;
+
+procedure TTestExpressions.TestHelperOnLiteral;
+begin
+  Source.Add('begin');
+  Source.Add('writeln(''10''.toint);');
+  Source.Add('end.');
+  ParseModule;
 end;
 
 
@@ -959,6 +1122,24 @@ begin
   AssertEquals(Msg+' opcode OK',Op,Result.OpCode);
   AOperand:=Result.Operand;
   AssertNotNull('Have left',AOperand);
+end;
+
+Procedure TTestExpressions.ParseStrWithFormatFullyQualified;
+
+Var
+  P : TParamsExpr;
+  B : TBinaryExpr;
+
+begin
+  DeclareVar('string','a');
+  DeclareVar('integer','i');
+  ParseExpression('system.str(i:0:3,a)');
+  B:=TBinaryExpr(AssertExpression('Binary identifier',theExpr,pekBinary,TBinaryExpr));
+  P:=TParamsExpr(AssertExpression('Simple identifier',B.Right,pekFuncParams,TParamsExpr));
+  AssertExpression('Name of function',P.Value,pekIdent,'str');
+  AssertEquals('2 argument',2,Length(p.params));
+  AssertExpression('Simple identifier',p.params[0],pekIdent,'i');
+  AssertExpression('Simple identifier',p.params[1],pekIdent,'a');
 end;
 
 initialization

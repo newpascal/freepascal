@@ -54,7 +54,7 @@ interface
          [m_delphi,m_class,m_objpas,m_result,m_string_pchar,
           m_pointer_2_procedure,m_autoderef,m_tp_procvar,m_initfinal,m_default_ansistring,
           m_out,m_default_para,m_duplicate_names,m_hintdirective,
-          m_property,m_default_inline,m_except,m_advanced_records,m_type_helpers];
+          m_property,m_default_inline,m_except,m_advanced_records];
        delphiunicodemodeswitches = delphimodeswitches + [m_systemcodepage,m_default_unicodestring];
        fpcmodeswitches =
          [m_fpc,m_string_pchar,m_nested_comment,m_repeat_forward,
@@ -220,6 +220,8 @@ interface
         nextverbosityfullswitch: longint;
         nextcallingstr : shortstring;
         nextmessagerecord : pmessagestaterecord;
+        nextalignment : talignmentinfo;
+        alignmentchanged,
         verbosityfullswitched,
         localswitcheschanged : boolean;
       end;
@@ -278,6 +280,8 @@ interface
        includesearchpath,
        frameworksearchpath  : TSearchPathList;
        packagesearchpath     : TSearchPathList;
+       { list of default namespaces }
+       namespacelist : TCmdStrList;
        { contains tpackageentry entries }
        packagelist : TFPHashList;
        autoloadunits      : string;
@@ -287,6 +291,9 @@ interface
        description   : string;
        SetPEFlagsSetExplicity,
        SetPEOptFlagsSetExplicity,
+       SetPEOSVersionSetExplicitely,
+       SetPESubSysVersionSetExplicitely,
+       SetPEUserVersionSetExplicitely,
        ImageBaseSetExplicity,
        MinStackSizeSetExplicity,
        MaxStackSizeSetExplicity,
@@ -296,6 +303,12 @@ interface
        dllminor,
        dllrevision   : word;  { revision only for netware }
        { win pe  }
+       peosversionminor,
+       peosversionmajor,
+       pesubsysversionminor,
+       pesubsysversionmajor,
+       peuserversionminor,
+       peuserversionmajor : word;
        peoptflags,
        peflags : longint;
        minstacksize,
@@ -449,6 +462,12 @@ interface
         asmcputype : cpu_none;
         fputype : fpu_hard;
   {$endif sparc}
+  {$ifdef sparc64}
+        cputype : cpu_SPARC_V9;
+        optimizecputype : cpu_SPARC_V9;
+        asmcputype : cpu_none;
+        fputype : fpu_hard;
+  {$endif sparc64}
   {$ifdef arm}
         cputype : cpu_armv4;
         optimizecputype : cpu_armv4;
@@ -514,7 +533,7 @@ interface
         instructionset : is_arm;
 {$endif defined(ARM)}
 {$if defined(LLVM) and not defined(GENERIC_CPU)}
-        llvmversion    : llvmver_3_6_0;
+        llvmversion    : llvmver_3_9_0;
 {$endif defined(LLVM) and not defined(GENERIC_CPU)}
         controllertype : ct_none;
         pmessage : nil;
@@ -522,10 +541,12 @@ interface
 
     var
       starttime  : real;
+      startsystime : TSystemTime;
 
     function getdatestr:string;
     function gettimestr:string;
     function filetimestring( t : longint) : string;
+    function getrealtime(const st: TSystemTime) : real;
     function getrealtime : real;
 
     procedure DefaultReplacements(var s:ansistring);
@@ -574,14 +595,13 @@ interface
 
 implementation
 
+{$if defined(macos)}
     uses
-{$ifdef macos}
-      macutils,
+      macutils;
+{$elseif defined(mswindows)}
+    uses
+      windirs;
 {$endif}
-{$ifdef mswindows}
-      windirs,
-{$endif}
-      comphook;
 
 {****************************************************************************
                                  TLinkStrMap
@@ -809,13 +829,17 @@ implementation
        Result := L0(Year)+'/'+L0(Month)+'/'+L0(Day)+' '+L0(Hour)+':'+L0(min)+':'+L0(sec);
      end;
 
+   function getrealtime(const st: TSystemTime) : real;
+     begin
+       result := st.Hour*3600.0 + st.Minute*60.0 + st.Second + st.MilliSecond/1000.0;
+     end;
 
    function getrealtime : real;
      var
        st:TSystemTime;
      begin
        GetLocalTime(st);
-       result:=st.Hour*3600.0+st.Minute*60.0+st.Second+st.MilliSecond/1000.0;
+       result:=getrealtime(st);
      end;
 
 {****************************************************************************
@@ -1096,7 +1120,8 @@ implementation
          'SYSV_ABI_DEFAULT',
          'SYSV_ABI_CDECL',
          'MS_ABI_DEFAULT',
-         'MS_ABI_CDECL'
+         'MS_ABI_CDECL',
+         'VECTORCALL'
         );
       var
         t  : tproccalloption;
@@ -1469,6 +1494,7 @@ implementation
        LinkLibraryAliases.Free;
        LinkLibraryOrder.Free;
        packagesearchpath.Free;
+       namespacelist.Free;
      end;
 
    procedure InitGlobals;
@@ -1505,6 +1531,7 @@ implementation
         objectsearchpath:=TSearchPathList.Create;
         frameworksearchpath:=TSearchPathList.Create;
         packagesearchpath:=TSearchPathList.Create;
+        namespacelist:=TCmdStrList.Create;
 
         { Def file }
         usewindowapi:=false;
@@ -1512,6 +1539,9 @@ implementation
         DescriptionSetExplicity:=false;
         SetPEFlagsSetExplicity:=false;
         SetPEOptFlagsSetExplicity:=false;
+        SetPEOSVersionSetExplicitely:=false;
+        SetPESubSysVersionSetExplicitely:=false;
+        SetPEUserVersionSetExplicitely:=false;
         ImageBaseSetExplicity:=false;
         MinStackSizeSetExplicity:=false;
         MaxStackSizeSetExplicity:=false;

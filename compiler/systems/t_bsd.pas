@@ -34,7 +34,7 @@ implementation
     sysutils,
     cutils,cfileutl,cclasses,
     verbose,systems,globtype,globals,
-    symconst,script,
+    symconst,cscript,
     fmodule,aasmbase,aasmtai,aasmdata,aasmcpu,cpubase,symsym,symdef,
     import,export,link,comprsrc,rescmn,i_bsd,expunix,
     cgutils,cgbase,cgobj,cpuinfo,ogbase;
@@ -147,7 +147,7 @@ begin
        begin
          if not(target_info.system in systems_darwin) then
            begin
-             ExeCmd[1]:='ld $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -L. -o $EXE $CATRES $FILELIST ';
+             ExeCmd[1]:='ld $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -L. -o $EXE $CATRES $FILELIST';
              DllCmd[1]:='ld $TARGET $EMUL $OPT -shared -L. -o $EXE $CATRES $FILELIST'
            end
          else
@@ -589,22 +589,24 @@ begin
          else if librarysearchpath.FindFile('crtbegin.o',false,s) then
              LinkRes.AddFileName(s);
    end;
+
   { main objectfiles }
 
   { Generate linkfiles.res file if needed }
-  { Always needed on Windows, due to the limitation of 8196 characters for command line }
-  { linkfiles.res will be piped if possible }
-  if LdSupportsNoResponseFile then
+  { Only needed on Windows, due to the limitation of 8196 characters for command line }
+  if (LdSupportsNoResponseFile) and
+     (source_info.system in systems_all_windows) then
    begin
-     FilesList:=TLinkRes.Create(outputexedir+'linkfiles.res',not LdSupportsNoResponseFile);
-  while not ObjectFiles.Empty do
-   begin
-     s:=ObjectFiles.GetFirst;
-     if s<>'' then
+     FilesList:=TLinkRes.Create(outputexedir+'linkfiles.res',false);
+     while not ObjectFiles.Empty do
+      begin
+        s:=ObjectFiles.GetFirst;
+        if s<>'' then
          begin
            repeat
-            i:=Pos(source_info.dirsep,s);
-            if i>0 then s[i]:=target_info.dirsep;
+             i:=Pos(source_info.dirsep,s);
+             if i>0 then 
+               s[i]:=target_info.dirsep;
            until i=0;
            FilesList.Add(s);
          end;
@@ -612,13 +614,17 @@ begin
      FilesList.writetodisk;
      FilesList.Free;
    end
-      else
+  else
    begin
      while not ObjectFiles.Empty do
       begin
         s:=ObjectFiles.GetFirst;
-        if s<>'' then LinkRes.AddFileName(maybequoted(s));
-   end;
+        if s<>'' then
+          if LdSupportsNoResponseFile then
+            LinkRes.AddFileName(s)
+          else
+            LinkRes.AddFileName(maybequoted(s));
+      end;
    end;
 
   if not LdSupportsNoResponseFile then
@@ -790,12 +796,16 @@ begin
     else
      DynLinKStr:=DynLinkStr+' -dynamic'; // one dash!
    end;
-   
+
 { Use -nopie on OpenBSD }
   if (target_info.system in systems_openbsd) and
      (target_info.system <> system_x86_64_openbsd) then
     Info.ExtraOptions:=Info.ExtraOptions+' -nopie';
-    
+
+{ -N seems to be needed on NetBSD/earm }
+  if (target_info.system in [system_arm_netbsd]) then
+    Info.ExtraOptions:=Info.ExtraOptions+' -N';
+
 { Write used files and libraries }
   WriteResponseFile(false);
 
@@ -807,9 +817,10 @@ begin
   Replace(cmdstr,'$EMUL',EmulStr);
   Replace(cmdstr,'$CATRES',CatFileContent(outputexedir+Info.ResName));
   Replace(cmdstr,'$RES',maybequoted(outputexedir+Info.ResName));
-  if LdSupportsNoResponseFile
-     then Replace(cmdstr,'$FILELIST','-filelist '+maybequoted(outputexedir+'linkfiles.res'))
-     else Replace(cmdstr,'$FILELIST','');
+  if (LdSupportsNoResponseFile) and (source_info.system in systems_all_windows) then
+    Replace(cmdstr,'$FILELIST','-filelist '+maybequoted(outputexedir+'linkfiles.res'))
+  else
+    Replace(cmdstr,'$FILELIST','');
   Replace(cmdstr,'$STATIC',StaticStr);
   Replace(cmdstr,'$STRIP',StripStr);
   Replace(cmdstr,'$GCSECTIONS',GCSectionsStr);
@@ -866,7 +877,8 @@ begin
    end;
 
   { Remove linkfiles.res }
-  if (success) and (LdSupportsNoResponseFile) then DeleteFile(outputexedir+'linkfiles.res');
+  if (success) and (LdSupportsNoResponseFile) and (source_info.system in systems_all_windows) then
+    DeleteFile(outputexedir+'linkfiles.res');
 
   MakeExecutable:=success;   { otherwise a recursive call to link method }
 end;
@@ -934,9 +946,10 @@ begin
   Replace(cmdstr,'$TARGET',targetstr);
   Replace(cmdstr,'$EMUL',EmulStr);
   Replace(cmdstr,'$CATRES',CatFileContent(outputexedir+Info.ResName));
-  if LdSupportsNoResponseFile
-     then Replace(cmdstr,'$FILELIST','-filelist '+maybequoted(outputexedir+'linkfiles.res'))
-     else Replace(cmdstr,'$FILELIST','');
+  if (LdSupportsNoResponseFile) and (source_info.system in systems_all_windows) then
+    Replace(cmdstr,'$FILELIST','-filelist '+maybequoted(outputexedir+'linkfiles.res'))
+  else
+    Replace(cmdstr,'$FILELIST','');
   Replace(cmdstr,'$RES',maybequoted(outputexedir+Info.ResName));
   Replace(cmdstr,'$INIT',InitStr);
   Replace(cmdstr,'$FINI',FiniStr);
@@ -1018,7 +1031,8 @@ begin
     end;
 
   { Remove linkfiles.res }
-  if (success) and (LdSupportsNoResponseFile) then DeleteFile(outputexedir+'linkfiles.res');
+  if (success) and (LdSupportsNoResponseFile) and (source_info.system in systems_all_windows) then
+    DeleteFile(outputexedir+'linkfiles.res');
 
   MakeSharedLibrary:=success;   { otherwise a recursive call to link method }
 end;
@@ -1091,6 +1105,10 @@ initialization
   RegisterImport(system_arm_darwin,timportlibdarwin);
   RegisterExport(system_arm_darwin,texportlibdarwin);
   RegisterTarget(system_arm_darwin_info);
+
+  RegisterImport(system_arm_netbsd,timportlibbsd);
+  RegisterExport(system_arm_netbsd,texportlibbsd);
+  RegisterTarget(system_arm_netbsd_info);
 {$endif arm}
 {$ifdef aarch64}
   RegisterImport(system_aarch64_darwin,timportlibdarwin);
