@@ -80,6 +80,8 @@ var
   ThreadQueueTail: TThread.PThreadQueueEntry;
   { used for serialized access to the queue }
   ThreadQueueLock: TRtlCriticalSection;
+  { usage counter for ThreadQueueLock }
+  ThreadQueueLockCounter : longint;
   { this list holds all instances of external threads that need to be freed at
     the end of the program }
   ExternalThreads: TThreadList;
@@ -91,7 +93,12 @@ var
     TThread.SpinWait() }
   SpinWaitDummy: LongWord;
 
+
+{$ifdef FPC_HAS_FEATURE_THREADING}
 threadvar
+{$else}
+var
+{$endif}
   { the instance of the current thread; in case of an external thread this is
     Nil until TThread.GetCurrentThread was called once (the RTLs need to ensure
     that threadvars are initialized with 0!) }
@@ -206,7 +213,9 @@ function ThreadProc(ThreadObjPtr: Pointer): PtrInt;
     Thread.DoTerminate;
     if FreeThread then
       Thread.Free;
+{$ifdef FPC_HAS_FEATURE_THREADING}
     EndThread(Result);
+{$endif}
   end;
 
 { system-dependent code }
@@ -217,8 +226,15 @@ constructor TThread.Create(CreateSuspended: Boolean;
                            const StackSize: SizeUInt);
 begin
   inherited Create;
+{$ifdef FPC_HAS_FEATURE_THREADING}
+    InterlockedIncrement(ThreadQueueLockCounter);
+{$endif}
   if FExternalThread then
+{$ifdef FPC_HAS_FEATURE_THREADING}
     FThreadID := GetCurrentThreadID
+{$else}
+    FThreadID := 0{GetCurrentThreadID}
+{$endif}
   else
     SysCreate(CreateSuspended, StackSize);
 end;
@@ -228,11 +244,17 @@ destructor TThread.Destroy;
 begin
   if not FExternalThread then begin
     SysDestroy;
+{$ifdef FPC_HAS_FEATURE_THREADING}
     if FHandle <> TThreadID(0) then
       CloseThread(FHandle);
+{$endif}
   end;
   RemoveQueuedEvents(Self);
   DoneSynchronizeEvent;
+{$ifdef FPC_HAS_FEATURE_THREADING}
+  if InterlockedDecrement(ThreadQueueLockCounter)=0 then
+    DoneCriticalSection(ThreadQueueLock);
+{$endif}
   { set CurrentThreadVar to Nil? }
   inherited Destroy;
 end;
@@ -276,13 +298,17 @@ begin
 end;
 
 
-procedure ThreadQueueAppend(aEntry: TThread.PThreadQueueEntry);
+procedure ThreadQueueAppend(aEntry: TThread.PThreadQueueEntry; aQueueIfMain: Boolean);
 begin
   { do we really need a synchronized call? }
-  if GetCurrentThreadID = MainThreadID then begin
+{$ifdef FPC_HAS_FEATURE_THREADING}
+  if (GetCurrentThreadID = MainThreadID) and (not aQueueIfMain or not IsMultiThread) then
+{$endif}
+  begin
     ExecuteThreadQueueEntry(aEntry);
     if not Assigned(aEntry^.SyncEvent) then
       Dispose(aEntry);
+{$ifdef FPC_HAS_FEATURE_THREADING}
   end else begin
     System.EnterCriticalSection(ThreadQueueLock);
     try
@@ -307,6 +333,7 @@ begin
       if Assigned(aEntry^.Exception) then
         raise aEntry^.Exception;
     end;
+{$endif def FPC_HAS_FEATURE_THREADING}
   end;
 end;
 
@@ -320,7 +347,11 @@ procedure TThread.InitSynchronizeEvent;
     FillChar(FSynchronizeEntry^, SizeOf(TThreadQueueEntry), 0);
     FSynchronizeEntry^.Thread := Self;
     FSynchronizeEntry^.ThreadID := ThreadID;
+{$ifdef FPC_HAS_FEATURE_THREADING}
     FSynchronizeEntry^.SyncEvent := RtlEventCreate;
+{$else}
+    FSynchronizeEntry^.SyncEvent := nil{RtlEventCreate};
+{$endif}
   end;
 
 
@@ -329,7 +360,9 @@ procedure TThread.DoneSynchronizeEvent;
     if not Assigned(FSynchronizeEntry) then
       Exit;
 
+{$ifdef FPC_HAS_FEATURE_THREADING}
     RtlEventDestroy(FSynchronizeEntry^.SyncEvent);
+{$endif}
     Dispose(FSynchronizeEntry);
     FSynchronizeEntry := Nil;
   end;
@@ -338,30 +371,49 @@ procedure TThread.DoneSynchronizeEvent;
 class procedure TThread.Synchronize(AThread: TThread; AMethod: TThreadMethod);
   var
     syncentry: PThreadQueueEntry;
+    thread: TThread;
   begin
-    if not Assigned(AThread) then begin
+{$ifdef FPC_HAS_FEATURE_THREADING}
+    if Assigned(AThread) and (AThread.ThreadID = GetCurrentThreadID) then
+{$else}
+    if Assigned(AThread) then
+{$endif}
+      thread := AThread
+    else if Assigned(CurrentThreadVar) then
+      thread := CurrentThreadVar
+    else begin
+      thread := Nil;
       { use a local synchronize event }
       New(syncentry);
       FillChar(syncentry^, SizeOf(TThreadQueueEntry), 0);
+{$ifdef FPC_HAS_FEATURE_THREADING}
       syncentry^.ThreadID := GetCurrentThreadID;
       syncentry^.SyncEvent := RtlEventCreate;
-    end else begin
-      { the Synchronize event is instantiated on demand }
-      AThread.InitSynchronizeEvent;
+{$else}
+      syncentry^.ThreadID := 0{GetCurrentThreadID};
+      syncentry^.SyncEvent := nil{RtlEventCreate};
+{$endif}
+    end;
 
-      syncentry := AThread.FSynchronizeEntry;
+    if Assigned(thread) then begin
+      { the Synchronize event is instantiated on demand }
+      thread.InitSynchronizeEvent;
+
+      syncentry := thread.FSynchronizeEntry;
     end;
 
     syncentry^.Exception := Nil;
     syncentry^.Method := AMethod;
-    ThreadQueueAppend(syncentry);
+    ThreadQueueAppend(syncentry, False);
 
     syncentry^.Method := Nil;
     syncentry^.Next := Nil;
 
-    if not Assigned(AThread) then begin
+    if not Assigned(thread) then begin
       { clean up again }
+{$ifdef FPC_HAS_FEATURE_THREADING}
       RtlEventDestroy(syncentry^.SyncEvent);
+{$endif}
       Dispose(syncentry);
     end;
   end;
@@ -378,16 +430,20 @@ begin
   Result:=ThreadQueueHead;
   if (Result<>Nil) then
     begin
+{$ifdef FPC_HAS_FEATURE_THREADING}
     System.EnterCriticalSection(ThreadQueueLock);
     try
+{$endif}
       Result:=ThreadQueueHead;
       if Result<>Nil then
         ThreadQueueHead:=ThreadQueueHead^.Next;
       if Not Assigned(ThreadQueueHead) then
         ThreadQueueTail := Nil;
+{$ifdef FPC_HAS_FEATURE_THREADING}
     finally
       System.LeaveCriticalSection(ThreadQueueLock);
     end;
+{$endif}
     end;
 end;
 
@@ -403,6 +459,7 @@ begin
   { first sanity check }
   if Not IsMultiThread then
     Exit
+{$ifdef FPC_HAS_FEATURE_THREADING}
   { second sanity check }
   else if GetCurrentThreadID<>MainThreadID then
     raise EThread.CreateFmt(SCheckSynchronizeError,[GetCurrentThreadID]);
@@ -436,7 +493,8 @@ begin
         raise exceptobj;
       end;
     tmpentry := PopThreadQueueHead;
-    end;
+    end
+{$endif};
 end;
 
 
@@ -465,19 +523,40 @@ end;
 
 
 class procedure TThread.Queue(aThread: TThread; aMethod: TThreadMethod); static;
+begin
+  InternalQueue(aThread, aMethod, False);
+end;
+
+
+class procedure TThread.InternalQueue(aThread: TThread; aMethod: TThreadMethod; aQueueIfMain: Boolean); static;
 var
   queueentry: PThreadQueueEntry;
 begin
   New(queueentry);
   FillChar(queueentry^, SizeOf(TThreadQueueEntry), 0);
   queueentry^.Thread := aThread;
+{$ifdef FPC_HAS_FEATURE_THREADING}
   queueentry^.ThreadID := GetCurrentThreadID;
+{$else}
+  queueentry^.ThreadID := 0{GetCurrentThreadID};
+{$endif}
   queueentry^.Method := aMethod;
 
   { the queueentry is freed by CheckSynchronize (or by RemoveQueuedEvents) }
-  ThreadQueueAppend(queueentry);
+  ThreadQueueAppend(queueentry, aQueueIfMain);
 end;
 
+
+procedure TThread.ForceQueue(aMethod: TThreadMethod);
+begin
+  ForceQueue(Self, aMethod);
+end;
+
+
+class procedure TThread.ForceQueue(aThread: TThread; aMethod: TThreadMethod); static;
+begin
+  InternalQueue(aThread, aMethod, True);
+end;
 
 class procedure TThread.RemoveQueuedEvents(aThread: TThread; aMethod: TThreadMethod);
 var
@@ -487,8 +566,10 @@ begin
   if not Assigned(aThread) and not Assigned(aMethod) then
     Exit;
 
+{$ifdef FPC_HAS_FEATURE_THREADING}
   System.EnterCriticalSection(ThreadQueueLock);
   try
+{$endif}
     lastentry := Nil;
     entry := ThreadQueueHead;
     while Assigned(entry) do begin
@@ -499,7 +580,7 @@ begin
         Continue;
       end;
       { then check for the method }
-      if entry^.Method <> aMethod then begin
+      if Assigned(aMethod) and (entry^.Method <> aMethod) then begin
         lastentry := entry;
         entry := entry^.Next;
         Continue;
@@ -525,9 +606,11 @@ begin
       if not Assigned(tmpentry^.SyncEvent) then
         Dispose(tmpentry);
     end;
+{$ifdef FPC_HAS_FEATURE_THREADING}
   finally
     System.LeaveCriticalSection(ThreadQueueLock);
   end;
+{$endif}
 end;
 
 
@@ -605,7 +688,9 @@ end;
 
 class procedure TThread.Yield;
 begin
+{$ifdef FPC_HAS_FEATURE_THREADING}
   ThreadSwitch;
+{$endif}
 end;
 
 
@@ -656,7 +741,7 @@ begin
   Result := SysUtils.GetTickCount64;
 end;
 
-{ TSimpleThread allows objects to create a threading method without defining 
+{ TSimpleThread allows objects to create a threading method without defining
   a new thread class }
 
 Type
@@ -712,7 +797,7 @@ Type
 
 
 { TSimpleThread }
- 
+
 constructor TSimpleThread.Create(ExecuteMethod: TThreadExecuteHandler; AOnTerminate: TNotifyEvent);
 begin
   FExecuteMethod := ExecuteMethod;
@@ -727,7 +812,7 @@ begin
 end;
 
 { TSimpleStatusThread }
- 
+
 constructor TSimpleStatusThread.Create(ExecuteMethod: TThreadExecuteStatusHandler;AOnStatus : TThreadStatusNotifyEvent; AOnTerminate: TNotifyEvent);
 begin
   FExecuteMethod := ExecuteMethod;
@@ -745,11 +830,11 @@ end;
 
 procedure TSimpleStatusThread.SetStatus(Const AStatus : String);
 begin
-  If (AStatus=FStatus) then 
+  If (AStatus=FStatus) then
     exit;
   FStatus:=AStatus;
-  If Assigned(FOnStatus) then  
-    Synchronize(@DoStatus);  
+  If Assigned(FOnStatus) then
+    Synchronize(@DoStatus);
 end;
 
 procedure TSimpleStatusThread.DoStatus;
@@ -759,7 +844,7 @@ end;
 
 
 { TSimpleProcThread }
- 
+
 constructor TSimpleProcThread.Create(ExecuteMethod: TThreadExecuteCallBack; AData : Pointer; AOnTerminate: TNotifyCallBack);
 begin
   FExecuteMethod := ExecuteMethod;
@@ -780,11 +865,11 @@ procedure TSimpleProcThread.TerminateCallBack(Sender : TObject);
 
 begin
   if Assigned(FCallOnTerminate) then
-    FCallOnTerminate(Sender,FData);  
+    FCallOnTerminate(Sender,FData);
 end;
 
 { TSimpleStatusProcThread }
- 
+
 constructor TSimpleStatusProcThread.Create(ExecuteMethod: TThreadExecuteStatusCallback; AData : Pointer; AOnStatus : TThreadStatusNotifyCallBack; AOnTerminate: TNotifyCallBack);
 begin
   FExecuteMethod := ExecuteMethod;
@@ -805,11 +890,11 @@ end;
 
 procedure TSimpleStatusProcThread.SetStatus(Const AStatus : String);
 begin
-  If (AStatus=FStatus) then 
+  If (AStatus=FStatus) then
     exit;
   FStatus:=AStatus;
-  If Assigned(FOnStatus) then  
-    Synchronize(@DoStatus);  
+  If Assigned(FOnStatus) then
+    Synchronize(@DoStatus);
 end;
 
 procedure TSimpleStatusProcThread.DoStatus;
@@ -821,7 +906,7 @@ procedure TSimpleStatusProcThread.TerminateCallBack(Sender : TObject);
 
 begin
   if Assigned(FCallOnTerminate) then
-    FCallOnTerminate(Sender,FData);  
+    FCallOnTerminate(Sender,FData);
 end;
 
 
@@ -840,7 +925,7 @@ end;
 Class Function TThread.ExecuteInThread(AMethod : TThreadExecuteStatusHandler; AOnStatus : TThreadStatusNotifyEvent; AOnTerminate : TNotifyEvent = Nil) : TThread;
 
 begin
-  If Not Assigned(AOnStatus) then 
+  If Not Assigned(AOnStatus) then
     Raise EThread.Create(SErrStatusCallBackRequired);
   Result:=TSimpleStatusThread.Create(AMethod,AOnStatus,AOnTerminate);
 end;
@@ -848,7 +933,7 @@ end;
 Class Function TThread.ExecuteInThread(AMethod : TThreadExecuteStatusCallback; AOnStatus : TThreadStatusNotifyCallback;AData : Pointer = Nil;  AOnTerminate : TNotifyCallBack = Nil) : TThread;
 
 begin
-  If Not Assigned(AOnStatus) then 
+  If Not Assigned(AOnStatus) then
     Raise EThread.Create(SErrStatusCallBackRequired);
   Result:=TSimpleStatusProcThread.Create(AMethod,AData,AOnStatus,AOnTerminate);
 end;
@@ -1247,12 +1332,16 @@ function DefaultInitHandler(Instance: TComponent; RootAncestor: TClass): Boolean
     end;
 
   begin
+{$ifdef FPC_HAS_FEATURE_THREADING}
     GlobalNameSpace.BeginWrite;
     try
+{$endif}
       result:=doinit(Instance.ClassType);
+{$ifdef FPC_HAS_FEATURE_THREADING}
     finally
       GlobalNameSpace.EndWrite;
     end;
+{$endif}
   end;
 
 
@@ -1390,7 +1479,11 @@ begin
     end;
 end;
 
+{$ifdef FPC_HAS_FEATURE_THREADING}
 threadvar
+{$else}
+var
+{$endif}
   GlobalLoaded, GlobalLists: TFpList;
 
 procedure BeginGlobalLoading;
@@ -2368,12 +2461,21 @@ end;
 
 procedure CommonInit;
 begin
+{$ifdef FPC_HAS_FEATURE_THREADING}
   SynchronizeTimeoutEvent:=RtlEventCreate;
+  InterlockedIncrement(ThreadQueueLockCounter);
   InitCriticalSection(ThreadQueueLock);
   MainThreadID:=GetCurrentThreadID;
+{$else}
+  MainThreadID:=0{GetCurrentThreadID};
+{$endif}
   ExternalThreads := TThreadList.Create;
-  TThread.FProcessorCount := CPUCount;
+{$ifdef FPC_HAS_FEATURE_THREADING}
   InitCriticalsection(ResolveSection);
+  TThread.FProcessorCount := CPUCount;
+{$else}
+  TThread.FProcessorCount := 1{CPUCount};
+{$endif}
   InitHandlerList:=Nil;
   FindGlobalComponentList:=nil;
   IntConstList := TThreadList.Create;
@@ -2389,7 +2491,9 @@ var
   i: Integer;
   tmpentry: TThread.PThreadQueueEntry;
 begin
+{$ifdef FPC_HAS_FEATURE_THREADING}
   GlobalNameSpace.BeginWrite;
+{$endif}
   with IntConstList.LockList do
     try
       for i := 0 to Count - 1 do
@@ -2401,7 +2505,9 @@ begin
   ClassList.Free;
   ClassAliasList.Free;
   RemoveFixupReferences(nil, '');
+{$ifdef FPC_HAS_FEATURE_THREADING}
   DoneCriticalsection(ResolveSection);
+{$endif}
   GlobalLists.Free;
   ComponentPages.Free;
   FreeAndNil(NeedResolving);
@@ -2424,16 +2530,28 @@ begin
       ExternalThreads.UnlockList;
     end;
   FreeAndNil(ExternalThreads);
+{$ifdef FPC_HAS_FEATURE_THREADING}
   RtlEventDestroy(SynchronizeTimeoutEvent);
+  try
+    System.EnterCriticalSection(ThreadQueueLock);
+{$endif}
   { clean up the queue, but keep in mind that the entries used for Synchronize
     are owned by the corresponding TThread }
-  while Assigned(ThreadQueueHead) do begin
-    tmpentry := ThreadQueueHead;
-    ThreadQueueHead := tmpentry^.Next;
-    if not Assigned(tmpentry^.SyncEvent) then
-      Dispose(tmpentry);
+    while Assigned(ThreadQueueHead) do begin
+      tmpentry := ThreadQueueHead;
+      ThreadQueueHead := tmpentry^.Next;
+      if not Assigned(tmpentry^.SyncEvent) then
+        Dispose(tmpentry);
+    end;
+    { We also need to reset ThreadQueueTail }
+    ThreadQueueTail := nil;
+{$ifdef FPC_HAS_FEATURE_THREADING}
+  finally
+    System.LeaveCriticalSection(ThreadQueueLock);
   end;
-  DoneCriticalSection(ThreadQueueLock);
+  if InterlockedDecrement(ThreadQueueLockCounter)=0 then
+    DoneCriticalSection(ThreadQueueLock);
+{$endif}
 end;
 
 { TFiler implementation }

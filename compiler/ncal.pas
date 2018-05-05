@@ -54,8 +54,9 @@ interface
          cnf_objc_id_call,       { the procedure is a member call via id -> any ObjC method of any ObjC type in scope is fair game }
          cnf_unit_specified,     { the unit in which the procedure has to be searched has been specified }
          cnf_call_never_returns, { information for the dfa that a subroutine never returns }
-         cnf_call_self_node_done { the call_self_node has been generated if necessary
+         cnf_call_self_node_done,{ the call_self_node has been generated if necessary
                                    (to prevent it from potentially happening again in a wrong context in case of constant propagation or so) }
+         cnf_ignore_visibility   { internally generated call that should ignore visibility checks }
        );
        tcallnodeflags = set of tcallnodeflag;
 
@@ -156,9 +157,10 @@ interface
           { varargs parasyms }
           varargsparas : tvarargsparalist;
 
-          { separately specified resultdef for some compilerprocs (e.g. }
-          { you can't have a function with an "array of char" resultdef }
-          { the RTL) (JM)                                                }
+          { separately specified resultdef for some compilerprocs (e.g.
+            you can't have a function with an "array of char" resultdef
+            the RTL) (JM)
+          }
           typedef: tdef;
           callnodeflags : tcallnodeflags;
 
@@ -310,7 +312,7 @@ implementation
       systems,
       verbose,globals,fmodule,
       aasmbase,aasmdata,
-      symconst,defutil,defcmp,
+      symconst,defutil,defcmp,compinnr,
       htypechk,pass_1,
       ncnv,nflw,nld,ninl,nadd,ncon,nmem,nset,nobjc,
       pgenutil,
@@ -1031,13 +1033,9 @@ implementation
 
 
     procedure tcallparanode.get_paratype;
-      var
-        old_array_constructor : boolean;
       begin
          if assigned(right) then
           tcallparanode(right).get_paratype;
-         old_array_constructor:=allow_array_constructor;
-         allow_array_constructor:=true;
          if assigned(fparainit) then
           typecheckpass(fparainit);
          typecheckpass(left);
@@ -1045,7 +1043,6 @@ implementation
            typecheckpass(third);
          if assigned(fparacopyback) then
            typecheckpass(fparacopyback);
-         allow_array_constructor:=old_array_constructor;
          if codegenerror then
           resultdef:=generrordef
          else
@@ -1382,15 +1379,12 @@ implementation
                     vs_constref:
                       begin
                         set_varstate(left,vs_readwritten,[vsf_must_be_valid,vsf_use_hints]);
-                        { constref takes also the address, but storing it is actually the compiler
-                          is not supposed to expect }
-                        if parasym.varspez=vs_var then
-                          { compilerprocs never capture the address of their
-                            parameters }
-                          if not(po_compilerproc in aktcallnode.procdefinition.procoptions) then
-                            make_not_regable(left,[ra_addr_regable,ra_addr_taken])
-                          else
-                            make_not_regable(left,[ra_addr_regable])
+                        { compilerprocs never capture the address of their
+                          parameters }
+                        if not(po_compilerproc in aktcallnode.procdefinition.procoptions) then
+                          make_not_regable(left,[ra_addr_regable,ra_addr_taken])
+                        else
+                          make_not_regable(left,[ra_addr_regable])
                       end;
                     else
                       set_varstate(left,vs_read,[vsf_must_be_valid]);
@@ -1739,21 +1733,26 @@ implementation
         n : tcallnode;
         i : integer;
         hp,hpn : tparavarsym;
-        oldleft : tnode;
+        oldleft, oldright : tnode;
         para: tcallparanode;
       begin
         { Need to use a hack here to prevent the parameters from being copied.
           The parameters must be copied between callinitblock/callcleanupblock because
           they can reference methodpointer }
+        { same goes for right (= self/context for procvars) }
         oldleft:=left;
         left:=nil;
+        oldright:=right;
+        right:=nil;
         n:=tcallnode(inherited dogetcopy);
         left:=oldleft;
+        right:=oldright;
         n.symtableprocentry:=symtableprocentry;
         n.symtableproc:=symtableproc;
         n.procdefinition:=procdefinition;
         n.typedef := typedef;
         n.callnodeflags := callnodeflags;
+        n.pushedparasize:=pushedparasize;
         if assigned(callinitblock) then
           n.callinitblock:=tblocknode(callinitblock.dogetcopy)
         else
@@ -1764,6 +1763,10 @@ implementation
           n.left:=left.dogetcopy
         else
           n.left:=nil;
+        if assigned(right) then
+          n.right:=right.dogetcopy
+        else
+          n.right:=nil;
         if assigned(methodpointer) then
           n.methodpointer:=methodpointer.dogetcopy
         else
@@ -2099,7 +2102,7 @@ implementation
                       begin
                         {Array slice using slice builtin function.}
                         l:=Tcallparanode(right).left;
-                        hightree:=caddnode.create(subn,l,genintconstnode(1));
+                        hightree:=caddnode.create(subn,geninlinenode(in_ord_x,false,l),genintconstnode(1));
                         Tcallparanode(right).left:=nil;
 
                         {Remove the inline node.}
@@ -2115,8 +2118,8 @@ implementation
                       {Array slice using .. operator.}
                       with Trangenode(Tvecnode(p).right) do
                         begin
-                          l:=left;  {Get lower bound.}
-                          r:=right; {Get upper bound.}
+                          l:=geninlinenode(in_ord_x,false,left);  {Get lower bound.}
+                          r:=geninlinenode(in_ord_x,false,right); {Get upper bound.}
                         end;
                       {In the procedure the array range is 0..(upper_bound-lower_bound).}
                       hightree:=caddnode.create(subn,r,l);
@@ -2144,10 +2147,10 @@ implementation
                   else
                     begin
                       maybe_load_in_temp(p);
-                      hightree:=geninlinenode(in_high_x,false,p.getcopy);
+                      hightree:=geninlinenode(in_ord_x,false,geninlinenode(in_high_x,false,p.getcopy));
                       typecheckpass(hightree);
                       { only substract low(array) if it's <> 0 }
-                      temp:=geninlinenode(in_low_x,false,p.getcopy);
+                      temp:=geninlinenode(in_ord_x,false,geninlinenode(in_low_x,false,p.getcopy));
                       typecheckpass(temp);
                       if (temp.nodetype <> ordconstn) or
                          (tordconstnode(temp).value <> 0) then
@@ -2954,17 +2957,30 @@ implementation
         { remove possible typecasts }
         realassignmenttarget:=actualtargetnode(@aktassignmentnode.left)^;
 
-        { when it is not passed in a parameter it will only be used after the
-          function call }
+        { when the result is returned by value (instead of by writing it to the
+          address passed in a hidden parameter), aktassignmentnode.left will
+          only be changed once the function has returned and we don't have to
+          perform any checks regarding whether it may alias with one of the
+          parameters -- unless this is an inline function, in which case
+          writes to the function result will directly change it and we do have
+          to check for potential aliasing }
         if not paramanager.ret_in_param(resultdef,procdefinition) then
-          begin
-            { don't replace the function result if we are inlining and if the destination is complex, this
-              could lead to lengthy code in case the function result is used often and it is assigned e.g.
-              to a threadvar }
-            result:=not(cnf_do_inline in callnodeflags) or
-              (node_complexity(aktassignmentnode.left)<=1);
-            exit;
-          end;
+           begin
+             if not(cnf_do_inline in callnodeflags) then
+                begin
+                  result:=true;
+                  exit;
+                end
+             else
+               begin
+                 { don't replace the function result if we are inlining and if
+                   the destination is complex, this could lead to lengthy
+                   code in case the function result is used often and it is
+                   assigned e.g. to a threadvar }
+                 if node_complexity(aktassignmentnode.left)>1 then
+                   exit;
+               end;
+           end;
 
         { if the result is the same as the self parameter (in case of objects),
           we can't optimise. We have to check this explicitly becaise
@@ -3560,122 +3576,139 @@ implementation
            else
            { not a procedure variable }
              begin
-                { do we know the procedure to call ? }
-                if not(assigned(procdefinition)) then
-                  begin
-                    { ignore possible private for properties or in delphi mode for anon. inherited (FK) }
-                    ignorevisibility:=(nf_isproperty in flags) or
-                                      ((m_delphi in current_settings.modeswitches) and (cnf_anon_inherited in callnodeflags));
-                    candidates:=tcallcandidates.create(symtableprocentry,symtableproc,left,ignorevisibility,
-                      not(nf_isproperty in flags),cnf_objc_id_call in callnodeflags,cnf_unit_specified in callnodeflags,
-                      callnodeflags*[cnf_anon_inherited,cnf_inherited]=[],cnf_anon_inherited in callnodeflags,spezcontext);
-
-                     { no procedures found? then there is something wrong
-                       with the parameter size or the procedures are
-                       not accessible }
-                     if candidates.count=0 then
-                      begin
-                        { when it's an auto inherited call and there
-                          is no procedure found, but the procedures
-                          were defined with overload directive and at
-                          least two procedures are defined then we ignore
-                          this inherited by inserting a nothingn. Only
-                          do this ugly hack in Delphi mode as it looks more
-                          like a bug. It's also not documented }
-                        if (m_delphi in current_settings.modeswitches) and
-                           (cnf_anon_inherited in callnodeflags) and
-                           (symtableprocentry.owner.symtabletype=ObjectSymtable) and
-                           (po_overload in tprocdef(symtableprocentry.ProcdefList[0]).procoptions) and
-                           (symtableprocentry.ProcdefList.Count>=2) then
-                          result:=cnothingnode.create
-                        else
-                          begin
-                            { in tp mode we can try to convert to procvar if
-                              there are no parameters specified }
-                            if not(assigned(left)) and
-                               not(cnf_inherited in callnodeflags) and
-                               ((m_tp_procvar in current_settings.modeswitches) or
-                                (m_mac_procvar in current_settings.modeswitches)) and
-                               (not assigned(methodpointer) or
-                                (methodpointer.nodetype <> typen)) then
-                              begin
-                                hpt:=cloadnode.create(tprocsym(symtableprocentry),symtableproc);
-                                if assigned(methodpointer) then
-                                  tloadnode(hpt).set_mp(methodpointer.getcopy);
-                                typecheckpass(hpt);
-                                result:=hpt;
-                              end
-                            else
-                              begin
-                                CGMessagePos1(fileinfo,parser_e_wrong_parameter_size,symtableprocentry.realname);
-                                symtableprocentry.write_parameter_lists(nil);
-                              end;
-                          end;
-                        candidates.free;
-                        exit;
-                      end;
-
-                     { Retrieve information about the candidates }
-                     candidates.get_information;
-{$ifdef EXTDEBUG}
-                     { Display info when multiple candidates are found }
-                     if candidates.count>1 then
-                       candidates.dump_info(V_Debug);
-{$endif EXTDEBUG}
-
-                     { Choose the best candidate and count the number of
-                       candidates left }
-                     cand_cnt:=candidates.choose_best(procdefinition,
-                       assigned(left) and
-                       not assigned(tcallparanode(left).right) and
-                       (tcallparanode(left).left.resultdef.typ=variantdef));
-
-                     { All parameters are checked, check if there are any
-                       procedures left }
-                     if cand_cnt>0 then
-                      begin
-                        { Multiple candidates left? }
-                        if cand_cnt>1 then
+               { do we know the procedure to call ? }
+               if not(assigned(procdefinition)) then
+                 begin
+                   { according to bug reports 32539 and 20551, real variant of sqr/abs should be used when they are called for variants to be
+                     delphi compatible, this is in contrast to normal overloading behaviour, so fix this by a terrible hack to be compatible }
+                   if assigned(left) and assigned(tcallparanode(left).left) and
+                     (tcallparanode(left).left.resultdef.typ=variantdef) and assigned(symtableproc.name) and (symtableproc.name^='SYSTEM') then
+                     begin
+                       if symtableprocentry.Name='SQR' then
                          begin
-                           CGMessage(type_e_cant_choose_overload_function);
-{$ifdef EXTDEBUG}
-                           candidates.dump_info(V_Hint);
-{$else EXTDEBUG}
-                           candidates.list(false);
-{$endif EXTDEBUG}
-                           { we'll just use the first candidate to make the
-                             call }
+                           result:=cinlinenode.createintern(in_sqr_real,false,tcallparanode(left).left.getcopy);
+                           exit;
                          end;
+                       if symtableprocentry.Name='ABS' then
+                         begin
+                           result:=cinlinenode.createintern(in_abs_real,false,tcallparanode(left).left.getcopy);
+                           exit;
+                         end;
+                     end;
+                   { ignore possible private for properties or in delphi mode for anon. inherited (FK) }
+                   ignorevisibility:=(nf_isproperty in flags) or
+                                     ((m_delphi in current_settings.modeswitches) and (cnf_anon_inherited in callnodeflags)) or
+                                     (cnf_ignore_visibility in callnodeflags);
+                   candidates:=tcallcandidates.create(symtableprocentry,symtableproc,left,ignorevisibility,
+                     not(nf_isproperty in flags),cnf_objc_id_call in callnodeflags,cnf_unit_specified in callnodeflags,
+                     callnodeflags*[cnf_anon_inherited,cnf_inherited]=[],cnf_anon_inherited in callnodeflags,spezcontext);
 
-                        { assign procdefinition }
-                        if symtableproc=nil then
-                          symtableproc:=procdefinition.owner;
-                      end
-                     else
-                      begin
-                        { No candidates left, this must be a type error,
-                          because wrong size is already checked. procdefinition
-                          is filled with the first (random) definition that is
-                          found. We use this definition to display a nice error
-                          message that the wrong type is passed }
-                        candidates.find_wrong_para;
-                        candidates.list(true);
+                   { no procedures found? then there is something wrong
+                     with the parameter size or the procedures are
+                     not accessible }
+                   if candidates.count=0 then
+                    begin
+                      { when it's an auto inherited call and there
+                        is no procedure found, but the procedures
+                        were defined with overload directive and at
+                        least two procedures are defined then we ignore
+                        this inherited by inserting a nothingn. Only
+                        do this ugly hack in Delphi mode as it looks more
+                        like a bug. It's also not documented }
+                      if (m_delphi in current_settings.modeswitches) and
+                         (cnf_anon_inherited in callnodeflags) and
+                         (symtableprocentry.owner.symtabletype=ObjectSymtable) and
+                         (po_overload in tprocdef(symtableprocentry.ProcdefList[0]).procoptions) and
+                         (symtableprocentry.ProcdefList.Count>=2) then
+                        result:=cnothingnode.create
+                      else
+                        begin
+                          { in tp mode we can try to convert to procvar if
+                            there are no parameters specified }
+                          if not(assigned(left)) and
+                             not(cnf_inherited in callnodeflags) and
+                             ((m_tp_procvar in current_settings.modeswitches) or
+                              (m_mac_procvar in current_settings.modeswitches)) and
+                             (not assigned(methodpointer) or
+                              (methodpointer.nodetype <> typen)) then
+                            begin
+                              hpt:=cloadnode.create(tprocsym(symtableprocentry),symtableproc);
+                              if assigned(methodpointer) then
+                                tloadnode(hpt).set_mp(methodpointer.getcopy);
+                              typecheckpass(hpt);
+                              result:=hpt;
+                            end
+                          else
+                            begin
+                              CGMessagePos1(fileinfo,parser_e_wrong_parameter_size,symtableprocentry.realname);
+                              symtableprocentry.write_parameter_lists(nil);
+                            end;
+                        end;
+                      candidates.free;
+                      exit;
+                    end;
+
+                   { Retrieve information about the candidates }
+                   candidates.get_information;
 {$ifdef EXTDEBUG}
-                        candidates.dump_info(V_Hint);
+                   { Display info when multiple candidates are found }
+                   if candidates.count>1 then
+                     candidates.dump_info(V_Debug);
 {$endif EXTDEBUG}
 
-                        { We can not proceed, release all procs and exit }
-                        candidates.free;
-                        exit;
-                      end;
+                   { Choose the best candidate and count the number of
+                     candidates left }
+                   cand_cnt:=candidates.choose_best(procdefinition,
+                     assigned(left) and
+                     not assigned(tcallparanode(left).right) and
+                     (tcallparanode(left).left.resultdef.typ=variantdef));
 
-                     { if the final procedure definition is not yet owned,
-                       ensure that it is }
-                     procdefinition.register_def;
-                     if procdefinition.is_specialization and (procdefinition.typ=procdef) then
-                       maybe_add_pending_specialization(procdefinition);
+                   { All parameters are checked, check if there are any
+                     procedures left }
+                   if cand_cnt>0 then
+                    begin
+                      { Multiple candidates left? }
+                      if cand_cnt>1 then
+                       begin
+                         CGMessage(type_e_cant_choose_overload_function);
+{$ifdef EXTDEBUG}
+                         candidates.dump_info(V_Hint);
+{$else EXTDEBUG}
+                         candidates.list(false);
+{$endif EXTDEBUG}
+                         { we'll just use the first candidate to make the
+                           call }
+                       end;
 
-                     candidates.free;
+                      { assign procdefinition }
+                      if symtableproc=nil then
+                        symtableproc:=procdefinition.owner;
+                    end
+                   else
+                    begin
+                      { No candidates left, this must be a type error,
+                        because wrong size is already checked. procdefinition
+                        is filled with the first (random) definition that is
+                        found. We use this definition to display a nice error
+                        message that the wrong type is passed }
+                      candidates.find_wrong_para;
+                      candidates.list(true);
+{$ifdef EXTDEBUG}
+                      candidates.dump_info(V_Hint);
+{$endif EXTDEBUG}
+
+                      { We can not proceed, release all procs and exit }
+                      candidates.free;
+                      exit;
+                    end;
+
+                   { if the final procedure definition is not yet owned,
+                     ensure that it is }
+                   procdefinition.register_def;
+                   if procdefinition.is_specialization and (procdefinition.typ=procdef) then
+                     maybe_add_pending_specialization(procdefinition);
+
+                   candidates.free;
                  end; { end of procedure to call determination }
              end;
 
@@ -3733,7 +3766,8 @@ implementation
                 begin
                   { convert types to those of the prototype, this is required by functions like ror, rol, sar
                     some use however a dummy type (Typedfile) so this would break them }
-                  if not(tprocdef(procdefinition).extnumber in [fpc_in_Reset_TypedFile,fpc_in_Rewrite_TypedFile]) then
+                  if not(tinlinenumber(tprocdef(procdefinition).extnumber) in
+                       [in_Reset_TypedFile,in_Rewrite_TypedFile,in_reset_typedfile_name,in_rewrite_typedfile_name]) then
                     begin
                       { bind parasyms to the callparanodes and insert hidden parameters }
                       bind_parasym;
@@ -3746,17 +3780,17 @@ implementation
                   { ptr and settextbuf need two args }
                   if assigned(tcallparanode(left).right) then
                    begin
-                     hpt:=geninlinenode(tprocdef(procdefinition).extnumber,is_const,left);
+                     hpt:=geninlinenode(tinlinenumber(tprocdef(procdefinition).extnumber),is_const,left);
                      left:=nil;
                    end
                   else
                    begin
-                     hpt:=geninlinenode(tprocdef(procdefinition).extnumber,is_const,tcallparanode(left).left);
+                     hpt:=geninlinenode(tinlinenumber(tprocdef(procdefinition).extnumber),is_const,tcallparanode(left).left);
                      tcallparanode(left).left:=nil;
                    end;
                 end
                else
-                hpt:=geninlinenode(tprocdef(procdefinition).extnumber,is_const,nil);
+                hpt:=geninlinenode(tinlinenumber(tprocdef(procdefinition).extnumber),is_const,nil);
                result:=hpt;
                exit;
              end;
@@ -3812,7 +3846,10 @@ implementation
                 method via its type is not possible (always must be called via
                 the actual instance) }
               if (methodpointer.nodetype=typen) and
-                 (is_interface(methodpointer.resultdef) or
+                 ((
+                   is_interface(methodpointer.resultdef) and not
+                   is_objectpascal_helper(tdef(procdefinition.owner.defowner))
+                  ) or
                   is_objc_protocol_or_category(methodpointer.resultdef)) then
                 CGMessage1(type_e_class_type_expected,methodpointer.resultdef.typename);
 
@@ -4334,6 +4371,8 @@ implementation
              result:=pass1_inline
            else
              begin
+               if (po_inline in procdefinition.procoptions) and not(po_compilerproc in procdefinition.procoptions) then
+                 Message1(cg_n_no_inline,tprocdef(procdefinition).customprocname([pno_proctypeoption, pno_paranames,pno_ownername, pno_noclassmarker]));
                mark_unregable_parameters;
                result:=pass1_normal;
              end;
@@ -4690,7 +4729,8 @@ implementation
            { don't create a temp. for the often seen case that p^ is passed to a var parameter }
            ((paracomplexity>1) and
             not((realtarget.nodetype=derefn) and (para.parasym.varspez in [vs_var,vs_out,vs_constref])) and
-            not((realtarget.nodetype=loadn) and tloadnode(realtarget).is_addr_param_load)
+            not((realtarget.nodetype=loadn) and tloadnode(realtarget).is_addr_param_load) and
+            not(realtarget.nodetype=realconstn)
            )
           );
 
@@ -4799,7 +4839,7 @@ implementation
         if tabstractvarsym(para.parasym).varspez=vs_const then
           tempnode.includetempflag(ti_const);
         paraaddr:=caddrnode.create_internal(para.left);
-        include(paraaddr.flags,nf_typedaddr);
+        include(paraaddr.addrnodeflags,anf_typedaddr);
         addstatement(inlineinitstatement,cassignmentnode.create(ctemprefnode.create(tempnode),
           paraaddr));
         para.left:=cderefnode.create(ctemprefnode.create(tempnode));

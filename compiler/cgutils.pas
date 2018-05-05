@@ -42,6 +42,24 @@ unit cgutils;
     type
       { Set type definition for cpuregisters }
       tcpuregisterset = set of 0..maxcpuregister;
+      tcpuregisterarray = array of tsuperregister;
+
+      { use record for type-safety; should only be accessed directly by temp
+        manager }
+      treftemppos = record
+        val: asizeint;
+      end;
+
+{$packset 1}
+      { a reference may be volatile for reading, writing, or both. E.g., local variables
+        inside try-blocks are volatile for writes (writes must not be removed, because at
+        any point an exception may be triggered and then all previous writes to the
+        variable must have been performed), but not for reads (these variables' values
+        won't be changed behind the back of the current code just because they're in a
+        try-block) }
+      tvolatility = (vol_read,vol_write);
+      tvolatilityset = set of tvolatility;
+{$packset default}
 
       { reference record, reordered for best alignment }
       preference = ^treference;
@@ -49,6 +67,7 @@ unit cgutils;
          offset      : asizeint;
          symbol,
          relsymbol   : tasmsymbol;
+         temppos     : treftemppos;
 {$if defined(x86)}
          segment,
 {$endif defined(x86)}
@@ -84,9 +103,14 @@ unit cgutils;
          indexoffset: aint;
          checkcast: boolean;
 {$endif jvm}
+         volatility: tvolatilityset;
          alignment : byte;
       end;
 
+   const
+     ctempposinvalid: treftemppos = (val: low(treftemppos.val));
+
+   type
       tsubsetregister = record
         subsetreg : tregister;
         startbit, bitlen: byte;
@@ -161,12 +185,12 @@ unit cgutils;
     { trerefence handling }
 
     {# Clear to zero a treference }
-    procedure reference_reset(var ref : treference; alignment: longint);
+    procedure reference_reset(var ref : treference; alignment: longint; volatility: tvolatilityset);
     {# Clear to zero a treference, and set is base address
        to base register.
     }
-    procedure reference_reset_base(var ref : treference;base : tregister;offset, alignment : longint);
-    procedure reference_reset_symbol(var ref : treference;sym : tasmsymbol;offset, alignment : longint);
+    procedure reference_reset_base(var ref : treference;base : tregister;offset : longint; temppos : treftemppos; alignment : longint; volatility: tvolatilityset);
+    procedure reference_reset_symbol(var ref : treference;sym : tasmsymbol;offset, alignment : longint; volatility: tvolatilityset);
     { This routine verifies if two references are the same, and
        if so, returns TRUE, otherwise returns false.
     }
@@ -177,7 +201,7 @@ unit cgutils;
     { cannot be used for loc_(c)reference, because that one requires an alignment }
     procedure location_reset(var l : tlocation;lt:TCGNonRefLoc;lsize:TCGSize);
     { for loc_(c)reference }
-    procedure location_reset_ref(var l : tlocation;lt:TCGRefLoc;lsize:TCGSize; alignment: longint);
+    procedure location_reset_ref(var l : tlocation;lt:TCGRefLoc;lsize:TCGSize; alignment: longint; volatility: tvolatilityset);
     { for loc_jump }
     procedure location_reset_jump(out l: tlocation; truelab, falselab: tasmlabel);
     procedure location_copy(var destloc:tlocation; const sourceloc : tlocation);
@@ -198,35 +222,40 @@ implementation
 
 uses
   systems,
-  verbose;
+  verbose,
+  cgobj;
 
 {****************************************************************************
                                   TReference
 ****************************************************************************}
 
-    procedure reference_reset(var ref : treference; alignment: longint);
+    procedure reference_reset(var ref: treference; alignment: longint; volatility: tvolatilityset);
       begin
         FillChar(ref,sizeof(treference),0);
 {$ifdef arm}
         ref.signindex:=1;
 {$endif arm}
         ref.alignment:=alignment;
+        ref.volatility:=volatility;
+        ref.temppos:=ctempposinvalid;
       end;
 
 
-    procedure reference_reset_base(var ref : treference;base : tregister;offset, alignment : longint);
+    procedure reference_reset_base(var ref: treference; base: tregister; offset : longint; temppos : treftemppos ; alignment : longint; volatility: tvolatilityset);
       begin
-        reference_reset(ref,alignment);
+        reference_reset(ref,alignment,volatility);
         ref.base:=base;
         ref.offset:=offset;
+        ref.temppos:=temppos;
       end;
 
 
-    procedure reference_reset_symbol(var ref : treference;sym : tasmsymbol;offset, alignment : longint);
+    procedure reference_reset_symbol(var ref: treference; sym: tasmsymbol; offset, alignment: longint; volatility: tvolatilityset);
       begin
-        reference_reset(ref,alignment);
+        reference_reset(ref,alignment,volatility);
         ref.symbol:=sym;
         ref.offset:=offset;
+        ref.temppos:=ctempposinvalid;
       end;
 
 
@@ -257,8 +286,7 @@ uses
           internalerror(2009020705);
       end;
 
-    procedure location_reset_ref(var l: tlocation; lt: tcgrefloc; lsize: tcgsize;
-      alignment: longint);
+  procedure location_reset_ref(var l: tlocation; lt: TCGRefLoc; lsize: TCGSize; alignment: longint; volatility: tvolatilityset);
     begin
       FillChar(l,sizeof(tlocation),0);
       l.loc:=lt;
@@ -267,6 +295,8 @@ uses
       l.reference.signindex:=1;
 {$endif arm}
       l.reference.alignment:=alignment;
+      l.reference.volatility:=volatility;
+      l.reference.temppos:=ctempposinvalid;
     end;
 
 
@@ -319,13 +349,13 @@ uses
                   result:='??:'+std_regname(locreg.registerhi)
                           +':??:'+std_regname(locreg.register)
                 else
-                  result:=std_regname(GetNextReg(locreg.registerhi))+':'+std_regname(locreg.registerhi)
-                          +':'+std_regname(GetNextReg(locreg.register))+':'+std_regname(locreg.register);
+                  result:=std_regname(cg.GetNextReg(locreg.registerhi))+':'+std_regname(locreg.registerhi)
+                          +':'+std_regname(cg.GetNextReg(locreg.register))+':'+std_regname(locreg.register);
               OS_32,OS_S32:
                 if getsupreg(locreg.register)<first_int_imreg then
                   result:='??:'+std_regname(locreg.register)
                 else
-                  result:=std_regname(GetNextReg(locreg.register))
+                  result:=std_regname(cg.GetNextReg(locreg.register))
                           +':'+std_regname(locreg.register);
 {$elseif defined(cpu8bitalu)}
               OS_64,OS_S64:
@@ -333,26 +363,26 @@ uses
                   result:='??:??:??:'+std_regname(locreg.registerhi)
                           +':??:??:??:'+std_regname(locreg.register)
                 else
-                  result:=std_regname(GetNextReg(GetNextReg(GetNextReg(locreg.registerhi))))
-                          +':'+std_regname(GetNextReg(GetNextReg(locreg.registerhi)))
-                          +':'+std_regname(GetNextReg(locreg.registerhi))
+                  result:=std_regname(cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(locreg.registerhi))))
+                          +':'+std_regname(cg.GetNextReg(cg.GetNextReg(locreg.registerhi)))
+                          +':'+std_regname(cg.GetNextReg(locreg.registerhi))
                           +':'+std_regname(locreg.registerhi)
-                          +':'+std_regname(GetNextReg(GetNextReg(GetNextReg(locreg.register))))
-                          +':'+std_regname(GetNextReg(GetNextReg(locreg.register)))
-                          +':'+std_regname(GetNextReg(locreg.register))
+                          +':'+std_regname(cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(locreg.register))))
+                          +':'+std_regname(cg.GetNextReg(cg.GetNextReg(locreg.register)))
+                          +':'+std_regname(cg.GetNextReg(locreg.register))
                           +':'+std_regname(locreg.register);
               OS_32,OS_S32:
                 if getsupreg(locreg.register)<first_int_imreg then
                   result:='??:??:??:'+std_regname(locreg.register)
                 else
-                  result:=std_regname(GetNextReg(GetNextReg(GetNextReg(locreg.register))))
-                          +':'+std_regname(GetNextReg(GetNextReg(locreg.register)))
-                          +':'+std_regname(GetNextReg(locreg.register))+':'+std_regname(locreg.register);
+                  result:=std_regname(cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(locreg.register))))
+                          +':'+std_regname(cg.GetNextReg(cg.GetNextReg(locreg.register)))
+                          +':'+std_regname(cg.GetNextReg(locreg.register))+':'+std_regname(locreg.register);
               OS_16,OS_S16:
                 if getsupreg(locreg.register)<first_int_imreg then
                   result:='??:'+std_regname(locreg.register)
                 else
-                  result:=std_regname(GetNextReg(locreg.register))+':'+std_regname(locreg.register);
+                  result:=std_regname(cg.GetNextReg(locreg.register))+':'+std_regname(locreg.register);
 {$endif}
               else
                 result:=std_regname(locreg.register);

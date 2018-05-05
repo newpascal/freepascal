@@ -28,6 +28,8 @@ begin
 
     P.Dependencies.Add('fcl-registry');
     P.Dependencies.Add('fcl-base');
+    { for WinSock2 }
+    P.Dependencies.Add('rtl-extra');
 
     P.SourcePath.Add('src');
     P.IncludePath.Add('src');
@@ -52,6 +54,7 @@ begin
           AddUnit('shfolder');
           AddUnit('richedit');
           AddUnit('imagehlp');
+          AddUnit('winhttp');
 	  AddUnit('wininet');
           AddUnit('uxtheme');
           AddInclude('tmschema.inc');
@@ -69,6 +72,7 @@ begin
           AddUnit('typelib');
           AddUnit('libkinect10');
           AddUnit('urlmon');
+          AddUnit('httpapi');
         end;
     T:=P.Targets.AddImplicitUnit('activex.pp');
     T:=P.Targets.AddImplicitUnit('urlmon.pp');
@@ -88,6 +92,7 @@ begin
     T:=P.Targets.AddImplicitUnit('winver.pp');
     T:=P.Targets.AddImplicitUnit('wininet.pp');
     T:=P.Targets.AddImplicitUnit('imagehlp.pp');
+    T:=P.Targets.AddImplicitUnit('winhttp.pp');
     T:=P.Targets.AddImplicitUnit('commdlg.pp');
     T:=P.Targets.AddImplicitUnit('wininet.pp');
     T:=P.Targets.AddImplicitUnit('uxtheme.pp');
@@ -104,6 +109,7 @@ begin
     T:=P.Targets.AddImplicitUnit('eventsink.pp');
     T:=P.Targets.AddImplicitUnit('typelib.pas');
     T:=P.Targets.AddImplicitUnit('libkinect10.pp');
+    T:=P.Targets.AddImplicitUnit('httpapi.pp');
     T.Dependencies.AddInclude('tmschema.inc');
     P.ExamplePath.Add('tests/');
     P.Targets.AddExampleProgram('testcom1.pp');

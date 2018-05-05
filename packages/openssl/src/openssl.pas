@@ -253,6 +253,7 @@ type
   PPRSA = ^PRSA;
   PASN1_cInt = SslPtr;
   PPasswdCb = SslPtr;
+  PCallbackCb = SslPtr;
   PFunction = procedure;
   DES_cblock = array[0..7] of Byte;
   PDES_cblock = ^DES_cblock;
@@ -375,6 +376,11 @@ type
       32: (mdc2: MDC2_CTX);
     end;
   PEVP_MD_CTX = ^EVP_MD_CTX;
+
+  EVP_PKEY_CTX = record
+  end;
+  PEVP_PKEY_CTX = ^EVP_PKEY_CTX;
+  PPEVP_PKEY_CTX = ^PEVP_PKEY_CTX;
 
   PEVP_CIPHER_CTX = ^EVP_CIPHER_CTX;
 
@@ -568,7 +574,9 @@ const
   SSL_ERROR_ZERO_RETURN = 6;
   SSL_ERROR_WANT_CONNECT = 7;
   SSL_ERROR_WANT_ACCEPT = 8;
-  
+  SSL_ERROR_WANT_CHANNEL_ID_LOOKUP = 9;
+  SSL_ERROR_PENDING_SESSION = 11;
+
   SSL_CTRL_NEED_TMP_RSA = 1;
   SSL_CTRL_SET_TMP_RSA = 2;
   SSL_CTRL_SET_TMP_DH = 3;
@@ -641,7 +649,36 @@ const
   SSL_CTRL_TLS_EXT_SEND_HEARTBEAT             = 85;
   SSL_CTRL_GET_TLS_EXT_HEARTBEAT_PENDING      = 86;
   SSL_CTRL_SET_TLS_EXT_HEARTBEAT_NO_REQUESTS  = 87;
-  // Some missing values ?
+  SSL_CTRL_CHAIN                              = 88;
+  SSL_CTRL_CHAIN_CERT                         = 89;
+  SSL_CTRL_GET_CURVES                         = 90;
+  SSL_CTRL_SET_CURVES                         = 91;
+  SSL_CTRL_SET_CURVES_LIST                    = 92;
+  SSL_CTRL_GET_SHARED_CURVE                   = 93;
+  SSL_CTRL_SET_ECDH_AUTO                      = 94;
+  SSL_CTRL_SET_SIGALGS                        = 97;
+  SSL_CTRL_SET_SIGALGS_LIST                   = 98;
+  SSL_CTRL_CERT_FLAGS                         = 99;
+  SSL_CTRL_CLEAR_CERT_FLAGS                   = 100;
+  SSL_CTRL_SET_CLIENT_SIGALGS                 = 101;
+  SSL_CTRL_SET_CLIENT_SIGALGS_LIST            = 102;
+  SSL_CTRL_GET_CLIENT_CERT_TYPES              = 103;
+  SSL_CTRL_SET_CLIENT_CERT_TYPES              = 104;
+  SSL_CTRL_BUILD_CERT_CHAIN                   = 105;
+  SSL_CTRL_SET_VERIFY_CERT_STORE              = 106;
+  SSL_CTRL_SET_CHAIN_CERT_STORE               = 107;
+  SSL_CTRL_GET_PEER_SIGNATURE_NID             = 108;
+  SSL_CTRL_GET_SERVER_TMP_KEY                 = 109;
+  SSL_CTRL_GET_RAW_CIPHERLIST                 = 110;
+  SSL_CTRL_GET_EC_POINT_FORMATS               = 111;
+  SSL_CTRL_GET_TLSA_RECORD                    = 112;
+  SSL_CTRL_SET_TLSA_RECORD                    = 113;
+  SSL_CTRL_PULL_TLSA_RECORD                   = 114;
+  SSL_CTRL_GET_CHAIN_CERTS                    = 115;
+  SSL_CTRL_SELECT_CURRENT_CERT                = 116;
+  SSL_CTRL_CHANNEL_ID                         = 117;
+  SSL_CTRL_GET_CHANNEL_ID                     = 118;
+  SSL_CTRL_SET_CHANNEL_ID                     = 119;
 
 
   DTLS_CTRL_GET_TIMEOUT	           = 73;
@@ -650,20 +687,99 @@ const
   SSL_CTRL_GET_RI_SUPPORT	   = 76;
   SSL_CTRL_CLEAR_OPTIONS	   = 77;
   SSL_CTRL_CLEAR_MODE		   = 78;
-  
-  TLSEXT_NAMETYPE_host_name        = 0;
 
-  SSL_MODE_ENABLE_PARTIAL_WRITE = 1;
-  SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER = 2;
-  SSL_MODE_AUTO_RETRY = 4;
-  SSL_MODE_NO_AUTO_CHAIN = 8;
+  TLSEXT_TYPE_server_name = 0;
+  TLSEXT_TYPE_max_fragment_length = 1;
+  TLSEXT_TYPE_client_certificate_url = 2;
+  TLSEXT_TYPE_trusted_ca_keys = 3;
+  TLSEXT_TYPE_truncated_hmac = 4;
+  TLSEXT_TYPE_status_request = 5;
+  TLSEXT_TYPE_user_mapping = 6;
+  TLSEXT_TYPE_client_authz = 7;
+  TLSEXT_TYPE_server_authz = 8;
+  TLSEXT_TYPE_cert_type = 9;
+  TLSEXT_TYPE_elliptic_curves = 10;
+  TLSEXT_TYPE_ec_point_formats = 11;
+  TLSEXT_TYPE_srp = 12;
+  TLSEXT_TYPE_signature_algorithms = 13;
+  TLSEXT_TYPE_use_srtp = 14;
+  TLSEXT_TYPE_heartbeat = 15;
+  TLSEXT_TYPE_session_ticket = 35;
+  TLSEXT_TYPE_renegotiate = $ff01;
+  TLSEXT_TYPE_next_proto_neg = 13172;
+  TLSEXT_NAMETYPE_host_name = 0;
+  TLSEXT_STATUSTYPE_ocsp = 1;
+  TLSEXT_ECPOINTFORMAT_first = 0;
+  TLSEXT_ECPOINTFORMAT_uncompressed = 0;
+  TLSEXT_ECPOINTFORMAT_ansiX962_compressed_prime = 1;
+  TLSEXT_ECPOINTFORMAT_ansiX962_compressed_char2 = 2;
+  TLSEXT_ECPOINTFORMAT_last = 2;
+  TLSEXT_signature_anonymous = 0;
+  TLSEXT_signature_rsa = 1;
+  TLSEXT_signature_dsa = 2;
+  TLSEXT_signature_ecdsa = 3;
+  TLSEXT_hash_none = 0;
+  TLSEXT_hash_md5 = 1;
+  TLSEXT_hash_sha1 = 2;
+  TLSEXT_hash_sha224 = 3;
+  TLSEXT_hash_sha256 = 4;
+  TLSEXT_hash_sha384 = 5;
+  TLSEXT_hash_sha512 = 6;
+  TLSEXT_MAXLEN_host_name = 255;
 
-  SSL_OP_NO_SSLv2 = $01000000;
-  SSL_OP_NO_SSLv3 = $02000000;
-  SSL_OP_NO_TLSv1 = $04000000;
-  SSL_OP_ALL = $000FFFFF;
+  SSL_TLSEXT_ERR_OK = 0;
+  SSL_TLSEXT_ERR_ALERT_WARNING = 1;
+  SSL_TLSEXT_ERR_ALERT_FATAL = 2;
+  SSL_TLSEXT_ERR_NOACK = 3;
+
+  SSL_MODE_ENABLE_PARTIAL_WRITE                 = $00000001;
+  SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER           = $00000002;
+  SSL_MODE_AUTO_RETRY                           = $00000004;
+  SSL_MODE_NO_AUTO_CHAIN                        = $00000008;
+  SSL_MODE_RELEASE_BUFFERS                      = $00000010;
+
+  SSL_OP_MICROSOFT_SESS_ID_BUG                  = $00000001;
+  SSL_OP_NETSCAPE_CHALLENGE_BUG                 = $00000002;
+  SSL_OP_LEGACY_SERVER_CONNECT                  = $00000004;
+  SSL_OP_NETSCAPE_REUSE_CIPHER_CHANGE_BUG       = $00000008;
+  SSL_OP_SSLREF2_REUSE_CERT_TYPE_BUG            = $00000010;
+  SSL_OP_MICROSOFT_BIG_SSLV3_BUFFER             = $00000020;
+  SSL_OP_MSIE_SSLV2_RSA_PADDING                 = $00000040;
+  SSL_OP_SAFARI_ECDHE_ECDSA_BUG                 = $00000040;
+  SSL_OP_SSLEAY_080_CLIENT_DH_BUG               = $00000080;
+  SSL_OP_TLS_D5_BUG                             = $00000100;
+  SSL_OP_TLS_BLOCK_PADDING_BUG                  = $00000200;
+  SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS            = $00000800;
+  SSL_OP_NO_QUERY_MTU                           = $00001000;
+  SSL_OP_COOKIE_EXCHANGE                        = $00002000;
+  SSL_OP_NO_TICKET                              = $00004000;
+  SSL_OP_CISCO_ANYCONNECT                       = $00008000;
+  SSL_OP_ALL                                    = $000FFFFF;
+  SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION = $00010000;
+  SSL_OP_NO_COMPRESSION                         = $00020000;
+  SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION      = $00040000;
+  SSL_OP_SINGLE_ECDH_USE                        = $00080000;
+  SSL_OP_SINGLE_DH_USE                          = $00100000;
+  SSL_OP_EPHEMERAL_RSA                          = $00200000;
+  SSL_OP_CIPHER_SERVER_PREFERENCE               = $00400000;
+  SSL_OP_TLS_ROLLBACK_BUG                       = $00800000;
+  SSL_OP_NO_SSLv2                               = $01000000;
+  SSL_OP_NO_SSLv3                               = $02000000;
+  SSL_OP_NO_TLSv1                               = $04000000;
+  SSL_OP_NO_TLSv1_2                             = $08000000;
+  SSL_OP_NO_TLSv1_1                             = $10000000;
+  SSL_OP_NETSCAPE_CA_DN_BUG                     = $20000000;
+  SSL_OP_NETSCAPE_DEMO_CIPHER_CHANGE_BUG        = $40000000;
+  SSL_OP_CRYPTOPRO_TLSEXT_BUG                   = $80000000;
+
   SSL_VERIFY_NONE = $00;
   SSL_VERIFY_PEER = $01;
+
+  SSL_CERT_FLAG_TLS_STRICT                      = $00000001;
+
+  // Used in SSL_set_shutdown()/SSL_get_shutdown();
+  SSL_SENT_SHUTDOWN = 1;
+  SSL_RECEIVED_SHUTDOWN = 2;
 
   OPENSSL_DES_DECRYPT = 0;
   OPENSSL_DES_ENCRYPT = 1;
@@ -835,8 +951,16 @@ const
 //DES modes
   DES_ENCRYPT = 1;
   DES_DECRYPT = 0;
-  
-  
+
+// Error codes for ECDH Function
+  ECDH_F_ECDH_COMPUTE_KEY = 100;
+  ECDH_F_ECDH_DATA_NEW_METHOD = 101;
+
+// Error codes for ECDH Reason
+  ECDH_R_NO_PRIVATE_VALUE = 100;
+  ECDH_R_POINT_ARITHMETIC_FAILURE = 101;
+  ECDH_R_KDF_FAILED = 102;
+
 var
   SSLLibHandle: TLibHandle = 0;
   SSLUtilHandle: TLibHandle = 0;
@@ -864,7 +988,10 @@ var
   function SslMethodV2:PSSL_METHOD;
   function SslMethodV3:PSSL_METHOD;
   function SslMethodTLSV1:PSSL_METHOD;
+  function SslMethodTLSV1_1:PSSL_METHOD;
+  function SslMethodTLSV1_2:PSSL_METHOD;
   function SslMethodV23:PSSL_METHOD;
+  function SslTLSMethod:PSSL_METHOD;
   function SslCtxUsePrivateKey(ctx: PSSL_CTX; pkey: SslPtr):cInt;
   function SslCtxUsePrivateKeyASN1(pk: cInt; ctx: PSSL_CTX; d: String; len: cLong):cInt;
 //  function SslCtxUsePrivateKeyFile(ctx: PSSL_CTX; const _file: PChar; _type: cInt):cInt;
@@ -895,6 +1022,9 @@ var
   function SSLCipherGetName(c: SslPtr): String;
   function SSLCipherGetBits(c: SslPtr; var alg_bits: cInt):cInt;
   function SSLGetVerifyResult(ssl: PSSL):cLong;
+  function SSLGetServername(ssl: PSSL; _type: cInt = TLSEXT_NAMETYPE_host_name): string;
+  procedure SslCtxCallbackCtrl(ssl: PSSL; _type: cInt; cb: PCallbackCb);
+  function SslSetSslCtx(ssl: PSSL; ctx: PSSL_CTX): PSSL;
 
 // libeay.dll
   procedure ERR_load_crypto_strings;
@@ -1002,6 +1132,9 @@ var
   function d2i_RSAPrivateKey(arsa: PPRSA; pp: PPByte; len: cint): PRSA;
   function i2d_RSAPrivateKey(arsa: PRSA; pp: PPByte): cint;
 
+  function d2i_PubKey(a: PPEVP_PKEY; pp: PPByte; len: clong): PEVP_PKEY;
+  function d2i_AutoPrivateKey(a: PPEVP_PKEY; pp: PPByte; len: clong): PEVP_PKEY;
+
   // ERR Functions
 
   function Err_Error_String(e: cInt; buf: PChar): PChar;
@@ -1028,6 +1161,7 @@ var
   Function EVP_camellia_128_cbc : PEVP_CIPHER;
   Function EVP_camellia_192_cbc : PEVP_CIPHER;
   Function EVP_camellia_256_cbc : PEVP_CIPHER;
+  function EVP_sha256: PEVP_CIPHER;
 
   procedure OpenSSL_add_all_algorithms;
   procedure OpenSSL_add_all_ciphers;
@@ -1062,6 +1196,18 @@ var
   function EVP_DecryptUpdate(ctx: PEVP_CIPHER_CTX; out_data: PByte;
            outl: pcint; const in_: PByte; inl: cint): cint;
   function EVP_DecryptFinal(ctx: PEVP_CIPHER_CTX; outm: PByte; outlen: pcint): cint;
+  //
+  function EVP_MD_CTX_new: PEVP_MD_CTX;
+  function EVP_MD_CTX_create: PEVP_MD_CTX;
+  procedure EVP_MD_CTX_destroy(ctx: PEVP_MD_CTX);
+  procedure EVP_MD_CTX_free(ctx: PEVP_MD_CTX);
+  function EVP_DigestSignInit(ctx: PEVP_MD_CTX; pctx: PPEVP_PKEY_CTX; const evptype: PEVP_MD; e: PENGINE; pkey: PEVP_PKEY): cint;
+  function EVP_DigestSignUpdate(ctx: PEVP_MD_CTX; const data: Pointer; cnt: csize_t): cint;
+  function EVP_DigestSignFinal(ctx: PEVP_MD_CTX; sigret: PByte; siglen: pcsize_t): cint;
+  function EVP_DigestVerifyInit(ctx: PEVP_MD_CTX; pctx: PPEVP_PKEY_CTX; const evptype: PEVP_MD; e: PENGINE; pkey: PEVP_PKEY): cint;
+  function EVP_DigestVerifyUpdate(ctx: PEVP_MD_CTX; const data: Pointer; cnt: csize_t): cint;
+  function EVP_DigestVerifyFinal(ctx: PEVP_MD_CTX; sig: PByte; siglen: csize_t): cint;
+  //function
   //
   // PEM Functions - pem.h
   //
@@ -1261,7 +1407,10 @@ type
   TSslMethodV2 = function:PSSL_METHOD; cdecl;
   TSslMethodV3 = function:PSSL_METHOD; cdecl;
   TSslMethodTLSV1 = function:PSSL_METHOD; cdecl;
+  TSslMethodTLSV1_1 = function:PSSL_METHOD; cdecl;
+  TSslMethodTLSV1_2 = function:PSSL_METHOD; cdecl;
   TSslMethodV23 = function:PSSL_METHOD; cdecl;
+  TSslTLSMethod = function:PSSL_METHOD; cdecl;
   TSslCtxUsePrivateKey = function(ctx: PSSL_CTX; pkey: sslptr):cInt; cdecl;
   TSslCtxUsePrivateKeyASN1 = function(pk: cInt; ctx: PSSL_CTX; d: sslptr; len: cInt):cInt; cdecl;
   TSslCtxUsePrivateKeyFile = function(ctx: PSSL_CTX; const _file: PChar; _type: cInt):cInt; cdecl;
@@ -1289,6 +1438,9 @@ type
   TSSLCipherGetName = function(c: Sslptr):PChar; cdecl;
   TSSLCipherGetBits = function(c: SslPtr; alg_bits: PcInt):cInt; cdecl;
   TSSLGetVerifyResult = function(ssl: PSSL):cInt; cdecl;
+  TSSLGetServername = function(ssl: PSSL; _type: cInt = TLSEXT_NAMETYPE_host_name): PChar; cdecl;
+  TSSLCtxCallbackCtrl = procedure(ctx: PSSL_CTX; _type: cInt; cb: PCallbackCb); cdecl;
+  TSSLSetSslCtx = function(ssl: PSSL; ctx: PSSL_CTX): PSSL; cdecl;
 
 // libeay.dll
   TERR_load_crypto_strings = procedure; cdecl;
@@ -1391,6 +1543,7 @@ type
   Ti2d_RSAPublicKey = function (arsa: PRSA; pp: PPByte): cint; cdecl;
   Td2i_RSAPrivateKey = function (arsa: PPRSA; pp: PPByte; len: cint): PRSA; cdecl;
   Ti2d_RSAPrivateKey = function (arsa: PRSA; pp: PPByte): cint; cdecl;
+  Td2i_Key = function (a: PPEVP_PKEY; pp: PPByte; len: clong): PRSA; cdecl;
 
   // ERR Functions
 
@@ -1439,7 +1592,12 @@ type
   TEVP_DecryptUpdate = function(ctx: PEVP_CIPHER_CTX; out_data: PByte;
            outl: pcint; const in_: PByte; inl: cint): cint; cdecl;
   TEVP_DecryptFinal = function(ctx: PEVP_CIPHER_CTX; outm: PByte; outlen: pcint): cint; cdecl;
-
+  //
+  TEVP_MD_CTX_new = function(): PEVP_MD_CTX; cdecl;
+  TEVP_MD_CTX_free = procedure(ctx: PEVP_MD_CTX); cdecl;
+  TEVP_DigestSignVerifyInit = function(ctx: PEVP_MD_CTX; pctx: PPEVP_PKEY_CTX; const evptype: PEVP_MD; e: PENGINE; pkey: PEVP_PKEY): cint;
+  TEVP_DigestSignFinal = function(ctx: PEVP_MD_CTX; sigret: PByte; siglen: pcsize_t): cint;
+  TEVP_DigestVerifyFinal = function(ctx: PEVP_MD_CTX; sig: PByte; siglen: csize_t): cint;
   // PEM functions
 
   TPEM_read_bio_PrivateKey = function(bp: PBIO; X: PPEVP_PKEY;
@@ -1475,7 +1633,10 @@ var
   _SslMethodV2: TSslMethodV2 = nil;
   _SslMethodV3: TSslMethodV3 = nil;
   _SslMethodTLSV1: TSslMethodTLSV1 = nil;
+  _SslMethodTLSV1_1: TSslMethodTLSV1_1 = nil;
+  _SslMethodTLSV1_2: TSslMethodTLSV1_2 = nil;
   _SslMethodV23: TSslMethodV23 = nil;
+  _SslTLSMethod: TSslTLSMethod = nil;
   _SslCtxUsePrivateKey: TSslCtxUsePrivateKey = nil;
   _SslCtxUsePrivateKeyASN1: TSslCtxUsePrivateKeyASN1 = nil;
   _SslCtxUsePrivateKeyFile: TSslCtxUsePrivateKeyFile = nil;
@@ -1503,6 +1664,9 @@ var
   _SSLCipherGetName: TSSLCipherGetName = nil;
   _SSLCipherGetBits: TSSLCipherGetBits = nil;
   _SSLGetVerifyResult: TSSLGetVerifyResult = nil;
+  _SSLGetServername: TSSLGetServername = nil;
+  _SslCtxCallbackCtrl: TSSLCtxCallbackCtrl = nil;
+  _SslSetSslCtx: TSSLSetSslCtx = nil;
 
 // libeay.dll
   _ERR_load_crypto_strings: TERR_load_crypto_strings = nil;
@@ -1568,6 +1732,7 @@ var
   _EVP_camellia_128_cbc : TEVP_CIPHERFunction = nil;
   _EVP_camellia_192_cbc : TEVP_CIPHERFunction = nil;
   _EVP_camellia_256_cbc : TEVP_CIPHERFunction = nil;
+  _EVP_sha256 : TEVP_CIPHERFunction = nil;
 
   // 3DES functions
   _DESsetoddparity: TDESsetoddparity = nil;
@@ -1621,7 +1786,8 @@ var
   _i2d_RSAPublicKey: Ti2d_RSAPublicKey = nil;
   _d2i_RSAPrivateKey: Td2i_RSAPrivateKey = nil;
   _i2d_RSAPrivateKey: Ti2d_RSAPrivateKey = nil;
-
+  _d2i_PubKey: Td2i_Key = nil;
+  _d2i_AutoPrivateKey: Td2i_Key = nil;
   // ERR Functions
 
   _Err_Error_String: TErr_Error_String = nil;
@@ -1662,7 +1828,13 @@ var
   _EVP_DecryptInit: TEVP_DecryptInit = nil;
   _EVP_DecryptUpdate: TEVP_DecryptUpdate = nil;
   _EVP_DecryptFinal: TEVP_DecryptFinal = nil;
-
+  //
+  _EVP_MD_CTX_new : TEVP_MD_CTX_new = nil;
+  _EVP_MD_CTX_free : TEVP_MD_CTX_free = nil;
+  _EVP_DigestSignInit: TEVP_DigestSignVerifyInit = nil;
+  _EVP_DigestSignFinal: TEVP_DigestSignFinal = nil;
+  _EVP_DigestVerifyInit: TEVP_DigestSignVerifyInit = nil;
+  _EVP_DigestVerifyFinal: TEVP_DigestVerifyFinal = nil;
   // PEM
   _PEM_read_bio_PrivateKey: TPEM_read_bio_PrivateKey = nil;
   	   
@@ -1870,10 +2042,34 @@ begin
     Result := nil;
 end;
 
+function SslMethodTLSV1_1:PSSL_METHOD;
+begin
+  if InitSSLInterface and Assigned(_SslMethodTLSV1_1) then
+    Result := _SslMethodTLSV1_1
+  else
+    Result := nil;
+end;
+
+function SslMethodTLSV1_2:PSSL_METHOD;
+begin
+  if InitSSLInterface and Assigned(_SslMethodTLSV1_2) then
+    Result := _SslMethodTLSV1_2
+  else
+    Result := nil;
+end;
+
 function SslMethodV23:PSSL_METHOD;
 begin
   if InitSSLInterface and Assigned(_SslMethodV23) then
     Result := _SslMethodV23
+  else
+    Result := nil;
+end;
+
+function SslTLSMethod:PSSL_METHOD;
+begin
+  if InitSSLInterface and Assigned(_SslTLSMethod) then
+    Result := _SslTLSMethod
   else
     Result := nil;
 end;
@@ -2090,6 +2286,27 @@ begin
     Result := X509_V_ERR_APPLICATION_VERIFICATION;
 end;
 
+function SSLGetServername(ssl: PSSL; _type: cInt = TLSEXT_NAMETYPE_host_name): string;
+begin
+  if InitSSLInterface and Assigned(_SSLGetServername) then
+    result := PChar(_SSLGetServername(ssl, _type))
+  else
+    result := '';
+end;
+
+procedure SslCtxCallbackCtrl(ssl: PSSL; _type: cInt; cb: PCallbackCb);
+begin
+  if InitSSLInterface and Assigned(_SslCtxCallbackCtrl) then
+    _SslCtxCallbackCtrl(ssl, _type, cb);
+end;
+
+function SslSetSslCtx(ssl: PSSL; ctx: PSSL_CTX): PSSL;
+begin
+  if InitSSLInterface and Assigned(_SslSetSslCtx) then
+    result := _SslSetSslCtx(ssl, ctx)
+  else
+    result := nil;
+end;
 
 // libeay.dll
 function SSLeayversion(t: cInt): string;
@@ -2757,6 +2974,22 @@ begin
     Result := -1;
 end;
 
+function d2i_PubKey(a: PPEVP_PKEY; pp: PPByte; len: clong): PEVP_PKEY;
+begin
+  if InitSSLInterface and Assigned(_d2i_PubKey) then
+    Result := _d2i_PubKey(a, pp, len)
+  else
+    Result := nil;
+end;
+
+function d2i_AutoPrivateKey(a: PPEVP_PKEY; pp: PPByte; len: clong): PEVP_PKEY;
+begin
+  if InitSSLInterface and Assigned(_d2i_AutoPrivateKey) then
+    Result := _d2i_AutoPrivateKey(a, pp, len)
+  else
+    Result := nil;
+end;
+
 // ERR Functions
 
 function Err_Error_String(e: cInt; buf: PChar): PChar;
@@ -2914,6 +3147,15 @@ begin
   else
     Result := Nil;
 end;
+
+function EVP_sha256: PEVP_CIPHER;
+begin
+  if InitSSLInterface and Assigned(_EVP_sha256) then
+    Result := _EVP_sha256()
+  else
+    Result := Nil;
+end;
+
 
 procedure OpenSSL_add_all_algorithms;
 begin
@@ -3085,6 +3327,75 @@ function EVP_DecryptFinal(ctx: PEVP_CIPHER_CTX; outm: PByte; outlen: pcint): cin
 begin
   if InitSSLInterface and Assigned(_EVP_DecryptFinal) then
     Result := _EVP_DecryptFinal(ctx, outm, outlen)
+  else
+    Result := -1;
+end;
+
+function EVP_MD_CTX_new: PEVP_MD_CTX;
+begin
+  if InitSSLInterface and Assigned(_EVP_MD_CTX_new) then
+    Result := _EVP_MD_CTX_new
+  else
+    Result := Nil;
+end;
+
+function EVP_MD_CTX_create: PEVP_MD_CTX;
+begin
+  if InitSSLInterface and Assigned(_EVP_MD_CTX_new) then
+    Result := _EVP_MD_CTX_new
+  else
+    Result := Nil;
+end;
+
+procedure EVP_MD_CTX_destroy(ctx: PEVP_MD_CTX);
+begin
+  EVP_MD_CTX_free(ctx);
+end;
+
+procedure EVP_MD_CTX_free(ctx: PEVP_MD_CTX);
+begin
+  if InitSSLInterface and Assigned(_EVP_MD_CTX_free) then
+    _EVP_MD_CTX_free(ctx)
+end;
+
+function EVP_DigestSignInit(ctx: PEVP_MD_CTX; pctx: PPEVP_PKEY_CTX; const evptype: PEVP_MD; e: PENGINE; pkey: PEVP_PKEY): cint;
+begin
+  if InitSSLInterface and Assigned(_EVP_DigestSignInit) then
+    Result := _EVP_DigestSignInit(ctx, pctx, evptype, e, pkey)
+  else
+    Result := -1;
+end;
+
+function EVP_DigestSignUpdate(ctx: PEVP_MD_CTX; const data: Pointer; cnt: csize_t): cint;
+begin
+  Result := EVP_DigestUpdate(ctx, data, cnt);
+end;
+
+function EVP_DigestSignFinal(ctx: PEVP_MD_CTX; sigret: PByte; siglen: pcsize_t): cint;
+begin
+  if InitSSLInterface and Assigned(_EVP_DigestSignFinal) then
+    Result := _EVP_DigestSignFinal(ctx, sigret, siglen)
+  else
+    Result := -1;
+end;
+
+function EVP_DigestVerifyInit(ctx: PEVP_MD_CTX; pctx: PPEVP_PKEY_CTX; const evptype: PEVP_MD; e: PENGINE; pkey: PEVP_PKEY): cint;
+begin
+  if InitSSLInterface and Assigned(_EVP_DigestVerifyInit) then
+    Result := _EVP_DigestVerifyInit(ctx, pctx, evptype, e, pkey)
+  else
+    Result := -1;
+end;
+
+function EVP_DigestVerifyUpdate(ctx: PEVP_MD_CTX; const data: Pointer; cnt: csize_t): cint;
+begin
+  Result := EVP_DigestUpdate(ctx, data, cnt);
+end;
+
+function EVP_DigestVerifyFinal(ctx: PEVP_MD_CTX; sig: PByte; siglen: csize_t): cint;
+begin
+  if InitSSLInterface and Assigned(_EVP_DigestVerifyFinal) then
+    Result := _EVP_DigestVerifyFinal(ctx, sig, siglen)
   else
     Result := -1;
 end;
@@ -3801,7 +4112,10 @@ begin
   _SslMethodV2 := GetProcAddr(SSLLibHandle, 'SSLv2_method');
   _SslMethodV3 := GetProcAddr(SSLLibHandle, 'SSLv3_method');
   _SslMethodTLSV1 := GetProcAddr(SSLLibHandle, 'TLSv1_method');
+  _SslMethodTLSV1_1 := GetProcAddr(SSLLibHandle, 'TLSv1_1_method');
+  _SslMethodTLSV1_2 := GetProcAddr(SSLLibHandle, 'TLSv1_2_method');
   _SslMethodV23 := GetProcAddr(SSLLibHandle, 'SSLv23_method');
+  _SslTLSMethod := GetProcAddr(SSLLibHandle, 'TLS_method');
   _SslCtxUsePrivateKey := GetProcAddr(SSLLibHandle, 'SSL_CTX_use_PrivateKey');
   _SslCtxUsePrivateKeyASN1 := GetProcAddr(SSLLibHandle, 'SSL_CTX_use_PrivateKey_ASN1');
   //use SSL_CTX_use_RSAPrivateKey_file instead SSL_CTX_use_PrivateKey_file,
@@ -3831,6 +4145,9 @@ begin
   _SslCipherGetName := GetProcAddr(SSLLibHandle, 'SSL_CIPHER_get_name');
   _SslCipherGetBits := GetProcAddr(SSLLibHandle, 'SSL_CIPHER_get_bits');
   _SslGetVerifyResult := GetProcAddr(SSLLibHandle, 'SSL_get_verify_result');
+  _SslGetServername := GetProcAddr(SSLLibHandle, 'SSL_get_servername');
+  _SslCtxCallbackCtrl := GetProcAddr(SSLLibHandle, 'SSL_CTX_callback_ctrl');
+  _SslSetSslCtx := GetProcAddr(SSLLibHandle, 'SSL_set_SSL_CTX');
 end;
 
 Procedure LoadUtilEntryPoints;
@@ -3899,6 +4216,14 @@ begin
   _EVP_camellia_128_cbc := GetProcAddr(SSLUtilHandle, 'EVP_camellia_128_cbc');
   _EVP_camellia_192_cbc := GetProcAddr(SSLUtilHandle, 'EVP_camellia_192_cbc');
   _EVP_camellia_256_cbc := GetProcAddr(SSLUtilHandle, 'EVP_camellia_256_cbc');
+  _EVP_sha256 := GetProcAddr(SSLUtilHandle, 'EVP_sha256');
+
+  _EVP_MD_CTX_new := GetProcAddr(SSLUtilHandle, 'EVP_MD_CTX_new');
+  _EVP_MD_CTX_free := GetProcAddr(SSLUtilHandle, 'EVP_MD_CTX_free');
+  _EVP_DigestSignInit := GetProcAddr(SSLUtilHandle, 'EVP_DigestSignInit');
+  _EVP_DigestSignFinal := GetProcAddr(SSLUtilHandle, 'EVP_DigestSignFinal');
+  _EVP_DigestVerifyInit := GetProcAddr(SSLUtilHandle, 'EVP_DigestVerifyInit');
+  _EVP_DigestVerifyFinal := GetProcAddr(SSLUtilHandle, 'EVP_DigestVerifyFinal');
    // 3DES functions
   _DESsetoddparity := GetProcAddr(SSLUtilHandle, 'des_set_odd_parity');
   _DESsetkeychecked := GetProcAddr(SSLUtilHandle, 'des_set_key_checked');
@@ -3947,6 +4272,8 @@ begin
   _i2d_RSAPublicKey := GetProcAddr(SSLUtilHandle, 'i2d_RSAPublicKey');
   _d2i_RSAPrivateKey := GetProcAddr(SSLUtilHandle, 'd2i_RSAPrivateKey');
   _i2d_RSAPrivateKey := GetProcAddr(SSLUtilHandle, 'i2d_RSAPrivateKey');
+  _d2i_PubKey := GetProcAddr(SSLUtilHandle, 'd2i_PUBKEY');
+  _d2i_AutoPrivateKey := GetProcAddr(SSLUtilHandle, 'd2i_AutoPrivateKey');
    // ERR Functions
   _ERR_error_string := GetProcAddr(SSLUtilHandle, 'ERR_error_string');
    // EVP Functions
@@ -4080,7 +4407,10 @@ begin
   _SslMethodV2 := nil;
   _SslMethodV3 := nil;
   _SslMethodTLSV1 := nil;
+  _SslMethodTLSV1_1 := nil;
+  _SslMethodTLSV1_2 := nil;
   _SslMethodV23 := nil;
+  _SslTLSMethod := nil;
   _SslCtxUsePrivateKey := nil;
   _SslCtxUsePrivateKeyASN1 := nil;
   _SslCtxUsePrivateKeyFile := nil;
@@ -4108,7 +4438,9 @@ begin
   _SslCipherGetName := nil;
   _SslCipherGetBits := nil;
   _SslGetVerifyResult := nil;
-
+  _SslGetServername := nil;
+  _SslCtxCallbackCtrl := nil;
+  _SslSetSslCtx := nil;
   _PKCS7_ISSUER_AND_SERIAL_new:=nil;
   _PKCS7_ISSUER_AND_SERIAL_free:=nil;
   _PKCS7_ISSUER_AND_SERIAL_digest:=nil;
@@ -4294,6 +4626,8 @@ begin
   _i2d_RSAPublicKey := nil;
   _d2i_RSAPrivateKey := nil;
   _i2d_RSAPrivateKey := nil;
+  _d2i_PubKey := nil;
+  _d2i_AutoPrivateKey := nil;
 
   // ERR Functions
   _ERR_error_string := nil;
@@ -4328,6 +4662,15 @@ begin
   _EVP_DecryptInit := nil;
   _EVP_DecryptUpdate := nil;
   _EVP_DecryptFinal := nil;
+  //
+  _EVP_sha256 := nil;
+
+  _EVP_MD_CTX_new := nil;
+  _EVP_MD_CTX_free := nil;
+  _EVP_DigestSignInit := nil;
+  _EVP_DigestSignFinal := nil;
+  _EVP_DigestVerifyInit := nil;
+  _EVP_DigestVerifyFinal := nil;
 
   // PEM
 

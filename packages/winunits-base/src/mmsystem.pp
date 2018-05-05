@@ -6,7 +6,7 @@
 {*********************************} (*   LCC-win32 (c) Jacob Navia   *)
                                     (*********************************)
 
-Unit mmsystem;
+Unit MMSystem;
 {$ifndef NO_SMART_LINK}
   {$smartlink on}
 {$endif}
@@ -1540,9 +1540,9 @@ Type
                                 dwControlID: DWORD;
                                 cChannels: DWORD;
                                 Case Integer Of
-                                  0: (hwndOwner: tHandle);
-                                  1: (cMultipleItems, cbDetails: DWORD;
+                                  0: (hwndOwner: tHandle; cbDetails: DWORD;
                                       paDetails: Pointer);
+                                  1: (cMultipleItems:DWORD);
 				 End;
  MIXERCONTROLDETAILS   = tMIXERCONTROLDETAILS;
  PMIXERCONTROLDETAILS  = ^tMIXERCONTROLDETAILS;

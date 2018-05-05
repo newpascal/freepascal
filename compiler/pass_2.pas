@@ -35,7 +35,10 @@ uses
          fc_continue,
          fc_inflowcontrol,
          fc_gotolabel,
-         { in try block of try..finally }
+         { in block that has an exception handler associated with it
+           (try..except, try..finally, exception block of try..except, ... }
+         fc_catching_exceptions,
+         { in try block of try..finally and target uses specific unwinding }
          fc_unwind_exit,
          fc_unwind_loop,
          { the left side of an expression is already handled, so we are
@@ -58,12 +61,15 @@ implementation
 {$ifdef EXTDEBUG}
      cutils,
 {$endif}
-     globtype,systems,verbose,
+     globtype,verbose,
      globals,
-     paramgr,
-     aasmtai,aasmdata,
-     cgbase,
-     nflw,cgobj;
+     aasmdata,
+     cgobj
+{$ifdef EXTDEBUG}
+     ,cgbase
+     ,aasmtai
+{$endif}
+     ;
 
 {*****************************************************************************
                               SecondPass
@@ -150,7 +156,6 @@ implementation
              'guidconstn',
              'rttin',
              'loadparentfpn',
-             'dataconstn',
              'objselectorn',
              'objcprotocoln',
              'specializen'
@@ -188,6 +193,10 @@ implementation
             current_filepos:=p.fileinfo;
             current_settings.localswitches:=p.localswitches;
             codegenerror:=false;
+            if assigned(p.optinfo) then
+              cg.executionweight:=p.optinfo^.executionweight
+            else
+              cg.executionweight:=100;
 {$ifdef EXTDEBUG}
             if (p.expectloc=LOC_INVALID) then
               Comment(V_Warning,'ExpectLoc is not set before secondpass: '+nodetype2str[p.nodetype]);

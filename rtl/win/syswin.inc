@@ -166,12 +166,27 @@ end;
 
 procedure TranslateMxcsr(mxcsr: longword; var code: longint);
 begin
-  case (mxcsr and $3f) of
-    1,32:  code:=-207;  { InvalidOp, Precision }
-    2,16:  code:=-206;  { Denormal, Underflow }
-    4:     code:=-208;  { !!reZeroDivide }
-    8:     code:=-205;  { reOverflow }
-  end;
+  { we can return only one value, further one's are lost }
+  { InvalidOp }
+  if (mxcsr and 1)<>0 then
+    code:=-207
+  { Denormal }
+  else if (mxcsr and 2)<>0 then
+    code:=-206
+  { !!reZeroDivide }
+  else if (mxcsr and 4)<>0 then
+    code:=-208
+  { reOverflow }
+  else if (mxcsr and 8)<>0 then
+    code:=-205
+  { Underflow }
+  else if (mxcsr and 16)<>0 then
+    code:=-206
+  { Precision }
+  else if (mxcsr and 32)<>0 then
+    code:=-207
+  else { this should not happen }
+    code:=-255
 end;
 
 function FilterException(var rec:TExceptionRecord; imagebase: PtrUInt; filterRva: DWord; errcode: Longint): Pointer;
@@ -722,3 +737,31 @@ procedure InitWin32Widestrings;
     DefaultRTLFileSystemCodePage:=DefaultSystemCodePage;
   end;
 
+type
+  WINBOOL = longbool;
+  PHANDLER_ROUTINE = function (dwCtrlType:DWORD):WINBOOL; stdcall;
+
+function SetConsoleCtrlHandler(HandlerRoutine:PHANDLER_ROUTINE; Add:WINBOOL):WINBOOL; stdcall; 
+  external 'kernel32' name 'SetConsoleCtrlHandler';
+
+function WinCtrlBreakHandler(dwCtrlType:DWORD): WINBOOL;stdcall;
+const
+  CTRL_BREAK_EVENT = 1;
+begin
+  if Assigned(CtrlBreakHandler) then 
+    Result:=CtrlBreakHandler((dwCtrlType and CTRL_BREAK_EVENT > 0))
+  else
+    Result:=false;
+end;
+
+function SysSetCtrlBreakHandler (Handler: TCtrlBreakHandler): TCtrlBreakHandler;
+begin
+  (* Return either nil or previous handler *)
+  if (Assigned(CtrlBreakHandler)) and (not Assigned(Handler)) then   
+    SetConsoleCtrlHandler(@WinCtrlBreakHandler, false)
+  else if (not Assigned(CtrlBreakHandler)) and (Assigned(Handler)) then
+    SetConsoleCtrlHandler(@WinCtrlBreakHandler, true);
+
+  SysSetCtrlBreakHandler := CtrlBreakHandler;
+  CtrlBreakHandler := Handler;
+end;

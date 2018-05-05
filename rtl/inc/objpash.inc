@@ -192,6 +192,7 @@
          Entries    : array[0..0] of tinterfaceentry;
        end;
 
+       PMethod = ^TMethod;
        TMethod = record
          Code : CodePointer;
          Data : Pointer;
@@ -248,10 +249,11 @@
           class function GetInterfaceTable : pinterfacetable;
 
           { new since Delphi 2009 }
-          class function UnitName : ansistring;
+          class function UnitName : {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}ansistring{$else FPC_HAS_FEATURE_ANSISTRINGS}shortstring{$endif FPC_HAS_FEATURE_ANSISTRINGS};
+          class function QualifiedClassName: {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}ansistring{$else FPC_HAS_FEATURE_ANSISTRINGS}shortstring{$endif FPC_HAS_FEATURE_ANSISTRINGS};
           function Equals(Obj: TObject) : boolean;virtual;
           function GetHashCode: PtrInt;virtual;
-          function ToString: ansistring;virtual;
+          function ToString: {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}ansistring{$else FPC_HAS_FEATURE_ANSISTRINGS}shortstring{$endif FPC_HAS_FEATURE_ANSISTRINGS};virtual;
        end;
 
        IUnknown = interface
@@ -292,14 +294,18 @@
             VarResult,ExcepInfo,ArgErr : pointer) : HResult;stdcall;
        end;
 
+       { TInterfacedObject }
+
        TInterfacedObject = class(TObject,IUnknown)
        protected
           frefcount : longint;
+          FDestroyCount : longint;
           { implement methods of IUnknown }
           function QueryInterface({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} iid : tguid;out obj) : longint;{$IFNDEF WINDOWS}cdecl{$ELSE}stdcall{$ENDIF};
           function _AddRef : longint;{$IFNDEF WINDOWS}cdecl{$ELSE}stdcall{$ENDIF};
           function _Release : longint;{$IFNDEF WINDOWS}cdecl{$ELSE}stdcall{$ENDIF};
         public
+          destructor destroy; override;
           procedure AfterConstruction;override;
           procedure BeforeDestruction;override;
           class function NewInstance : TObject;override;
@@ -433,7 +439,9 @@
            vtPWideChar     : (VPWideChar: PWideChar);
            vtAnsiString    : (VAnsiString: Pointer);
            vtCurrency      : (VCurrency: PCurrency);
+{$ifdef FPC_HAS_FEATURE_VARIANTS}
            vtVariant       : (VVariant: PVariant);
+{$endif FPC_HAS_FEATURE_VARIANTS}
            vtInterface     : (VInterface: Pointer);
            vtWideString    : (VWideString: Pointer);
            vtInt64         : (VInt64: PInt64);
@@ -453,6 +461,7 @@
                               Resourcestring support
 *****************************************************************************}
 
+{$ifdef FPC_HAS_FEATURE_RESOURCES}
   type
     PResourceStringRecord = ^TResourceStringRecord;
     TResourceStringRecord = Record
@@ -461,3 +470,4 @@
        DefaultValue : AnsiString;
        HashValue    : LongWord;
      end;
+{$endif FPC_HAS_FEATURE_RESOURCES}

@@ -71,14 +71,13 @@ interface
 
     uses
       cutils,verbose,globtype,globals,
-      aasmbase,aasmtai,aasmdata,aasmcpu,symconst,symdef,symtable,paramgr,
-      nutils,ncon,ncal,
+      aasmbase,aasmdata,symconst,symdef,symtable,
+      nutils,ncon,
       cpubase,systems,
-      procinfo,pass_2,
+      pass_2,
       cgbase,
       cgutils,cgobj,hlcgobj,
       fmodule,
-      ncgutil,
       tgobj
       ;
 
@@ -103,8 +102,8 @@ interface
       begin
         newsize:=def_cgsize(resultdef);
 
-        { insert range check if not explicit conversion }
-        if not(nf_explicit in flags) then
+        { insert range check if not explicit or interally generated conversion }
+        if (flags*[nf_explicit,nf_internal])=[] then
           hlcg.g_rangecheck(current_asmdata.CurrAsmList,left.location,left.resultdef,resultdef);
 
         { is the result size smaller? when typecasting from void
@@ -218,6 +217,9 @@ interface
         resflags.reg1:=NR_NO;
         resflags.reg2:=NR_NO;
         resflags.cond:=OC_NONE;
+{$elseif defined(sparcgen)}
+        { Load left node into flag F_NE/F_E }
+        resflags.Init(NR_ICC,F_NE);
 {$else}
         { Load left node into flag F_NE/F_E }
         resflags:=F_NE;
@@ -316,7 +318,7 @@ interface
                if tstringconstnode(left).len=0 then
                 begin
                   { FPC_EMPTYCHAR is a widechar -> 2 bytes }
-                  reference_reset(hr,2);
+                  reference_reset(hr,2,[]);
                   hr.symbol:=current_asmdata.RefAsmSymbol('FPC_EMPTYCHAR',AT_DATA,needs_indirect);
                   current_module.add_extern_asmsym('FPC_EMPTYCHAR',AB_EXTERNAL,AT_DATA);
                   location.register:=hlcg.getaddressregister(current_asmdata.CurrAsmList,resultdef);
@@ -370,8 +372,9 @@ interface
     procedure tcgtypeconvnode.second_pointer_to_array;
 
       begin
-        { assume natural alignment }
-        location_reset_ref(location,LOC_REFERENCE,OS_NO,resultdef.alignment);
+        { assume natural alignment, volatility of pointer has no effect on the volatility
+          of the data it points to }
+        location_reset_ref(location,LOC_REFERENCE,OS_NO,resultdef.alignment,[]);
         case left.location.loc of
           LOC_CREGISTER,
           LOC_REGISTER :
@@ -385,7 +388,7 @@ interface
                 end
               else
             {$endif}
-                hlcg.reference_reset_base(location.reference,left.resultdef,left.location.register,0,location.reference.alignment);
+                hlcg.reference_reset_base(location.reference,left.resultdef,left.location.register,0,ctempposinvalid,location.reference.alignment,location.reference.volatility);
             end;
           LOC_REFERENCE,
           LOC_CREFERENCE,
@@ -396,7 +399,7 @@ interface
           LOC_CSUBSETREF:
             begin
               hlcg.reference_reset_base(location.reference,left.resultdef,
-                hlcg.getaddressregister(current_asmdata.CurrAsmList,left.resultdef),0,location.reference.alignment);
+                hlcg.getaddressregister(current_asmdata.CurrAsmList,left.resultdef),0,ctempposinvalid,location.reference.alignment,[]);
               hlcg.a_load_loc_reg(current_asmdata.CurrAsmList,left.resultdef,left.resultdef,left.location,
                 location.reference.base);
               if left.location.loc in [LOC_REFERENCE,LOC_CREFERENCE] then
@@ -416,7 +419,7 @@ interface
       var
         tmpref: treference;
       begin
-         location_reset_ref(location,LOC_REFERENCE,OS_NO,2);
+         location_reset_ref(location,LOC_REFERENCE,OS_NO,2,[]);
          case tstringdef(resultdef).stringtype of
            st_shortstring :
              begin
@@ -455,7 +458,7 @@ interface
              { round them down to the proper precision }
              tg.gethltemp(current_asmdata.currasmlist,resultdef,resultdef.size,tt_normal,tr);
              hlcg.a_loadfpu_reg_ref(current_asmdata.CurrAsmList,left.resultdef,resultdef,left.location.register,tr);
-             location_reset_ref(left.location,LOC_REFERENCE,location.size,tr.alignment);
+             location_reset_ref(left.location,LOC_REFERENCE,location.size,tr.alignment,tr.volatility);
              left.location.reference:=tr;
              left.resultdef:=resultdef;
            end;
@@ -545,18 +548,18 @@ interface
       begin
         if tabstractprocdef(resultdef).is_addressonly then
           begin
-            location_reset(location,LOC_REGISTER,def_cgsize(voidcodepointertype));
+            location_reset(location,LOC_REGISTER,def_cgsize(resultdef));
             { only a code pointer? (when taking the address of classtype.method
               we also only get a code pointer even though the resultdef is a
               procedure of object, and hence is_addressonly would return false)
              }
-	    if left.location.size = def_cgsize(voidcodepointertype) then
+	    if left.location.size = def_cgsize(tabstractprocdef(left.resultdef).address_type) then
               begin
                 case left.location.loc of
                   LOC_REFERENCE,LOC_CREFERENCE:
                     begin
                       { the procedure symbol is encoded in reference.symbol -> take address }
-                      location.register:=hlcg.getaddressregister(current_asmdata.CurrAsmList,voidcodepointertype);
+                      location.register:=hlcg.getaddressregister(current_asmdata.CurrAsmList,resultdef);
                       hlcg.a_loadaddr_ref_reg(current_asmdata.CurrAsmList,left.resultdef,resultdef,left.location.reference,location.register);
                     end;
                   else
@@ -596,7 +599,7 @@ interface
                   tmethodpointer record and set the "frame pointer" to nil }
                 if not(left.location.loc in [LOC_REFERENCE,LOC_CREFERENCE]) then
                   internalerror(2013031503);
-                location_reset_ref(location,LOC_REFERENCE,int_cgsize(resultdef.size),sizeof(pint));
+                location_reset_ref(location,LOC_REFERENCE,int_cgsize(resultdef.size),sizeof(pint),[]);
                 tg.gethltemp(current_asmdata.CurrAsmList,resultdef,resultdef.size,tt_normal,location.reference);
                 href:=location.reference;
                 if is_nested_pd(tabstractprocdef(resultdef)) then
@@ -702,7 +705,7 @@ interface
            left.location,location.register);
          hlcg.a_cmp_const_reg_label(current_asmdata.CurrAsmList,resultdef,OC_NE,0,location.register,l1);
          { FPC_EMPTYCHAR is a widechar -> 2 bytes }
-         reference_reset(hr,2);
+         reference_reset(hr,2,[]);
          hr.symbol:=current_asmdata.RefAsmSymbol('FPC_EMPTYCHAR',AT_DATA,needs_indirect);
          current_module.add_extern_asmsym('FPC_EMPTYCHAR',AB_EXTERNAL,AT_DATA);
          hlcg.a_loadaddr_ref_reg(current_asmdata.CurrAsmList,cwidechartype,resultdef,hr,location.register);
@@ -735,6 +738,11 @@ interface
               begin
                 location.register:=left.location.register;
                 hlcg.g_ptrtypecast_reg(current_asmdata.CurrAsmList,left.resultdef,resultdef,location.register);
+              end;
+            LOC_CONSTANT:
+              begin
+                 location.register:=hlcg.getaddressregister(current_asmdata.CurrAsmList,resultdef);
+                 hlcg.a_load_const_reg(current_asmdata.CurrAsmList,resultdef,left.location.value,location.register);
               end
             else
               internalerror(121120001);

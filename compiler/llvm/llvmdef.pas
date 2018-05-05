@@ -68,7 +68,7 @@ interface
       record consisting of 4 longints must be returned as a record consisting of
       two int64's on x86-64. This function is used to create (and reuse)
       temporary recorddefs for such purposes.}
-    function llvmgettemprecorddef(fieldtypes: tfplist; packrecords, recordalignmin, maxcrecordalign: shortint): trecorddef;
+    function llvmgettemprecorddef(fieldtypes: array of tdef; packrecords, recordalignmin, maxcrecordalign: shortint): trecorddef;
 
     { get the llvm type corresponding to a parameter, e.g. a record containing
       two integer int64 for an arbitrary record split over two individual int64
@@ -113,7 +113,7 @@ interface
 implementation
 
   uses
-    cutils,constexp,
+    globals,cutils,constexp,
     verbose,systems,
     fmodule,
     symtable,symconst,symsym,
@@ -129,7 +129,7 @@ implementation
     begin
       if not assigned(def.typesym) then
         internalerror(2015041901);
-      result:='%"typ.'+def.fullownerhierarchyname+def.typesym.realname+'"'
+      result:='%"typ.'+def.fullownerhierarchyname(false)+def.typesym.realname+'"'
     end;
 
 
@@ -264,7 +264,14 @@ implementation
   function llvmmangledname(const s: TSymStr): TSymStr;
     begin
       if copy(s,1,length('llvm.'))<>'llvm.' then
-        result:='@"\01'+s+'"'
+        if s[1]<>'"' then
+          result:='@"\01'+s+'"'
+        else
+          begin
+            { already quoted -> insert \01 and prepend @ }
+            result:='@'+s;
+            insert('\01',result,3);
+          end
       else
         result:='@'+s
     end;
@@ -392,7 +399,22 @@ implementation
               case tfiledef(def).filetyp of
                 ft_text    :
                   llvmaddencodedtype_intern(search_system_type('TEXTREC').typedef,[lef_inaggregate]+[lef_typedecl]*flags,encodedstr);
-                ft_typed,
+                ft_typed   :
+                  begin
+                    { in case of ISO-like I/O, the typed file def includes a
+                      get/put buffer of the size of the file's elements }
+                    if (m_isolike_io in current_settings.modeswitches) and
+                       not is_void(tfiledef(def).typedfiledef) then
+                      encodedstr:=encodedstr+'<{';
+                    llvmaddencodedtype_intern(search_system_type('FILEREC').typedef,[lef_inaggregate]+[lef_typedecl]*flags,encodedstr);
+                    if (m_isolike_io in current_settings.modeswitches) and
+                       not is_void(tfiledef(def).typedfiledef) then
+                      begin
+                        encodedstr:=encodedstr+',[';
+                        encodedstr:=encodedstr+tostr(tfiledef(def).typedfiledef.size);
+                        encodedstr:=encodedstr+' x i8]}>'
+                      end;
+                  end;
                 ft_untyped :
                   llvmaddencodedtype_intern(search_system_type('FILEREC').typedef,[lef_inaggregate]+[lef_typedecl]*flags,encodedstr);
                 else
@@ -546,6 +568,8 @@ implementation
                   { opaque for now }
                   encodedstr:=encodedstr+'i8*'
                 end;
+              odt_helper:
+                llvmaddencodedtype_intern(tobjectdef(def).extendeddef,flags,encodedstr);
               else
                 internalerror(2013100601);
             end;
@@ -780,7 +804,7 @@ implementation
       end;
 
 
-    function llvmgettemprecorddef(fieldtypes: tfplist; packrecords, recordalignmin, maxcrecordalign: shortint): trecorddef;
+    function llvmgettemprecorddef(fieldtypes: array of tdef; packrecords, recordalignmin, maxcrecordalign: shortint): trecorddef;
       var
         i: longint;
         res: PHashSetItem;
@@ -792,14 +816,15 @@ implementation
         typename: string;
       begin
         typename:=internaltypeprefixName[itp_llvmstruct];
-        for i:=0 to fieldtypes.count-1 do
+        for i:=low(fieldtypes) to high(fieldtypes) do
           begin
-            hdef:=tdef(fieldtypes[i]);
+            hdef:=fieldtypes[i];
             case hdef.typ of
               orddef:
                 case torddef(hdef).ordtype of
                   s8bit,
-                  u8bit:
+                  u8bit,
+                  pasbool8:
                     typename:=typename+'i8';
                   s16bit,
                   u16bit:
@@ -835,8 +860,8 @@ implementation
           begin
             res^.Data:=crecorddef.create_global_internal(typename,packrecords,
               recordalignmin,maxcrecordalign);
-            for i:=0 to fieldtypes.count-1 do
-              trecorddef(res^.Data).add_field_by_def('F'+tostr(i),tdef(fieldtypes[i]));
+            for i:=low(fieldtypes) to high(fieldtypes) do
+              trecorddef(res^.Data).add_field_by_def('F'+tostr(i),fieldtypes[i]);
           end;
         trecordsymtable(trecorddef(res^.Data).symtable).addalignmentpadding;
         result:=trecorddef(res^.Data);
@@ -845,10 +870,11 @@ implementation
 
     function llvmgetcgparadef(const cgpara: tcgpara; beforevalueext: boolean): tdef;
       var
-        retdeflist: tfplist;
+        retdeflist: array[0..9] of tdef;
         retloc: pcgparalocation;
         usedef: tdef;
         valueext: tllvmvalueextension;
+        i: longint;
       begin
         { single location }
         if not assigned(cgpara.location^.next) then
@@ -874,13 +900,16 @@ implementation
             exit
           end;
         { multiple locations -> create temp record }
-        retdeflist:=tfplist.create;
         retloc:=cgpara.location;
+        i:=0;
         repeat
-          retdeflist.add(retloc^.def);
+          if i>high(retdeflist) then
+            internalerror(2016121801);
+          retdeflist[i]:=retloc^.def;
+          inc(i);
           retloc:=retloc^.next;
         until not assigned(retloc);
-        result:=llvmgettemprecorddef(retdeflist,C_alignment,
+        result:=llvmgettemprecorddef(slice(retdeflist,i),C_alignment,
           targetinfos[target_info.system]^.alignment.recordalignmin,
           targetinfos[target_info.system]^.alignment.maxCrecordalign);
         include(result.defoptions,df_llvm_no_struct_packing);

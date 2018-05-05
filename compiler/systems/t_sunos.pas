@@ -37,9 +37,8 @@ implementation
     sysutils,
     cutils,cfileutl,cclasses,
     verbose,systems,globtype,globals,
-    symconst,script,
-    fmodule,aasmbase,aasmtai,aasmdata,aasmcpu,cpubase,symsym,symdef,
-    cgobj,
+    cscript,
+    fmodule,
     import,export,expunix,link,comprsrc,rescmn,i_sunos,ogbase;
 
   type
@@ -516,7 +515,7 @@ begin
       while not linkres.data.Empty do
         begin
           s:=linkres.data.GetFirst;
-	  if s<>'' then
+          if s<>'' then
             linkstr:=linkstr+' '+s;
         end;
       linkres.free;
@@ -626,7 +625,7 @@ begin
       while not linkres.data.Empty do
         begin
           s:=linkres.data.GetFirst;
-	  if s<>'' then
+          if s<>'' then
             linkstr:=linkstr+' '+s;
         end;
       linkres.free;

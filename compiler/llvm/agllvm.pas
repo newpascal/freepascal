@@ -28,19 +28,29 @@ interface
     uses
       globtype,globals,systems,
       aasmbase,aasmtai,aasmdata,
-      assemble;
+      assemble,
+      aasmllvm;
 
     type
       TLLVMInstrWriter = class;
 
-      TLLVMModuleInlineAssemblyDecorator = class(TObject,IExternalAssemblerOutputFileDecorator)
+      TLLVMModuleInlineAssemblyDecorator = class(IExternalAssemblerOutputFileDecorator)
+       function LineFilter(const s: AnsiString): AnsiString;
        function LinePrefix: AnsiString;
        function LinePostfix: AnsiString;
+       function LineEnding(const deflineending: ShortString): ShortString;
+      end;
+
+      TLLVMFunctionInlineAssemblyDecorator = class(IExternalAssemblerOutputFileDecorator)
        function LineFilter(const s: AnsiString): AnsiString;
+       function LinePrefix: AnsiString;
+       function LinePostfix: AnsiString;
+       function LineEnding(const deflineending: ShortString): ShortString;
       end;
 
       TLLVMAssember=class(texternalassembler)
       protected
+        ffuncinlasmdecorator: TLLVMFunctionInlineAssemblyDecorator;
         fdecllevel: longint;
 
         procedure WriteExtraHeader;virtual;
@@ -52,10 +62,11 @@ interface
         procedure WriteOrdConst(hp: tai_const);
         procedure WriteTai(const replaceforbidden: boolean; const do_line: boolean; var InlineLevel: cardinal; var asmblock: boolean; var hp: tai);
        public
-        constructor create(info: pasminfo; smart: boolean); override;
+        constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean); override;
         function MakeCmdLine: TCmdStr; override;
         procedure WriteTree(p:TAsmList);override;
         procedure WriteAsmList;override;
+        procedure WriteFunctionInlineAsmList(list: tasmlist);
         destructor destroy; override;
        protected
         InstrWriter: TLLVMInstrWriter;
@@ -75,7 +86,9 @@ interface
         owner: TLLVMAssember;
         fstr: TSymStr;
 
+        function getopcodestr(hp: taillvm): TSymStr;
         function getopstr(const o:toper; refwithalign: boolean) : TSymStr;
+        procedure WriteAsmRegisterAllocationClobbers(list: tasmlist);
       end;
 
 
@@ -83,11 +96,11 @@ implementation
 
     uses
       SysUtils,
-      cutils,cfileutl,
+      cutils,cclasses,cfileutl,
       fmodule,verbose,
       objcasm,
       aasmcnst,symconst,symdef,symtable,
-      llvmbase,aasmllvm,itllvm,llvmdef,
+      llvmbase,itllvm,llvmdef,
       cgbase,cgutils,cpubase,llvminfo;
 
     const
@@ -137,22 +150,9 @@ implementation
          extended2str:=hs
       end;
 
-
 {****************************************************************************}
 {               Decorator for module-level inline assembly                   }
 {****************************************************************************}
-
-    function TLLVMModuleInlineAssemblyDecorator.LinePrefix: AnsiString;
-      begin
-        result:='module asm "';
-      end;
-
-
-    function TLLVMModuleInlineAssemblyDecorator.LinePostfix: AnsiString;
-      begin
-        result:='"';
-      end;
-
 
     function TLLVMModuleInlineAssemblyDecorator.LineFilter(const s: AnsiString): AnsiString;
       var
@@ -173,7 +173,79 @@ implementation
               result:=result+s[i];
             end;
           end;
+        end;
+
+
+    function TLLVMModuleInlineAssemblyDecorator.LinePrefix: AnsiString;
+      begin
+        result:='module asm "';
       end;
+
+
+    function TLLVMModuleInlineAssemblyDecorator.LinePostfix: AnsiString;
+      begin
+        result:='"';
+      end;
+
+
+    function TLLVMModuleInlineAssemblyDecorator.LineEnding(const deflineending: ShortString): ShortString;
+      begin
+        result:=deflineending
+      end;
+
+
+{****************************************************************************}
+{              Decorator for function-level inline assembly                  }
+{****************************************************************************}
+
+
+    function TLLVMFunctionInlineAssemblyDecorator.LineFilter(const s: AnsiString): AnsiString;
+      var
+        i: longint;
+      begin
+        result:='';
+        for i:=1 to length(s) do
+          begin
+            case s[i] of
+              { escape dollars }
+              '$':
+                 result:=result+'$$';
+              { ^ is used as placeholder for a single dollar (reference to
+                 argument to the inline assembly) }
+              '^':
+                 result:=result+'$';
+              #0..#31,
+              #127..#255,
+              '"','\':
+                result:=result+
+                        '\'+
+                        chr((ord(s[i]) shr 4)+ord('0'))+
+                        chr((ord(s[i]) and $f)+ord('0'));
+            else
+              result:=result+s[i];
+            end;
+          end;
+        end;
+
+
+    function TLLVMFunctionInlineAssemblyDecorator.LinePrefix: AnsiString;
+      begin
+        result:='';
+      end;
+
+
+    function TLLVMFunctionInlineAssemblyDecorator.LinePostfix: AnsiString;
+      begin
+        result:='';
+      end;
+
+
+    function TLLVMFunctionInlineAssemblyDecorator.LineEnding(const deflineending: ShortString): ShortString;
+      begin
+        result:='\0A';
+      end;
+
+
 
 
  {****************************************************************************}
@@ -230,17 +302,17 @@ implementation
       end;
 
 
-   function getparas(const o: toper): ansistring;
+   function getparas(const paras: tfplist): ansistring;
      var
        i: longint;
        para: pllvmcallpara;
      begin
        result:='(';
-       for i:=0 to o.paras.count-1 do
+       for i:=0 to paras.count-1 do
          begin
            if i<>0 then
              result:=result+', ';
-           para:=pllvmcallpara(o.paras[i]);
+           para:=pllvmcallpara(paras[i]);
            result:=result+llvmencodetypename(para^.def);
            if para^.valueext<>lve_none then
              result:=result+llvmvalueextension2str[para^.valueext];
@@ -327,7 +399,10 @@ implementation
            if o.ref^.refaddr=addr_full then
              begin
                getopstr:='';
-               getopstr:=LlvmAsmSymName(o.ref^.symbol);
+               if assigned(o.ref^.symbol) then
+                 getopstr:=LlvmAsmSymName(o.ref^.symbol)
+               else
+                 getopstr:='null';
                if o.ref^.offset<>0 then
                  internalerror(2013060223);
              end
@@ -361,16 +436,19 @@ implementation
            end;
          top_para:
            begin
-             result:=getparas(o);
+             result:=getparas(o.paras);
            end;
          top_tai:
            begin
-             tmpinline:=1;
-             tmpasmblock:=false;
-             hp:=o.ai;
-             owner.writer.AsmWrite(fstr);
-             fstr:='';
-             owner.WriteTai(false,false,tmpinline,tmpasmblock,hp);
+             if assigned(o.ai) then
+               begin
+                 tmpinline:=1;
+                 tmpasmblock:=false;
+                 hp:=o.ai;
+                 owner.writer.AsmWrite(fstr);
+                 fstr:='';
+                 owner.WriteTai(false,false,tmpinline,tmpasmblock,hp);
+               end;
              result:='';
            end;
 {$if defined(cpuextended) and defined(FPC_HAS_TYPE_EXTENDED)}
@@ -387,12 +465,31 @@ implementation
      end;
 
 
+   procedure TLLVMInstrWriter.WriteAsmRegisterAllocationClobbers(list: tasmlist);
+     var
+       hp: tai;
+     begin
+       hp:=tai(list.first);
+       while assigned(hp) do
+         begin
+           if (hp.typ=ait_regalloc) and
+              (tai_regalloc(hp).ratype=ra_alloc) then
+             begin
+               owner.writer.AsmWrite(',~{');
+               owner.writer.AsmWrite(std_regname(tai_regalloc(hp).reg));
+               owner.writer.AsmWrite('}');
+             end;
+           hp:=tai(hp.next);
+         end;
+     end;
+
+
   procedure TLLVMInstrWriter.WriteInstruction(hp: tai);
     var
       op: tllvmop;
       tmpstr,
       sep: TSymStr;
-      i, opstart: byte;
+      i, opstart: longint;
       nested: boolean;
       opdone,
       done: boolean;
@@ -417,6 +514,26 @@ implementation
              owner.writer.AsmWrite(llvmencodetypedecl(taillvm(hp).oper[0]^.def));
              done:=true;
            end;
+        la_asmblock:
+          begin
+            owner.writer.AsmWrite('call void asm sideeffect "');
+            owner.WriteFunctionInlineAsmList(taillvm(hp).oper[0]^.asmlist);
+            owner.writer.AsmWrite('","');
+            { we pass all accessed local variables as in/out address parameters,
+              since we don't analyze the assembly code to determine what exactly
+              happens to them; this is also compatible with the regular code
+              generators, which always place local place local variables
+              accessed from assembly code in memory }
+            for i:=0 to taillvm(hp).oper[1]^.paras.Count-1 do
+              begin
+                owner.writer.AsmWrite('=*m,');
+              end;
+            owner.writer.AsmWrite('~{memory},~{fpsr},~{flags}');
+            WriteAsmRegisterAllocationClobbers(taillvm(hp).oper[0]^.asmlist);
+            owner.writer.AsmWrite('"');
+            owner.writer.AsmWrite(getparas(taillvm(hp).oper[1]^.paras));
+            done:=true;
+          end;
         la_load,
         la_getelementptr:
           begin
@@ -428,7 +545,7 @@ implementation
             opstart:=1;
             if llvmflag_load_getelptr_type in llvmversion_properties[current_settings.llvmversion] then
               begin
-                owner.writer.AsmWrite(llvm_op2str[op]);
+                owner.writer.AsmWrite(getopcodestr(taillvm(hp)));
                 opdone:=true;
                 if nested then
                   owner.writer.AsmWrite(' (')
@@ -458,7 +575,9 @@ implementation
         la_store,
         la_fence,
         la_cmpxchg,
-        la_atomicrmw:
+        la_atomicrmw,
+        la_catch,
+        la_filter:
           begin
             { instructions that never have a result }
           end;
@@ -469,7 +588,7 @@ implementation
             opstart:=2;
             if llvmflag_call_no_ptr in llvmversion_properties[current_settings.llvmversion] then
               begin
-                owner.writer.AsmWrite(llvm_op2str[op]);
+                owner.writer.AsmWrite(getopcodestr(taillvm(hp)));
                 opdone:=true;
                 tmpstr:=llvmencodetypename(taillvm(hp).oper[2]^.def);
                 if tmpstr[length(tmpstr)]<>'*' then
@@ -485,12 +604,19 @@ implementation
           end;
         la_blockaddress:
           begin
+            owner.writer.AsmWrite('i8* blockaddress(');
             owner.writer.AsmWrite(getopstr(taillvm(hp).oper[0]^,false));
-            owner.writer.AsmWrite(' = blockaddress(');
-            owner.writer.AsmWrite(getopstr(taillvm(hp).oper[1]^,false));
-            owner.writer.AsmWrite(',');
-            owner.writer.AsmWrite(getopstr(taillvm(hp).oper[2]^,false));
-            owner.writer.AsmWrite(')');
+            { getopstr would add a "label" qualifier, which blockaddress does
+              not want }
+            owner.writer.AsmWrite(',%');
+            with taillvm(hp).oper[1]^ do
+              begin
+                if (typ<>top_ref) or
+                   (ref^.refaddr<>addr_full) then
+                  internalerror(2016112001);
+                owner.writer.AsmWrite(ref^.symbol.name);
+              end;
+            nested:=true;
             done:=true;
           end;
         la_alloca:
@@ -511,7 +637,7 @@ implementation
               owner.writer.AsmWrite(getopstr(taillvm(hp).oper[0]^,false)+' = ')
             else
               nested:=true;
-            owner.writer.AsmWrite(llvm_op2str[op]);
+            owner.writer.AsmWrite(getopcodestr(taillvm(hp)));
             if not nested then
               owner.writer.AsmWrite(' ')
             else
@@ -549,7 +675,7 @@ implementation
         begin
           if not opdone then
             begin
-              owner.writer.AsmWrite(llvm_op2str[op]);
+              owner.writer.AsmWrite(getopcodestr(taillvm(hp)));
               if nested then
                 owner.writer.AsmWrite(' (');
             end;
@@ -560,7 +686,7 @@ implementation
                    owner.writer.AsmWrite(sep);
                    owner.writer.AsmWrite(getopstr(taillvm(hp).oper[i]^,op in [la_load,la_store]));
                    if (taillvm(hp).oper[i]^.typ in [top_def,top_cond,top_fpcond]) or
-                      (op=la_call) then
+                      (op in [la_call,la_landingpad,la_catch,la_filter]) then
                      sep :=' '
                    else
                      sep:=', ';
@@ -576,6 +702,24 @@ implementation
     end;
 
 
+  function TLLVMInstrWriter.getopcodestr(hp: taillvm): TSymStr;
+    begin
+      result:=llvm_op2str[hp.llvmopcode];
+      case hp.llvmopcode of
+        la_load:
+          begin
+            if vol_read in hp.oper[2]^.ref^.volatility then
+              result:=result+' volatile';
+          end;
+        la_store:
+          begin
+            if vol_write in hp.oper[3]^.ref^.volatility then
+              result:=result+' volatile';
+          end;
+      end;
+    end;
+
+
 {****************************************************************************}
 {                          LLVM Assembler writer                              }
 {****************************************************************************}
@@ -583,6 +727,7 @@ implementation
     destructor TLLVMAssember.Destroy;
       begin
         InstrWriter.free;
+        ffuncinlasmdecorator.free;
         inherited destroy;
       end;
 
@@ -610,7 +755,7 @@ implementation
           optstr:=optstr+' -enable-unsafe-fp-math -enable-fp-mad -fp-contract=fast';
         { smart linking }
         if cs_create_smart in current_settings.moduleswitches then
-          optstr:=optstr+' -fdata-sections -fcode-sections';
+          optstr:=optstr+' -data-sections -function-sections';
         { pic }
         if cs_create_pic in current_settings.moduleswitches then
           optstr:=optstr+' -relocation-model=pic'
@@ -694,8 +839,7 @@ implementation
 
     procedure TLLVMAssember.WriteRealConst(hp: tai_realconst; do_line: boolean);
       begin
-        if do_line and
-           (fdecllevel=0) then
+        if fdecllevel=0 then
           begin
             case tai_realconst(hp).realtyp of
               aitrealconst_s32bit:
@@ -712,19 +856,20 @@ implementation
               else
                 internalerror(2014050604);
             end;
+            internalerror(2016120202);
           end;
         case hp.realtyp of
           aitrealconst_s32bit:
-            writer.AsmWriteln(llvmdoubletostr(hp.value.s32val));
+            writer.AsmWrite(llvmdoubletostr(hp.value.s32val));
           aitrealconst_s64bit:
             writer.AsmWriteln(llvmdoubletostr(hp.value.s64val));
 {$if defined(cpuextended) and defined(FPC_HAS_TYPE_EXTENDED)}
           aitrealconst_s80bit:
-            writer.AsmWriteln(llvmextendedtostr(hp.value.s80val));
+            writer.AsmWrite(llvmextendedtostr(hp.value.s80val));
 {$endif defined(cpuextended)}
           aitrealconst_s64comp:
             { handled as int64 most of the time in llvm }
-            writer.AsmWriteln(tostr(round(hp.value.s64compval)));
+            writer.AsmWrite(tostr(round(hp.value.s64compval)));
           else
             internalerror(2014062401);
         end;
@@ -736,7 +881,7 @@ implementation
         consttyp: taiconst_type;
       begin
         if fdecllevel=0 then
-          writer.AsmWrite(asminfo^.comment+' const ');
+          internalerror(2016120203);
         consttyp:=hp.consttype;
         case consttyp of
           aitconst_got,
@@ -779,8 +924,11 @@ implementation
                 writer.AsmWrite('zeroinitializer')
               else
                 writer.AsmWrite(tostr(hp.value));
+{
+              // activate in case of debugging IE 2016120203
               if fdecllevel=0 then
                 writer.AsmLn;
+}
             end;
           else
             internalerror(200704251);
@@ -802,7 +950,7 @@ implementation
                writer.AsmWrite(' internal');
              AB_GLOBAL,
              AB_INDIRECT:
-               writer.AsmWrite('');
+               ;
              AB_WEAK_EXTERNAL:
                writer.AsmWrite(' extern_weak');
              AB_PRIVATE_EXTERN:
@@ -910,6 +1058,7 @@ implementation
       var
         hp2: tai;
         s: string;
+        sstr: TSymStr;
         i: longint;
         ch: ansichar;
       begin
@@ -975,7 +1124,7 @@ implementation
           ait_string :
             begin
               if fdecllevel=0 then
-                writer.AsmWrite(asminfo^.comment);
+                internalerror(2016120201);
               writer.AsmWrite('c"');
               for i:=1 to tai_string(hp).len do
                begin
@@ -991,7 +1140,7 @@ implementation
                  end;
                  writer.AsmWrite(s);
                end;
-              writer.AsmWriteLn('"');
+              writer.AsmWrite('"');
             end;
 
           ait_label :
@@ -1055,6 +1204,8 @@ implementation
                   writer.AsmWrite(' =');
                   if ldf_weak in taillvmdecl(hp).flags then
                     writer.AsmWrite(' weak');
+                  if ldf_appending in taillvmdecl(hp).flags then
+                    writer.AsmWrite(' appending');
                   WriteLinkageVibilityFlags(taillvmdecl(hp).namesym.bind);
                   writer.AsmWrite(' ');
                   if (ldf_tls in taillvmdecl(hp).flags) then
@@ -1102,9 +1253,16 @@ implementation
                         writer.AsmWrite('"');
                       end;
                   end;
-                  { alignment }
-                  writer.AsmWrite(', align ');
-                  writer.AsmWriteln(tostr(taillvmdecl(hp).alignment));
+                  { sections whose name starts with 'llvm.' are for LLVM
+                    internal use and don't have an alignment }
+                  if pos('llvm.',taillvmdecl(hp).secname)<>1 then
+                    begin
+                      { alignment }
+                      writer.AsmWrite(', align ');
+                      writer.AsmWriteln(tostr(taillvmdecl(hp).alignment));
+                    end
+                  else
+                    writer.AsmLn;
                 end;
             end;
           ait_llvmalias:
@@ -1113,9 +1271,15 @@ implementation
               writer.AsmWrite(' = alias ');
               WriteLinkageVibilityFlags(taillvmalias(hp).bind);
               if taillvmalias(hp).def.typ=procdef then
-                writer.AsmWrite(llvmencodeproctype(tabstractprocdef(taillvmalias(hp).def), '', lpd_alias))
+                sstr:=llvmencodeproctype(tabstractprocdef(taillvmalias(hp).def), '', lpd_alias)
               else
-                writer.AsmWrite(llvmencodetypename(taillvmalias(hp).def));
+                sstr:=llvmencodetypename(taillvmalias(hp).def);
+              writer.AsmWrite(sstr);
+              if llvmflag_alias_double_type in llvmversion_properties[current_settings.llvmversion] then
+                begin
+                  writer.AsmWrite(', ');
+                  writer.AsmWrite(sstr);
+                end;
               writer.AsmWrite('* ');
               writer.AsmWriteln(LlvmAsmSymName(taillvmalias(hp).oldsym));
             end;
@@ -1210,7 +1374,7 @@ implementation
       end;
 
 
-    constructor TLLVMAssember.create(info: pasminfo; smart: boolean);
+    constructor TLLVMAssember.CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean);
       begin
         inherited;
         InstrWriter:=TLLVMInstrWriter.create(self);
@@ -1251,6 +1415,7 @@ implementation
                 a.WriteTree(current_asmdata.asmlists[hal]);
                 writer.decorator:=nil;
                 decorator.free;
+                a.free;
               end;
             writer.AsmWriteLn(asminfo^.comment+'End asmlist '+AsmlistTypeStr[hal]);
           end;
@@ -1259,9 +1424,25 @@ implementation
       end;
 
 
+    procedure TLLVMAssember.WriteFunctionInlineAsmList(list: tasmlist);
+      var
+        a: TExternalAssembler;
+      begin
+        if not assigned(ffuncinlasmdecorator) then
+          ffuncinlasmdecorator:=TLLVMFunctionInlineAssemblyDecorator.create;
+        if assigned(writer.decorator) then
+          internalerror(2016110201);
+        writer.decorator:=ffuncinlasmdecorator;
+        a:=GetExternalGnuAssemblerWithAsmInfoWriter(asminfo,writer);
+        a.WriteTree(list);
+        a.free;
+        writer.decorator:=nil;
+      end;
+
+
 
 {****************************************************************************}
-{                        Abstract Instruction Writer                         }
+{                          LLVM Instruction Writer                           }
 {****************************************************************************}
 
      constructor TLLVMInstrWriter.create(_owner: TLLVMAssember);

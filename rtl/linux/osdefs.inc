@@ -57,7 +57,7 @@
   {$define NO_SYSCALL_IPC}
 {$endif}
 
- {$ifdef CPUARM}
+{$ifdef CPUARM}
 {$define WAIT4}
 {$endif CPUARM}
 
@@ -89,3 +89,18 @@
   {$define generic_linux_syscalls}
   {$undef usestime}
 {$endif cpuaarch64}
+
+{$ifdef cpusparc64}
+  {$define FPC_USEGETTIMEOFDAY}
+{$endif cpusparc64}
+
+{$ifdef android}
+  {$undef usestime}
+  {$undef OLDMMAP}
+  {$define MMAP2}
+  {$define NO_SYSCALL_UTIME}
+  {$ifndef cpumips}
+    {$define NO_SYSCALL_GETRLIMIT}
+  {$endif}
+  {$define FPC_USEGETTIMEOFDAY}
+{$endif android}

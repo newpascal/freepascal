@@ -16,10 +16,8 @@ type
   { TFPRemotePackagesStructure }
 
   TFPRemotePackagesStructure = class(TFPCustomPackagesStructure)
-  protected
-    FOptions: TFppkgOptions;
   public
-    constructor Create(AOwner: TComponent; AnOptions: TFppkgOptions);
+    class function GetRepositoryOptionSectionClass: TFppkgRepositoryOptionSectionClass; override;
 
     function UnzipBeforeUse: Boolean; override;
     function AddPackagesToRepository(ARepository: TFPRepository): Boolean; override;
@@ -28,11 +26,14 @@ type
   { TFPCustomFileSystemPackagesStructure }
 
   TFPCustomFileSystemPackagesStructure = class(TFPCustomPackagesStructure)
-  protected
+  private
     FPath: string;
-    FCompilerOptions: TCompilerOptions;
+  protected
+    function GetPath: string; virtual;
+    procedure SetPath(AValue: string); virtual;
+    procedure AddPackageToRepository(ARepository: TFPRepository; APackageName: string; APackageFilename: string);
   public
-    constructor Create(AOwner: TComponent; APath: string; ACompilerOptions: TCompilerOptions); virtual;
+    property Path: string read GetPath write SetPath;
   end;
 
   { TFPInstalledPackagesStructure }
@@ -41,6 +42,8 @@ type
   private
     FPrefix: string;
   public
+    class function GetRepositoryOptionSectionClass: TFppkgRepositoryOptionSectionClass; override;
+    procedure InitializeWithOptions(ARepoOptionSection: TFppkgRepositoryOptionSection; AnOptions: TFppkgOptions; ACompilerOptions: TCompilerOptions); override;
     function AddPackagesToRepository(ARepository: TFPRepository): Boolean; override;
     function GetUnitDirectory(APackage: TFPPackage): string; override;
     function GetPrefix: string; override;
@@ -52,10 +55,22 @@ type
   { TFPCurrentDirectoryPackagesStructure }
 
   TFPCurrentDirectoryPackagesStructure = class(TFPCustomFileSystemPackagesStructure)
+  protected
+    procedure SetPath(AValue: string); override;
   public
-    constructor Create(AOwner: TComponent; APath: string; ACompilerOptions: TCompilerOptions); override;
     function AddPackagesToRepository(ARepository: TFPRepository): Boolean; override;
     function GetBuildPathDirectory(APackage: TFPPackage): string; override;
+  end;
+
+  { TFPArchiveFilenamePackagesStructure }
+
+  TFPArchiveFilenamePackagesStructure = class(TFPCustomPackagesStructure)
+  private
+    FArchiveFileName: string;
+  public
+    function AddPackagesToRepository(ARepository: TFPRepository): Boolean; override;
+    function UnzipBeforeUse: Boolean; override;
+    property ArchiveFileName: string read FArchiveFileName write FArchiveFileName;
   end;
 
   { TFPOriginalSourcePackagesStructure }
@@ -90,6 +105,55 @@ uses
   pkgmessages,
   pkgrepos,
   pkgglobals;
+
+{ TFPArchiveFilenamePackagesStructure }
+
+function TFPArchiveFilenamePackagesStructure.AddPackagesToRepository(ARepository: TFPRepository): Boolean;
+var
+  Package: TFPPackage;
+begin
+  Result := True;
+  Package := ARepository.AddPackage(CmdLinePackageName);
+  Package.LocalFileName := FArchiveFileName;
+  Package.PackagesStructure := Self;
+end;
+
+function TFPArchiveFilenamePackagesStructure.UnzipBeforeUse: Boolean;
+begin
+  Result := True;
+end;
+
+{ TFPCustomFileSystemPackagesStructure }
+
+function TFPCustomFileSystemPackagesStructure.GetPath: string;
+begin
+  Result := FPath;
+end;
+
+procedure TFPCustomFileSystemPackagesStructure.SetPath(AValue: string);
+begin
+  FPath := AValue;
+end;
+
+procedure TFPCustomFileSystemPackagesStructure.AddPackageToRepository(ARepository: TFPRepository; APackageName: string; APackageFilename: string);
+var
+  P: TFPPackage;
+begin
+  P:=ARepository.AddPackage(APackageName);
+  try
+    P.LoadUnitConfigFromFile(APackageFilename);
+    P.PackagesStructure:=Self;
+    log(llDebug,SLogFoundPackageInFile,[P.Name, APackageFilename]);
+    if P.IsFPMakeAddIn then
+      AddFPMakeAddIn(P);
+  except
+    on E: Exception do
+      begin
+      log(llWarning,SLogFailedLoadingPackage,[APackageName, APackageFilename, E.Message]);
+      P.Free;
+      end;
+  end;
+end;
 
 { TFPTemporaryDirectoryPackagesStructure }
 
@@ -157,12 +221,11 @@ end;
 
 { TFPCurrentDirectoryPackagesStructure }
 
-constructor TFPCurrentDirectoryPackagesStructure.Create(AOwner: TComponent; APath: string;
-  ACompilerOptions: TCompilerOptions);
+procedure TFPCurrentDirectoryPackagesStructure.SetPath(AValue: string);
 begin
-  if APath = '' then
-    APath := GetCurrentDir;
-  inherited Create(AOwner, APath, ACompilerOptions);
+  if AValue = '' then
+    AValue := GetCurrentDir;
+  inherited SetPath(AValue);
 end;
 
 function TFPCurrentDirectoryPackagesStructure.AddPackagesToRepository(
@@ -182,10 +245,9 @@ end;
 
 { TFPRemotePackagesStructure }
 
-constructor TFPRemotePackagesStructure.Create(AOwner: TComponent; AnOptions: TFppkgOptions);
+class function TFPRemotePackagesStructure.GetRepositoryOptionSectionClass: TFppkgRepositoryOptionSectionClass;
 begin
-  inherited Create(AOwner);
-  FOptions := AnOptions;
+  Result := nil;
 end;
 
 function TFPRemotePackagesStructure.UnzipBeforeUse: Boolean;
@@ -226,6 +288,24 @@ end;
 
 { TFPInstalledPackagesStructure }
 
+class function TFPInstalledPackagesStructure.GetRepositoryOptionSectionClass: TFppkgRepositoryOptionSectionClass;
+begin
+  Result := TFppkgRepositoryOptionSection;
+end;
+
+procedure TFPInstalledPackagesStructure.InitializeWithOptions(
+  ARepoOptionSection: TFppkgRepositoryOptionSection; AnOptions: TFppkgOptions;
+  ACompilerOptions: TCompilerOptions);
+var
+  RepoOptSection: TFppkgRepositoryOptionSection;
+begin
+  inherited InitializeWithOptions(ARepoOptionSection, AnOptions, ACompilerOptions);
+  RepoOptSection := ARepoOptionSection as TFppkgRepositoryOptionSection;
+  Prefix := RepoOptSection.Prefix;
+  InstallRepositoryName := RepoOptSection.InstallRepositoryName;
+  Path := RepoOptSection.Path;
+end;
+
 function TFPInstalledPackagesStructure.AddPackagesToRepository(ARepository: TFPRepository): Boolean;
 
   procedure LoadPackagefpcFromFile(APackage:TFPPackage;const AFileName: String);
@@ -252,6 +332,7 @@ var
 begin
   Result:=false;
   FpmkDir:=IncludeTrailingPathDelimiter(FPath)+'fpmkinst'+PathDelim+FCompilerOptions.CompilerTarget+PathDelim;
+  DirectoryExistsLog(FpmkDir);
   if FindFirst(IncludeTrailingPathDelimiter(FpmkDir)+'*'+FpmkExt,faDirectory,SR)=0 then
     begin
       log(llDebug,SLogFindInstalledPackages,[FpmkDir]);
@@ -259,12 +340,7 @@ begin
         if ((SR.Attr and faDirectory)=0) then
           begin
             // Try new .fpm-file
-            UF:=FpmkDir+SR.Name;
-            P:=ARepository.AddPackage(ChangeFileExt(SR.Name,''));
-            P.LoadUnitConfigFromFile(UF);
-            P.PackagesStructure:=Self;
-            if P.IsFPMakeAddIn then
-              AddFPMakeAddIn(P);
+            AddPackageToRepository(ARepository, ChangeFileExt(SR.Name,''), FpmkDir+SR.Name);
           end;
       until FindNext(SR)<>0;
     end;
@@ -272,6 +348,7 @@ begin
 
   // Search for non-fpmkunit packages
   UnitDir:=IncludeTrailingPathDelimiter(FPath)+'units'+PathDelim+FCompilerOptions.CompilerTarget+PathDelim;
+  DirectoryExistsLog(UnitDir);
   if FindFirst(IncludeTrailingPathDelimiter(UnitDir)+AllFiles,faDirectory,SR)=0 then
     begin
       log(llDebug,SLogFindInstalledPackages,[UnitDir]);
@@ -285,11 +362,7 @@ begin
               begin
                 if not Assigned(ARepository.FindPackage(SR.Name)) then
                   begin
-                    P:=ARepository.AddPackage(SR.Name);
-                    P.PackagesStructure:=Self;
-                    P.LoadUnitConfigFromFile(UF);
-                    if P.IsFPMakeAddIn then
-                      AddFPMakeAddIn(P);
+                    AddPackageToRepository(ARepository, SR.Name, UF);
                   end;
               end
             else
@@ -303,6 +376,7 @@ begin
                         P:=ARepository.AddPackage(SR.Name);
                         P.PackagesStructure:=Self;
                         LoadPackagefpcFromFile(P,UF);
+                        log(llDebug,SLogFoundPackageInFile,[P.Name, UF]);
                       end;
                   end;
               end;
@@ -329,16 +403,8 @@ begin
   Result:=FPath;
 end;
 
-{ TFPCustomFileSystemPackagesStructure }
-
-constructor TFPCustomFileSystemPackagesStructure.Create(AOwner: TComponent; APath: string;
-  ACompilerOptions: TCompilerOptions);
-begin
-  Inherited Create(AOwner);
-  FPath := IncludeTrailingPathDelimiter(APath);
-  FCompilerOptions := ACompilerOptions;
-end;
-
-
+initialization
+  TFPCustomPackagesStructure.RegisterPackagesStructureClass(TFPRemotePackagesStructure);
+  TFPCustomPackagesStructure.RegisterPackagesStructureClass(TFPInstalledPackagesStructure);
 end.
 

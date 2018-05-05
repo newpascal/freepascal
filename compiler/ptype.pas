@@ -69,11 +69,9 @@ implementation
        { global }
        globals,tokens,verbose,constexp,
        systems,
-       { target }
-       paramgr,procinfo,
        { symtable }
        symconst,symsym,symtable,symcreat,
-       defutil,defcmp,objcdef,
+       defutil,defcmp,
 {$ifdef jvm}
        jvmdef,
 {$endif}
@@ -81,7 +79,7 @@ implementation
        fmodule,
        { pass 1 }
        node,
-       nmat,nadd,ncal,nset,ncnv,ninl,ncon,nld,nflw,
+       nset,ncnv,ncon,nld,
        { parser }
        scanner,
        pbase,pexpr,pdecsub,pdecvar,pdecobj,pdecl,pgenutil
@@ -169,6 +167,21 @@ implementation
                               srsym:=tstoreddef(tmp).typesym;
                           end;
                         tabstractpointerdef(def).pointeddef:=ttypesym(srsym).typedef;
+                        { correctly set the generic/specialization flags and the genericdef }
+                        if df_generic in tstoreddef(tabstractpointerdef(def).pointeddef).defoptions then
+                          include(tstoreddef(def).defoptions,df_generic);
+                        if df_specialization in tstoreddef(tabstractpointerdef(def).pointeddef).defoptions then
+                          begin
+                            include(tstoreddef(def).defoptions,df_specialization);
+                            case def.typ of
+                              pointerdef:
+                                tstoreddef(def).genericdef:=cpointerdef.getreusable(tstoreddef(tabstractpointerdef(def).pointeddef).genericdef);
+                              classrefdef:
+                                tstoreddef(def).genericdef:=cclassrefdef.create(tstoreddef(tabstractpointerdef(def).pointeddef).genericdef);
+                              else
+                                internalerror(2016120901);
+                            end;
+                          end;
                         { avoid wrong unused warnings web bug 801 PM }
                         inc(ttypesym(srsym).refs);
                         { we need a class type for classrefdef }
@@ -363,7 +376,7 @@ implementation
            not_a_type:=false;
          { handle unit specification like System.Writeln }
          if allowunitsym then
-           is_unit_specific:=try_consume_unitsym(srsym,srsymtable,t,true,true,is_specialize)
+           is_unit_specific:=try_consume_unitsym(srsym,srsymtable,t,true,true,is_specialize,s)
          else
            begin
              t:=_ID;
@@ -844,7 +857,7 @@ implementation
                 { class modifier is only allowed for procedures, functions, }
                 { constructors, destructors, fields and properties          }
                 if (hadgeneric and not (token in [_FUNCTION,_PROCEDURE])) or
-                    (not hadgeneric and (not (token in [_FUNCTION,_PROCEDURE,_PROPERTY,_VAR,_CONSTRUCTOR,_DESTRUCTOR,_OPERATOR]) and
+                    (not hadgeneric and (not ((token in [_FUNCTION,_PROCEDURE,_PROPERTY,_VAR,_DESTRUCTOR,_OPERATOR]) or (token=_CONSTRUCTOR)) and
                    not((token=_ID) and (idtoken=_OPERATOR)))) then
                   Message(parser_e_procedure_or_function_expected);
 
@@ -1309,6 +1322,13 @@ implementation
                   else
                     Message1(parser_e_type_cant_be_used_in_array_index,def.typename);
                 end;
+              { generic parameter? }
+              undefineddef:
+                begin
+                  lowval:=0;
+                  highval:=1;
+                  indexdef:=def;
+                end;
               else
                 Message(sym_e_error_in_type_def);
             end;
@@ -1562,7 +1582,6 @@ implementation
 
       const
         SingleTypeOptionsInTypeBlock:array[Boolean] of TSingleTypeOptions = ([],[stoIsForwardDef]);
-        SingleTypeOptionsIsDelphi:array[Boolean] of TSingleTypeOptions = ([],[stoAllowSpecialization]);
       var
         p  : tnode;
         hdef : tdef;
@@ -1695,8 +1714,7 @@ implementation
               begin
                 consume(_CARET);
                 single_type(tt2,
-                    SingleTypeOptionsInTypeBlock[block_type=bt_type]+
-                    SingleTypeOptionsIsDelphi[m_delphi in current_settings.modeswitches]
+                    SingleTypeOptionsInTypeBlock[block_type=bt_type]+[stoAllowSpecialization]
                   );
                 { in case of e.g. var or const sections we need to especially
                   check that we don't use a generic dummy symbol }
@@ -1879,8 +1897,7 @@ implementation
                   _HELPER:
                     begin
                       if hadtypetoken and
-                         { don't allow "type helper" in mode delphi and require modeswitch typehelpers }
-                         ([m_delphi,m_type_helpers]*current_settings.modeswitches=[m_type_helpers]) then
+                         (m_type_helpers in current_settings.modeswitches) then
                         begin
                           { reset hadtypetoken, so that calling code knows that it should not be handled
                             as a "unique" type }

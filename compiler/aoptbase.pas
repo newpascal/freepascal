@@ -112,7 +112,7 @@ unit aoptbase;
   implementation
 
     uses
-      verbose,globtype,globals,aoptcpub;
+      verbose,globals,aoptcpub;
 
   constructor taoptbase.create;
     begin
@@ -143,7 +143,7 @@ unit aoptbase;
   Function TAOptBase.RegInOp(Reg: TRegister; const op: toper): Boolean;
     Begin
       Case op.typ Of
-        Top_Reg: RegInOp := Reg = op.reg;
+        Top_Reg: RegInOp := SuperRegistersEqual(Reg,op.reg);
         Top_Ref: RegInOp := RegInRef(Reg, op.ref^);
         {$ifdef arm}
         Top_Shifterop: RegInOp := op.shifterop^.rs = Reg;
@@ -156,11 +156,18 @@ unit aoptbase;
 
   Function TAOptBase.RegInRef(Reg: TRegister; Const Ref: TReference): Boolean;
   Begin
-    Reg := RegMaxSize(Reg);
-    RegInRef := (Ref.Base = Reg)
-  {$ifdef cpurefshaveindexreg}
-    Or (Ref.Index = Reg)
-  {$endif cpurefshaveindexreg}
+    RegInRef := SuperRegistersEqual(Ref.Base,Reg)
+{$ifdef cpurefshaveindexreg}
+    Or SuperRegistersEqual(Ref.Index,Reg)
+{$endif cpurefshaveindexreg}
+{$ifdef x86}
+    or (Reg=Ref.segment)
+    { if Ref.segment isn't set, the cpu uses implicitly ss or ds, depending on the base register }
+    or ((Ref.segment=NR_NO) and (
+      ((Reg=NR_SS) and (SuperRegistersEqual(Ref.base,NR_EBP) or SuperRegistersEqual(Ref.base,NR_ESP))) or
+      ((Reg=NR_DS) and not(SuperRegistersEqual(Ref.base,NR_EBP) or SuperRegistersEqual(Ref.base,NR_ESP)))
+    ))
+{$endif x86}
   End;
 
   Function TAOptBase.RegModifiedByInstruction(Reg: TRegister; p1: tai): Boolean;
@@ -181,11 +188,11 @@ unit aoptbase;
       Current := tai(Current.Next);
       While Assigned(Current) And
             ((Current.typ In SkipInstr) or
-{$if defined(SPARC) or defined(MIPS)}
+{$ifdef cpudelayslot}
              ((Current.typ=ait_instruction) and
               (taicpu(Current).opcode=A_NOP)
              ) or
-{$endif SPARC or MIPS}
+{$endif cpudelayslot}
              ((Current.typ = ait_label) And
               labelCanBeSkipped(Tai_Label(Current)))) Do
         Current := tai(Current.Next);

@@ -124,6 +124,10 @@ const
   scan_e_illegal_asmcpu_specifier=02099;
   scan_w_syscall_convention_not_useable_on_target=02100;
   scan_w_syscall_convention_invalid=02101;
+  scan_w_setpeuserversion_not_support=02102;
+  scan_w_setpeosversion_not_support=02103;
+  scan_w_setpesubsysversion_not_support=02104;
+  scan_n_changecputype=02105;
   parser_e_syntax_error=03000;
   parser_e_dont_nest_interrupt=03004;
   parser_w_proc_directive_ignored=03005;
@@ -566,6 +570,8 @@ const
   type_e_procedure_must_be_far=04121;
   type_w_instance_abstract_class=04122;
   type_e_function_reference_kind=04123;
+  type_e_seg_procvardef_wrong_memory_model=04124;
+  type_w_empty_constant_range_set=04125;
   sym_e_id_not_found=05000;
   sym_f_internal_error_in_symtablestack=05001;
   sym_e_duplicate_id=05002;
@@ -683,6 +689,7 @@ const
   cg_d_autoinlining=06055;
   cg_e_function_not_support_by_selected_instruction_set=06056;
   cg_f_max_units_reached=06057;
+  cg_n_no_inline=06058;
   asmr_d_start_reading=07000;
   asmr_d_finish_reading=07001;
   asmr_e_none_label_contain_at=07002;
@@ -773,7 +780,7 @@ const
   asmr_e_invalid_char_greater=07090;
   asmr_w_align_not_supported=07093;
   asmr_e_no_inc_and_dec_together=07094;
-  asmr_e_invalid_reg_list_in_movem=07095;
+  asmr_e_invalid_reg_list_in_movem_or_fmovem=07095;
   asmr_e_invalid_reg_list_for_opcode=07096;
   asmr_e_higher_cpu_mode_required=07097;
   asmr_w_unable_to_determine_reference_size_using_dword=07098;
@@ -808,6 +815,18 @@ const
   asmr_e_CODE_or_DATA_without_SEG=07127;
   asmr_e_const16bit_for_segment=07128;
   asmr_e_invalid_code_value=07129;
+  asmr_w_unable_to_determine_constant_size_using_byte=07130;
+  asmr_w_unable_to_determine_constant_size_using_word=07131;
+  asmr_e_cannot_override_es_segment=07132;
+  asmr_w_invalid_reference=07133;
+  asmr_e_address_sizes_do_not_match=07134;
+  asmr_e_pop_cs_not_valid=07135;
+  asmr_w_pop_cs_not_portable=07136;
+  asmr_e_public_must_be_used_before_label_definition=07137;
+  asmr_e_local_label_cannot_be_declared_public=07138;
+  asmr_e_multiple_segment_overrides=07139;
+  asmr_w_multiple_segment_overrides=07140;
+  asmr_w_segment_override_ignored_in_64bit_mode=07141;
   asmw_f_too_many_asm_files=08000;
   asmw_f_assembler_output_not_supported=08001;
   asmw_f_comp_not_supported=08002;
@@ -841,6 +860,7 @@ const
   asmw_f_code_segment_too_large=08030;
   asmw_f_data_segment_too_large=08031;
   asmw_e_instruction_not_supported_by_cpu=08032;
+  asmw_e_brxx_out_of_range=08033;
   exec_w_source_os_redefined=09000;
   exec_i_assembling_pipe=09001;
   exec_d_cant_create_asmfile=09002;
@@ -893,6 +913,18 @@ const
   link_e_group_too_large=09206;
   link_e_com_program_uses_segment_relocations=09207;
   link_w_program_uses_checkpointer=09208;
+  link_e_duplicate_symbol=09209;
+  link_e_comdat_select_unsupported=09210;
+  link_e_comdat_associative_section_expected=09211;
+  link_e_comdat_not_matching=09212;
+  link_e_comdat_associative_section_not_found=09213;
+  link_d_comdat_discard_any=09214;
+  link_d_comdat_discard_size=09215;
+  link_d_comdat_discard_content=09216;
+  link_d_comdat_replace_size=09217;
+  link_e_comdat_size_differs=09218;
+  link_e_comdat_content_differs=09219;
+  link_e_comdat_selection_differs=09220;
   unit_t_unitsearch=10000;
   unit_t_ppu_loading=10001;
   unit_u_ppu_name=10002;
@@ -956,6 +988,8 @@ const
   unit_u_indirect_crc_changed=10062;
   unit_u_ppu_invalid_memory_model=10063;
   unit_u_loading_from_package=10064;
+  cg_f_internal_type_not_found=10065;
+  cg_f_internal_type_does_not_match=10066;
   option_usage=11000;
   option_only_one_source_support=11001;
   option_def_only_for_os2=11002;
@@ -1010,6 +1044,8 @@ const
   option_smart_link_requires_external_linker=11056;
   option_com_files_require_tiny_model=11057;
   option_gc_incompatible_with_release_flag=11058;
+  option_invalid_target_architecture=11059;
+  option_features_only_for_system_unit=11060;
   wpo_cant_find_file=12000;
   wpo_begin_processing=12001;
   wpo_end_processing=12002;
@@ -1063,9 +1099,9 @@ const
   option_info=11024;
   option_help_pages=11025;
 
-  MsgTxtSize = 78689;
+  MsgTxtSize = 81884;
 
   MsgIdxMax : array[1..20] of longint=(
-    27,102,347,124,96,58,130,33,209,65,
-    59,20,30,1,1,1,1,1,1,1
+    27,106,347,126,96,59,142,34,221,67,
+    61,20,30,1,1,1,1,1,1,1
   );

@@ -61,6 +61,10 @@ interface
            tables) -- never seen in an assembler/assembler writer, always
            changed to AT_DATA }
          AT_DATA_FORCEINDIRECT,
+         { don't generate an implicit indirect symbol as that might be provided
+           by other means (e.g. the typed const builder) to ensure a correct
+           section name }
+         AT_DATA_NOINDIRECT,
          { Thread-local symbol (ELF targets) }
          AT_TLS,
          { GNU indirect function (ELF targets) }
@@ -215,6 +219,7 @@ interface
          labelnr   : longint;
          labeltype : TAsmLabelType;
          is_set    : boolean;
+         is_public : boolean;
          constructor Createlocal(AList: TFPHashObjectList; nr: longint; ltyp: TAsmLabelType);
          constructor Createstatic(AList: TFPHashObjectList; nr: longint; ltyp: TAsmLabelType);
          constructor Createglobal(AList: TFPHashObjectList; const modulename: TSymStr; nr: longint; ltyp: TAsmLabelType);

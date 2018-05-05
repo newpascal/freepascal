@@ -75,8 +75,8 @@ const
   otUWord     = 3;
   otSLong     = 4;
   otULong     = 5;
-  otSLongLong = 6;
-  otULongLong = 7;
+  otSQWord    = 6;
+  otUQWord    = 7;
 
   ftSingle   = 0;
   ftDouble   = 1;
@@ -105,6 +105,11 @@ const
   pfReference= 16;
   pfOut      = 32;
   pfConstRef = 64;
+  pfHidden   = 128;
+  pfHigh     = 256;
+  pfSelf     = 512;
+  pfVmt      = 1024;
+  pfResult   = 2048;
 
   unknown_level         = 0;
   main_program_level    = 1;
@@ -136,7 +141,7 @@ const
   paranr_objc_cmd = 6;
 
   { Required to support variations of syscalls on Amiga-likes }
-  paranr_syscall_lib_first   = 9;             { for basesysv on MorphOS/ppc and AmigaOS4/ppc }
+  paranr_syscall_lib_first   = 9;             { for basefirst on MorphOS/ppc and AmigaOS4/ppc }
   paranr_syscall_lib_last    = high(word)-3;  { everything else }
 
   paranr_result_leftright    = high(word)-2;
@@ -178,6 +183,7 @@ type
     vis_published,
     vis_none
   );
+  tvisibilities=set of tvisibility;
 
   { symbol options }
   tsymoption=(sp_none,
@@ -298,7 +304,8 @@ type
     potype_propgetter,        { Dispinterface property accessors }
     potype_propsetter,
     potype_exceptfilter,      { SEH exception filter or termination handler }
-    potype_mainstub           { "main" function that calls through to FPC_SYSTEMMAIN }
+    potype_mainstub,          { "main" function that calls through to FPC_SYSTEMMAIN }
+    potype_pkgstub            { stub for a package file, that tells OS that all is OK }
   );
   tproctypeoptions=set of tproctypeoption;
 
@@ -340,17 +347,16 @@ type
     po_global,
     { Generic syscall procoption, for systems like Atari, Palm, etc }
     po_syscall,
-    { The different kind of syscalls on AmigaOS and MorphOS, m68k and PPC }
+    { The different kind of syscalls on Amiga-like systems }
     po_syscall_legacy,
-    po_syscall_sysv,
-    po_syscall_basesysv,
-    po_syscall_sysvbase,
-    po_syscall_r12base,
-    { The different kind of syscalls on AROS, i386/x86_64 }
-    po_syscall_stackbase,
-    po_syscall_eaxbase,
+    po_syscall_basenone,
+    po_syscall_basefirst,
+    po_syscall_baselast,
+    po_syscall_basereg,
     { Used to record the fact that a symbol is associated to this syscall }
     po_syscall_has_libsym,
+    { Syscall uses the import Nr. }
+    po_syscall_has_importnr,
     { Procedure can be inlined }
     po_inline,
     { Procedure is used for internal compiler calls }
@@ -394,6 +400,8 @@ type
     po_auto_raised_visibility,
     { procedure is far (x86 only) }
     po_far,
+    { near/far call model is specified explicitly (x86 only) }
+    po_hasnearfarcallmodel,
     { the procedure never returns, this information is usefull for dfa }
     po_noreturn,
     { procvar is a function reference }
@@ -580,15 +588,17 @@ type
     vo_force_finalize,
     { this is an internal variable that is used for Default() intrinsic in code
       sections }
-    vo_is_default_var
+    vo_is_default_var,
+    { i8086 'external far' (can only be used in combination with vo_is_external) }
+    vo_is_far
   );
   tvaroptions=set of tvaroption;
 
   tmanagementoperator=(mop_none,
     mop_initialize,
     mop_finalize,
-    mop_copy,
-    mop_clone
+    mop_addref,
+    mop_copy
   );
   tmanagementoperators=set of tmanagementoperator;
 
@@ -711,10 +721,13 @@ type
     itp_rtti_normal_array,
     itp_rtti_dyn_array,
     itp_rtti_proc_param,
-    itp_init_record_operators,
     itp_rtti_enum_size_start_rec,
     itp_rtti_enum_min_max_rec,
     itp_rtti_enum_basetype_array_rec,
+    itp_rtti_ref,
+    itp_rtti_set_outer,
+    itp_rtti_set_inner,
+    itp_init_record_operators,
     itp_threadvar_record,
     itp_objc_method_list,
     itp_objc_proto_list,
@@ -854,10 +867,13 @@ inherited_objectoptions : tobjectoptions = [oo_has_virtual,oo_has_private,oo_has
        '$rtti_normal_array$',
        '$rtti_dyn_array$',
        '$rtti_proc_param$',
-       '$init_record_operators$',
        '$rtti_enum_size_start_rec$',
        '$rtti_enum_min_max_rec$',
        '$rtti_enum_basetype_array_rec$',
+       '$rtti_ref$',
+       '$rtti_set_outer$',
+       '$rtti_set_inner$',
+       '$init_record_operators$',
        '$threadvar_record$',
        '$objc_method_list$',
        '$objc_proto_list$',
@@ -881,6 +897,8 @@ inherited_objectoptions : tobjectoptions = [oo_has_virtual,oo_has_private,oo_has
 {$else not jvm}
      default_class_type=odt_javaclass;
 {$endif not jvm}
+
+     objecttypes_with_helpers=[odt_class,odt_interfacecom,odt_interfacecorba,odt_dispinterface];
 
 { !! Be sure to keep these in sync with ones in rtl/inc/varianth.inc }
       varempty = 0;

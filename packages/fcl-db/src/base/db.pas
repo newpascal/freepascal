@@ -14,7 +14,7 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
  **********************************************************************}
-unit db;
+unit DB;
 
 {$mode objfpc}
 
@@ -949,6 +949,7 @@ type
     procedure SetAsUTF8String(const AValue: UTF8String); override;
   public
     constructor Create(AOwner: TComponent); override;
+    property CodePage : TSystemCodePage read FCodePage;
   published
     property Transliterate default True;
   end;
@@ -1067,7 +1068,7 @@ type
     Procedure SetItem(Index: Integer; Value: TIndexDef);
   public
     constructor Create(ADataSet: TDataSet); virtual; overload;
-    procedure Add(const Name, Fields: string; Options: TIndexOptions);
+    procedure Add(const Name, Fields: string; Options: TIndexOptions); overload;
     Function AddIndexDef: TIndexDef;
     function Find(const IndexName: string): TIndexDef;
     function FindIndexForFields(const Fields: string): TIndexDef;
@@ -1246,7 +1247,7 @@ type
     Procedure SetBlobData(Buffer: Pointer; ASize: Integer);
     Procedure SetData(Buffer: Pointer);
     Property AsBCD : Currency read GetAsCurrency write SetAsBCD;
-    Property AsBlob : TBlobData read GetAsString write SetAsBlob;
+    Property AsBlob : TBlobData read GetAsAnsiString write SetAsBlob;
     Property AsBoolean : Boolean read GetAsBoolean write SetAsBoolean;
     Property AsBytes : TBytes read GetAsBytes write SetAsBytes;
     Property AsCurrency : Currency read GetAsCurrency write SetAsCurrency;
@@ -2473,14 +2474,19 @@ end;
 Function TIndexDefs.AddIndexDef: TIndexDef;
 
 begin
-//  Result := inherited add as TIndexDef;
-  Result:=TIndexDef.Create(Self,'','',[]);
+  Result := inherited add as TIndexDef;
 end;
 
 procedure TIndexDefs.Add(const Name, Fields: string; Options: TIndexOptions);
 
+Var
+  D : TIndexDef;
+
 begin
-  TIndexDef.Create(Self,Name,Fields,Options);
+  D:=AddIndexDef;
+  D.Name:=Name;
+  D.Fields:=Fields;
+  D.Options:=Options;
 end;
 
 function TIndexDefs.Find(const IndexName: string): TIndexDef;

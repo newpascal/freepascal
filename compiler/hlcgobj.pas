@@ -122,10 +122,7 @@ unit hlcgobj;
              @param(regsize the type of the pointer, contained in the reg parameter)
              @param(reg register containing the value of a pointer)
           }
-          procedure reference_reset_base(var ref: treference; regsize: tdef; reg: tregister; offset, alignment: longint); virtual;
-
-          {# Returns a reference corresponding to a temp }
-          procedure temp_to_ref(p: ptemprecord; out ref: treference); virtual;
+          procedure reference_reset_base(var ref: treference; regsize: tdef; reg: tregister; offset: longint; temppos: treftemppos; alignment: longint; volatility: tvolatilityset); virtual;
 
           {# Emit a label to the instruction stream. }
           procedure a_label(list : TAsmList;l : tasmlabel); inline;
@@ -675,15 +672,15 @@ implementation
 
     uses
        globals,systems,
-       fmodule,export,
+       fmodule,
        verbose,defutil,paramgr,
        symtable,
        nbas,ncon,nld,ncgrtti,pass_2,
-       cpuinfo,cgobj,cutils,procinfo,
+       cgobj,cutils,procinfo,
 {$ifdef x86}
        cgx86,
 {$endif x86}
-       ncgutil,ngenutil;
+       ncgutil;
 
 
     procedure destroy_hlcodegen;
@@ -842,16 +839,12 @@ implementation
     end;
 
   procedure thlcgobj.reference_reset_base(var ref: treference; regsize: tdef;
-    reg: tregister; offset, alignment: longint);
+    reg: tregister; offset: longint; temppos: treftemppos; alignment: longint; volatility: tvolatilityset);
     begin
-      reference_reset(ref,alignment);
+      reference_reset(ref,alignment,volatility);
       ref.base:=reg;
       ref.offset:=offset;
-    end;
-
-  procedure thlcgobj.temp_to_ref(p: ptemprecord; out ref: treference);
-    begin
-      reference_reset_base(ref,voidstackpointertype,current_procinfo.framepointer,p^.pos,p^.alignment);
+      ref.temppos:=temppos;
     end;
 
   procedure thlcgobj.a_label(list: TAsmList; l: tasmlabel); inline;
@@ -892,7 +885,7 @@ implementation
            a_load_reg_reg(list,size,cgpara.location^.def,r,cgpara.location^.register);
          LOC_REFERENCE,LOC_CREFERENCE:
            begin
-              reference_reset_base(ref,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,cgpara.alignment);
+              reference_reset_base(ref,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,ctempposinvalid,cgpara.alignment,[]);
               a_load_reg_ref(list,size,cgpara.location^.def,r,ref);
            end;
          LOC_MMREGISTER,LOC_CMMREGISTER:
@@ -922,7 +915,7 @@ implementation
             a_load_const_reg(list,cgpara.location^.def,a,cgpara.location^.register);
           LOC_REFERENCE,LOC_CREFERENCE:
             begin
-               reference_reset_base(ref,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,cgpara.alignment);
+               reference_reset_base(ref,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,ctempposinvalid,cgpara.alignment,[]);
                a_load_const_ref(list,cgpara.location^.def,a,ref);
             end
           else
@@ -1052,8 +1045,8 @@ implementation
             LOC_REFERENCE,LOC_CREFERENCE:
               begin
                  if assigned(location^.next) then
-                   internalerror(2010052906);
-                 reference_reset_base(ref,voidstackpointertype,location^.reference.index,location^.reference.offset,newalignment(cgpara.alignment,cgpara.intsize-sizeleft));
+                   internalerror(2017073001);
+                 reference_reset_base(ref,voidstackpointertype,location^.reference.index,location^.reference.offset,ctempposinvalid,newalignment(cgpara.alignment,cgpara.intsize-sizeleft),[]);
                  if (def_cgsize(size)<>OS_NO) and
                     (size.size=sizeleft) and
                     (sizeleft<=sizeof(aint)) then
@@ -1281,25 +1274,32 @@ implementation
     begin
       subsetregdef:=cgsize_orddef(sreg.subsetregsize);
       tmpreg:=getintregister(list,subsetregdef);
-      if is_signed(subsetsize) then
+      { insert shifts only if it changes bits being accessed later on }
+      if (sreg.startbit<>0) or
+        (tosize.size*8>sreg.bitlen) then
         begin
-          { sign extend in case the value has a bitsize mod 8 <> 0 }
-          { both instructions will be optimized away if not        }
-          a_op_const_reg_reg(list,OP_SHL,subsetregdef,(tcgsize2size[sreg.subsetregsize]*8)-sreg.startbit-sreg.bitlen,sreg.subsetreg,tmpreg);
-          a_op_const_reg(list,OP_SAR,subsetregdef,(tcgsize2size[sreg.subsetregsize]*8)-sreg.bitlen,tmpreg);
+          if is_signed(subsetsize) then
+            begin
+              { sign extend in case the value has a bitsize mod 8 <> 0 }
+              { both instructions will be optimized away if not        }
+              a_op_const_reg_reg(list,OP_SHL,subsetregdef,(tcgsize2size[sreg.subsetregsize]*8)-sreg.startbit-sreg.bitlen,sreg.subsetreg,tmpreg);
+              a_op_const_reg(list,OP_SAR,subsetregdef,(tcgsize2size[sreg.subsetregsize]*8)-sreg.bitlen,tmpreg);
+            end
+          else
+            begin
+              a_op_const_reg_reg(list,OP_SHR,subsetregdef,sreg.startbit,sreg.subsetreg,tmpreg);
+              stopbit:=sreg.startbit+sreg.bitlen;
+              // on x86(64), 1 shl 32(64) = 1 instead of 0
+              // use aword to prevent overflow with 1 shl 31
+              if (stopbit-sreg.startbit<>AIntBits) then
+                bitmask:=(aword(1) shl (stopbit-sreg.startbit))-1
+              else
+                bitmask:=high(aword);
+              a_op_const_reg(list,OP_AND,subsetregdef,tcgint(bitmask),tmpreg);
+            end;
         end
       else
-        begin
-          a_op_const_reg_reg(list,OP_SHR,subsetregdef,sreg.startbit,sreg.subsetreg,tmpreg);
-          stopbit:=sreg.startbit+sreg.bitlen;
-          // on x86(64), 1 shl 32(64) = 1 instead of 0
-          // use aword to prevent overflow with 1 shl 31
-          if (stopbit-sreg.startbit<>AIntBits) then
-            bitmask:=(aword(1) shl (stopbit-sreg.startbit))-1
-          else
-            bitmask:=high(aword);
-          a_op_const_reg(list,OP_AND,subsetregdef,tcgint(bitmask),tmpreg);
-        end;
+        a_load_reg_reg(list,subsetregdef,subsetregdef,sreg.subsetreg,tmpreg);
       subsetsizereg:=getintregister(list,subsetsize);
       a_load_reg_reg(list,subsetregdef,subsetsize,tmpreg,subsetsizereg);
       a_load_reg_reg(list,subsetsize,tosize,subsetsizereg,destreg);
@@ -2384,11 +2384,18 @@ implementation
            if (slopt<>SL_REGNOSRCMASK) then
             a_op_const_reg(list,OP_AND,subsetregdef,tcgint(not(bitmask)),tmpreg);
         end;
+
       if (slopt<>SL_SETMAX) and
       { the "and" is not needed if the whole register is modified (except for SL_SETZERO),
         because later on we do a move in this case instead of an or }
         ((sreg.bitlen<>AIntBits) or (slopt=SL_SETZERO)) then
-        a_op_const_reg(list,OP_AND,subsetregdef,tcgint(bitmask),sreg.subsetreg);
+          begin
+            { shl could wrap around in this case }
+            if subsetregdef.size=sizeof(aword) then
+              a_op_const_reg(list,OP_AND,subsetregdef,tcgint(bitmask),sreg.subsetreg)
+            else
+              a_op_const_reg(list,OP_AND,subsetregdef,tcgint(bitmask) and aword((aword(1) shl (subsetregdef.size*8))-1),sreg.subsetreg);
+          end;
 
       case slopt of
         SL_SETZERO : ;
@@ -2453,7 +2460,7 @@ implementation
           refptrdef:=cpointerdef.getreusable(refsize);
           newbase:=getaddressregister(list,refptrdef);
           a_loadaddr_ref_reg(list,refsize,refptrdef,ref,newbase);
-          reference_reset_base(result.ref,refptrdef,newbase,0,result.ref.alignment);
+          reference_reset_base(result.ref,refptrdef,newbase,0,result.ref.temppos,result.ref.alignment,[]);
         end;
       result.ref.index:=tmpreg;
       tmpreg:=getintregister(list,ptruinttype);
@@ -2534,7 +2541,7 @@ implementation
           LOC_REFERENCE,LOC_CREFERENCE:
             begin
               cgpara.check_simple_location;
-              reference_reset_base(ref,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,cgpara.alignment);
+              reference_reset_base(ref,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,ctempposinvalid,cgpara.alignment,[]);
               a_loadfpu_reg_ref(list,fromsize,cgpara.def,r,ref);
             end;
           LOC_REGISTER,LOC_CREGISTER:
@@ -2566,7 +2573,7 @@ implementation
         LOC_REFERENCE,LOC_CREFERENCE:
           begin
             cgpara.check_simple_location;
-            reference_reset_base(href,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,cgpara.alignment);
+            reference_reset_base(href,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,ctempposinvalid,cgpara.alignment,[]);
             { concatcopy should choose the best way to copy the data }
             g_concatcopy(list,fromsize,ref,href);
           end;
@@ -2580,7 +2587,7 @@ implementation
             intptrdef:=cpointerdef.getreusable(cgpara.location^.def);
             hreg:=getaddressregister(list,intptrdef);
             a_loadaddr_ref_reg(list,fromsize,intptrdef,ref,hreg);
-            reference_reset_base(href,intptrdef,hreg,0,ref.alignment);
+            reference_reset_base(href,intptrdef,hreg,0,ref.temppos,ref.alignment,[]);
             a_load_ref_cgpara(list,cgpara.location^.def,ref,cgpara);
           end
         else
@@ -2676,7 +2683,7 @@ implementation
           a_loadmm_reg_reg(list,fromsize,cgpara.def,reg,cgpara.location^.register,shuffle);
         LOC_REFERENCE,LOC_CREFERENCE:
           begin
-            reference_reset_base(href,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,cgpara.alignment);
+            reference_reset_base(href,voidstackpointertype,cgpara.location^.reference.index,cgpara.location^.reference.offset,ctempposinvalid,cgpara.alignment,[]);
             a_loadmm_reg_ref(list,fromsize,cgpara.def,reg,href,shuffle);
           end;
         LOC_REGISTER,LOC_CREGISTER:
@@ -3292,7 +3299,7 @@ implementation
           paramanager.getintparaloc(list,pd,2,cgpara2);
           if is_open_array(t) then
             InternalError(201103054);
-          reference_reset_symbol(href,RTTIWriter.get_rtti_label(t,initrtti,def_needs_indirect(t)),0,sizeof(pint));
+          reference_reset_symbol(href,RTTIWriter.get_rtti_label(t,initrtti,def_needs_indirect(t)),0,sizeof(pint),[]);
           if pd.is_pushleftright then
             begin
               a_loadaddr_ref_cgpara(list,t,ref,cgpara1);
@@ -3340,7 +3347,7 @@ implementation
             pd:=search_system_proc('fpc_initialize');
             paramanager.getintparaloc(list,pd,1,cgpara1);
             paramanager.getintparaloc(list,pd,2,cgpara2);
-            reference_reset_symbol(href,RTTIWriter.get_rtti_label(t,initrtti,def_needs_indirect(t)),0,sizeof(pint));
+            reference_reset_symbol(href,RTTIWriter.get_rtti_label(t,initrtti,def_needs_indirect(t)),0,sizeof(pint),[]);
             if pd.is_pushleftright then
               begin
                 a_loadaddr_ref_cgpara(list,t,ref,cgpara1);
@@ -3390,7 +3397,7 @@ implementation
             pd:=search_system_proc('fpc_finalize');
           paramanager.getintparaloc(list,pd,1,cgpara1);
           paramanager.getintparaloc(list,pd,2,cgpara2);
-          reference_reset_symbol(href,RTTIWriter.get_rtti_label(t,initrtti,def_needs_indirect(t)),0,sizeof(pint));
+          reference_reset_symbol(href,RTTIWriter.get_rtti_label(t,initrtti,def_needs_indirect(t)),0,sizeof(pint),[]);
           if pd.is_pushleftright then
             begin
               a_loadaddr_ref_cgpara(list,t,ref,cgpara1);
@@ -3432,7 +3439,7 @@ implementation
       paramanager.getintparaloc(list,pd,2,cgpara2);
       paramanager.getintparaloc(list,pd,3,cgpara3);
 
-      reference_reset_symbol(href,RTTIWriter.get_rtti_label(t,initrtti,def_needs_indirect(t)),0,sizeof(pint));
+      reference_reset_symbol(href,RTTIWriter.get_rtti_label(t,initrtti,def_needs_indirect(t)),0,sizeof(pint),[]);
       { if calling convention is left to right, push parameters 1 and 2 }
       if pd.is_pushleftright then
         begin
@@ -4043,7 +4050,7 @@ implementation
           begin
             tg.gethltemp(list,size,size.size,tt_normal,r);
             a_loadfpu_reg_ref(list,size,size,l.register,r);
-            location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment);
+            location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment,[]);
             l.reference:=r;
           end;
         LOC_MMREGISTER,
@@ -4054,7 +4061,7 @@ implementation
               internalerror(2012062301);
             tg.gethltemp(list,size,size.size,tt_normal,r);
             a_loadmm_reg_ref(list,size,size,l.register,r,mms_movescalar);
-            location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment);
+            location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment,[]);
             l.reference:=r;
           end;
         LOC_CONSTANT,
@@ -4072,7 +4079,7 @@ implementation
               forcesize:=sizeof(pint);
             tg.gethltemp(list,size,forcesize,tt_normal,r);
             a_load_loc_ref(list,size,size,l,r);
-            location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment);
+            location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment,[]);
             l.reference:=r;
           end;
         LOC_CREFERENCE,
@@ -4096,7 +4103,7 @@ implementation
             begin
               tg.gethltemp(list,size,-1,tt_normal,href);
               hlcg.a_loadfpu_reg_ref(list,size,size,l.register,href);
-              location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment);
+              location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment,[]);
               l.reference:=href;
             end;
           { on ARM, CFP values may be located in integer registers,
@@ -4141,7 +4148,7 @@ implementation
             begin
               if not loadref then
                 internalerror(200410231);
-              reference_reset_base(ref,cpointerdef.getreusable(def),l.register,0,alignment);
+              reference_reset_base(ref,cpointerdef.getreusable(def),l.register,0,ctempposinvalid,alignment,[]);
             end;
           LOC_REFERENCE,
           LOC_CREFERENCE :
@@ -4149,7 +4156,7 @@ implementation
               if loadref then
                 begin
                   pdef:=cpointerdef.getreusable(def);
-                  reference_reset_base(ref,pdef,getaddressregister(list,voidpointertype),0,alignment);
+                  reference_reset_base(ref,pdef,getaddressregister(list,voidpointertype),0,ctempposinvalid,alignment,[]);
                   { it's a pointer to def }
                   a_load_ref_reg(list,pdef,pdef,l.reference,ref.base);
                 end
@@ -4528,12 +4535,11 @@ implementation
 
   procedure thlcgobj.gen_initialize_code(list: TAsmList);
     begin
-      { initialize register variables }
+      { initialize global register variables }
       case current_procinfo.procdef.proctypeoption of
-         potype_unitinit:
-           TSymtable(current_module.localsymtable).SymList.ForEachCall(@initialize_regvars,list);
-         potype_proginit:
-           TSymtable(current_module.localsymtable).SymList.ForEachCall(@initialize_regvars,list);
+        potype_unitinit,
+        potype_proginit:
+          TSymtable(current_module.localsymtable).SymList.ForEachCall(@initialize_regvars,list);
       end;
 
       { initialises temp. ansi/wide string data }
@@ -4591,7 +4597,8 @@ implementation
   procedure thlcgobj.paravarsym_set_initialloc_to_paraloc(vs: tparavarsym);
     begin
       reference_reset_base(vs.initialloc.reference,voidstackpointertype,tparavarsym(vs).paraloc[calleeside].location^.reference.index,
-          tparavarsym(vs).paraloc[calleeside].location^.reference.offset,tparavarsym(vs).paraloc[calleeside].alignment);
+          tparavarsym(vs).paraloc[calleeside].location^.reference.offset,ctempposinvalid,
+          tparavarsym(vs).paraloc[calleeside].alignment,[]);
     end;
 
   procedure thlcgobj.gen_entry_code(list: TAsmList);
@@ -4655,7 +4662,7 @@ implementation
             assigned(hp^.def) and
             is_managed_type(hp^.def) then
           begin
-            temp_to_ref(hp,href);
+            tg.temp_to_ref(hp,href);
             g_initialize(list,hp^.def,href);
           end;
          hp:=hp^.next;
@@ -4675,7 +4682,7 @@ implementation
             is_managed_type(hp^.def) then
           begin
             include(current_procinfo.flags,pi_needs_implicit_finally);
-            temp_to_ref(hp,href);
+            tg.temp_to_ref(hp,href);
             g_finalize(list,hp^.def,href);
           end;
          hp:=hp^.next;
@@ -4716,7 +4723,7 @@ implementation
                { initialize fpu regvar by loading from memory }
                reference_reset_symbol(href,
                  current_asmdata.RefAsmSymbol(tstaticvarsym(p).mangledname,AT_DATA), 0,
-                 var_align(tstaticvarsym(p).vardef.alignment));
+                 var_align(tstaticvarsym(p).vardef.alignment),[]);
                a_loadfpu_ref_reg(TAsmList(arg), tstaticvarsym(p).vardef,
                  tstaticvarsym(p).vardef, href, tstaticvarsym(p).initialloc.register);
              end;
@@ -4981,7 +4988,8 @@ implementation
                   g_concatcopy(list,tparavarsym(p).vardef,href,localcopyloc.reference);
                 end;
               { update localloc of varsym }
-              tg.Ungetlocal(list,tparavarsym(p).localloc.reference);
+              if tparavarsym(p).localloc.loc in [LOC_REFERENCE,LOC_CREFERENCE] then
+                tg.Ungetlocal(list,tparavarsym(p).localloc.reference);
               tparavarsym(p).localloc:=localcopyloc;
               tparavarsym(p).initialloc:=localcopyloc;
             end;
@@ -5073,6 +5081,10 @@ implementation
     var
       tmploc: tlocation;
     begin
+      { skip e.g. empty records }
+      if (cgpara.location^.loc = LOC_VOID) then
+        exit;
+
       { Handle Floating point types differently
 
         This doesn't depend on emulator settings, emulator settings should
@@ -5143,7 +5155,7 @@ implementation
                 case para.location^.loc of
                   LOC_REFERENCE,LOC_CREFERENCE:
                     begin
-                      reference_reset_base(href,voidstackpointertype,para.location^.reference.index,para.location^.reference.offset,para.alignment);
+                      reference_reset_base(href,voidstackpointertype,para.location^.reference.index,para.location^.reference.offset,ctempposinvalid,para.alignment,[]);
                       a_load_ref_ref(list,para.def,para.def,href,destloc.reference);
                     end;
                   else

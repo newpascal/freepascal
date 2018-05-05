@@ -1612,7 +1612,7 @@ IMPLEMENTATION
                 if p < low ( Singles )
                   then begin
                     exitloop := True;
-(* what to do if error occured? *)
+(* what to do if error occurred? *)
                     RAISE eBCDOverflowException.create ( 'in IntegerToBCD' );
                    end;
               UNTIL exitloop;
@@ -4129,6 +4129,12 @@ begin
         not_implemented;
     else { array or something like that }
         not_implemented;
+    end;
+  // peephole, avoids problems with databases, mantis #30853
+  if (Result.Precision = 0) and (Result.SignSpecialPlaces = 0) then 
+    begin
+      Result.Precision := 10;
+      Result.SignSpecialPlaces := 2;
     end;
 end;
 

@@ -52,12 +52,12 @@ interface
 implementation
 
   uses
-    cutils,globtype,globals,verbose,systems,
-    nbas,ncal,nmem,nutils,
-    symconst,symbase,symtable,symsym,symdef,
-    cgbase,cgobj,cgcpu,cgutils,tgobj,
+    globtype,globals,verbose,systems,
+    nbas,ncal,nutils,
+    symconst,symsym,symdef,
+    cgbase,cgobj,cgutils,tgobj,
     cpubase,htypechk,
-    parabase,paramgr,pdecsub,pass_1,pass_2,ncgutil,cga,
+    pass_1,pass_2,
     aasmbase,aasmtai,aasmdata,aasmcpu,procinfo,cpupi;
 
   var
@@ -154,14 +154,12 @@ constructor tx64tryfinallynode.create(l, r: TNode);
   begin
     inherited create(l,r);
     if (target_info.system=system_x86_64_win64) and
-       (
       { Don't create child procedures for generic methods, their nested-like
         behavior causes compilation errors because real nested procedures
         aren't allowed for generics. Not creating them doesn't harm because
         generic node tree is discarded without generating code. }
-        not assigned(current_procinfo.procdef.struct) or
-        not(df_generic in current_procinfo.procdef.struct.defoptions)
-       ) then
+       not (df_generic in current_procinfo.procdef.defoptions)
+       then
       begin
         finalizepi:=tcgprocinfo(cprocinfo.create(current_procinfo));
         finalizepi.force_nested;
@@ -183,8 +181,7 @@ constructor tx64tryfinallynode.create_implicit(l, r, _t1: TNode);
     inherited create_implicit(l, r, _t1);
     if (target_info.system=system_x86_64_win64) then
       begin
-        if assigned(current_procinfo.procdef.struct) and
-          (df_generic in current_procinfo.procdef.struct.defoptions) then
+        if df_generic in current_procinfo.procdef.defoptions then
           InternalError(2013012501);
 
         finalizepi:=tcgprocinfo(cprocinfo.create(current_procinfo));
@@ -296,9 +293,9 @@ procedure tx64tryfinallynode.pass_generate_code;
         { fc_unwind_xx tells exit/continue/break statements to emit special
           unwind code instead of just JMP }
         if not implicitframe then
-          flowcontrol:=flowcontrol+[fc_unwind_exit,fc_unwind_loop];
+          flowcontrol:=flowcontrol+[fc_catching_exceptions,fc_unwind_exit,fc_unwind_loop];
         secondpass(left);
-        flowcontrol:=flowcontrol-[fc_unwind_exit,fc_unwind_loop];
+        flowcontrol:=flowcontrol-[fc_catching_exceptions,fc_unwind_exit,fc_unwind_loop];
         if codegenerror then
           exit;
       end;
@@ -344,7 +341,7 @@ procedure tx64tryfinallynode.pass_generate_code;
     cg.a_label(current_asmdata.CurrAsmList,endfinallylabel);
 
     { generate the scope record in .xdata }
-    tx86_64procinfo(current_procinfo).add_finally_scope(trylabel,endtrylabel,
+    tcpuprocinfo(current_procinfo).add_finally_scope(trylabel,endtrylabel,
       current_asmdata.RefAsmSymbol(finalizepi.procdef.mangledname,AT_FUNCTION),catch_frame);
 
     if implicitframe then
@@ -518,7 +515,7 @@ procedure tx64tryexceptnode.pass_generate_code;
 
     emit_nop;
     cg.a_label(current_asmdata.CurrAsmList,endexceptlabel);
-    tx86_64procinfo(current_procinfo).add_except_scope(trylabel,exceptlabel,endexceptlabel,filterlabel);
+    tcpuprocinfo(current_procinfo).add_except_scope(trylabel,exceptlabel,endexceptlabel,filterlabel);
 
 errorexit:
     { restore all saved labels }

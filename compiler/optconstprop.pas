@@ -55,10 +55,9 @@ unit optconstprop;
   implementation
 
     uses
-      fmodule,
-      pass_1,procinfo,
+      pass_1,procinfo,compinnr,
       symsym, symconst,
-      nutils, nbas, ncnv, nld, nflw, ncal;
+      nutils, nbas, ncnv, nld, nflw, ncal, ninl;
 
     function check_written(var n: tnode; arg: pointer): foreachnoderesult;
       begin
@@ -93,7 +92,7 @@ unit optconstprop;
           iterate manually here so we have full controll how all nodes are processed }
 
         { We cannot analyze beyond those nodes, so we terminate to be on the safe side }
-        if (n.nodetype in [addrn,derefn,dataconstn,asmn,withn,casen,whilerepeatn,labeln,continuen,breakn,
+        if (n.nodetype in [addrn,derefn,asmn,withn,casen,whilerepeatn,labeln,continuen,breakn,
                            tryexceptn,raisen,tryfinallyn,onn,loadparentfpn,loadvmtaddrn,guidconstn,rttin,addoptn,asn,goton,
                            objcselectorn,objcprotocoln]) then
           exit(false)
@@ -192,17 +191,35 @@ unit optconstprop;
                   end;
               end;
           end
-        else if n.nodetype in [calln,inlinen] then
+        else if n.nodetype=inlinen then
           begin
-            if might_have_sideeffects(n) and (n.nodetype=inlinen) then
-              exit(false);
-
-            if n.nodetype=calln then
+            { constant inc'ed/dec'ed? }
+            if (tinlinenode(n).inlinenumber=in_dec_x) or (tinlinenode(n).inlinenumber=in_inc_x) then
+              begin
+                if tnode(tassignmentnode(arg).left).isequal(tcallparanode(tinlinenode(n).left).left) and
+                   (not(assigned(tcallparanode(tinlinenode(n).left).right)) or
+                       (tcallparanode(tcallparanode(tinlinenode(n).left).right).left.nodetype=ordconstn)) then
+                  begin
+                    { if the node just being searched is inc'ed/dec'ed then replace the inc/dec
+                      by add/sub and force a second replacement pass }
+                    oldnode:=n;
+                    n:=tinlinenode(n).getaddsub_for_incdec;
+                    oldnode.free;
+                    tree_modified:=true;
+                    { do not continue, value changed, if further const. propagations are possible, this is done
+                      by the next pass }
+                    result:=false;
+                    exit;
+                  end;
+              end
+            else if might_have_sideeffects(n) then
               exit(false);
 
             replaceBasicAssign(tunarynode(n).left, arg, tree_modified);
             result:=false;
           end
+        else if n.nodetype=calln then
+          exit(false)
         else if n.InheritsFrom(tbinarynode) then
           begin
             result:=replaceBasicAssign(tbinarynode(n).left, arg, tree_modified);

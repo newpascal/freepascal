@@ -115,6 +115,10 @@ Type  PINTRTLEvent = ^TINTRTLEvent;
         {$ifdef cpusparc}
         threadvarblocksize:=align(threadvarblocksize,16);
         {$endif cpusparc}
+        
+        {$ifdef cpusparc64}
+        threadvarblocksize:=align(threadvarblocksize,16);
+        {$endif cpusparc64}
 
         {$ifdef cpupowerpc}
         threadvarblocksize:=align(threadvarblocksize,8);
@@ -306,10 +310,14 @@ Type  PINTRTLEvent = ^TINTRTLEvent;
         pthread_exit(ThreadMain);
       end;
 
-  Procedure InitCThreading;
+
+  var
+    TLSInitialized : longbool = FALSE;
+
+  Procedure InitCTLS;
   
   begin
-    if (InterLockedExchange(longint(IsMultiThread),ord(true)) = 0) then
+    if (InterLockedExchange(longint(TLSInitialized),ord(true)) = 0) then
       begin
         { We're still running in single thread mode, setup the TLS }
         pthread_key_create(@TLSKey,nil);
@@ -338,8 +346,10 @@ Type  PINTRTLEvent = ^TINTRTLEvent;
       writeln('Creating new thread');
 {$endif DEBUG_MT}
       { Initialize multithreading if not done }
-      if not IsMultiThread then
-        InitCThreading;
+      if not TLSInitialized then
+        InitCTLS;
+      IsMultiThread:=true;
+
       { the only way to pass data to the newly created thread
         in a MT safe way, is to use the heap }
       new(ti);
@@ -351,7 +361,7 @@ Type  PINTRTLEvent = ^TINTRTLEvent;
       writeln('Starting new thread');
 {$endif DEBUG_MT}
       pthread_attr_init(@thread_attr);
-      {$if not defined(HAIKU) and not defined(ANDROID)}
+      {$if not defined(HAIKU)and not defined(BEOS) and not defined(ANDROID)}
       {$if defined (solaris) or defined (netbsd) }
       pthread_attr_setinheritsched(@thread_attr, PTHREAD_INHERIT_SCHED);
       {$else not solaris}
@@ -657,7 +667,7 @@ begin
     end
   else
     begin
-      //Wait with timeout using pthread_cont_timedwait
+      //Wait with timeout using pthread_cond_timedwait
       fpgettimeofday(@tnow,nil);
       timespec.tv_sec  := tnow.tv_sec + (clong(timeout) div 1000);
       timespec.tv_nsec := (clong(timeout) mod 1000)*1000000 + tnow.tv_usec*1000;
@@ -817,7 +827,7 @@ begin
   Writeln('InitThreads : ',Result);
 {$endif DEBUG_MT}
   // We assume that if you set the thread manager, the application is multithreading.
-  InitCThreading;
+  InitCTLS;
 end;
 
 Function CDoneThreads : Boolean;

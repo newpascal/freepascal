@@ -27,9 +27,8 @@ interface
 
     uses
       globtype,widestr,constexp,
-      cclasses,
       node,
-      aasmbase,aasmtai,aasmdata,cpuinfo,globals,
+      aasmbase,cpuinfo,globals,
       symconst,symtype,symdef,symsym;
 
     type
@@ -61,7 +60,7 @@ interface
             _rangecheck determines if the value of the ordinal should be checked
             against the ranges of the type definition.
           }
-          constructor create(v : tconstexprint;def:tdef; _rangecheck : boolean);virtual;
+          constructor create(const v : tconstexprint;def:tdef; _rangecheck : boolean);virtual;
           constructor ppuload(t:tnodetype;ppufile:tcompilerppufile);override;
           procedure ppuwrite(ppufile:tcompilerppufile);override;
           procedure buildderefimpl;override;
@@ -122,6 +121,9 @@ interface
           function docompare(p: tnode) : boolean; override;
           procedure changestringtype(def:tdef);
           function fullcompare(p: tstringconstnode): longint;
+          { returns whether this platform uses the nil pointer to represent
+            empty dynamic strings }
+          class function emptydynstrnil: boolean; virtual;
        end;
        tstringconstnodeclass = class of tstringconstnode;
 
@@ -141,6 +143,7 @@ interface
           function pass_1 : tnode;override;
           function pass_typecheck:tnode;override;
           function docompare(p: tnode) : boolean; override;
+          function elements : AInt;
        end;
        tsetconstnodeclass = class of tsetconstnode;
 
@@ -173,7 +176,7 @@ interface
        cguidconstnode : tguidconstnodeclass = tguidconstnode;
        cnilnode : tnilnodeclass=tnilnode;
 
-    function genintconstnode(v : TConstExprInt) : tordconstnode;
+    function genintconstnode(const v : TConstExprInt) : tordconstnode;
     function genenumnode(v : tenumsym) : tordconstnode;
 
     { some helper routines }
@@ -191,10 +194,10 @@ implementation
       cutils,
       verbose,systems,sysutils,
       defcmp,defutil,procinfo,
-      cpubase,cgbase,
+      cgbase,
       nld;
 
-    function genintconstnode(v : TConstExprInt) : tordconstnode;
+    function genintconstnode(const v : TConstExprInt) : tordconstnode;
       var
         htype : tdef;
       begin
@@ -337,6 +340,21 @@ implementation
             internalerror(2008022401);
          inherited create(realconstn);
          typedef:=def;
+         case tfloatdef(def).floattype of
+           s32real:
+             v:=single(v);
+           s64real:
+             v:=double(v);
+           s80real,
+           sc80real,
+           s64comp,
+           s64currency:
+             v:=extended(v);
+           s128real:
+             internalerror(2013102701);
+           else
+             internalerror(2013102702);
+         end;
          value_real:=v;
          value_currency:=v;
          lab_real:=nil;
@@ -391,11 +409,56 @@ implementation
          dogetcopy:=n;
       end;
 
+
     function trealconstnode.pass_typecheck:tnode;
       begin
         result:=nil;
         resultdef:=typedef;
+
+        { range checking? }
+        if floating_point_range_check_error or
+           (tfloatdef(resultdef).floattype in [s64comp,s64currency]) then
+          begin
+            { use CGMessage so that the resultdef will get set to errordef
+              by pass1.typecheckpass_internal if a range error was triggered,
+              which in turn will prevent any potential parent type conversion
+              node from creating a new realconstnode with this exact same value
+              and hence trigger the same error again }
+            case tfloatdef(resultdef).floattype of
+              s32real :
+                begin
+                  if ts32real(value_real)=MathInf.Value then
+                    CGMessage(parser_e_range_check_error);
+                end;
+              s64real:
+                begin
+                  if ts64real(value_real)=MathInf.Value then
+                    CGMessage(parser_e_range_check_error);
+                end;
+              s80real,
+              sc80real:
+                begin
+                  if ts80real(value_real)=MathInf.Value then
+                    CGMessage(parser_e_range_check_error);
+                end;
+              s64comp,
+              s64currency:
+                begin
+                  if (value_real>9223372036854775807.0) or
+                     (value_real<-9223372036854775808.0) then
+                    CGMessage(parser_e_range_check_error)
+                end;
+              s128real:
+                begin
+                  if ts128real(value_real)=MathInf.Value then
+                    CGMessage(parser_e_range_check_error);
+                end;
+              else
+                internalerror(2016112902);
+            end;
+          end;
       end;
+
 
     function trealconstnode.pass_1 : tnode;
       begin
@@ -404,6 +467,7 @@ implementation
          if (cs_create_pic in current_settings.moduleswitches) then
            include(current_procinfo.flags,pi_needs_got);
       end;
+
 
     function trealconstnode.docompare(p: tnode): boolean;
       begin
@@ -440,7 +504,7 @@ implementation
                               TORDCONSTNODE
 *****************************************************************************}
 
-    constructor tordconstnode.create(v : tconstexprint;def:tdef;_rangecheck : boolean);
+    constructor tordconstnode.create(const v : tconstexprint;def:tdef;_rangecheck : boolean);
 
       begin
          inherited create(ordconstn);
@@ -967,6 +1031,11 @@ implementation
           result:=compareansistrings(value_str,p.value_str,len,p.len);
       end;
 
+    class function tstringconstnode.emptydynstrnil: boolean;
+      begin
+        result:=true;
+      end;
+
 {*****************************************************************************
                              TSETCONSTNODE
 *****************************************************************************}
@@ -1024,11 +1093,11 @@ implementation
         typedef:=tdef(typedefderef.resolve);
       end;
 
+    type
+       setbytes = array[0..31] of byte;
+       Psetbytes = ^setbytes;
 
     procedure tsetconstnode.adjustforsetbase;
-      type
-         setbytes = array[0..31] of byte;
-         Psetbytes = ^setbytes;
       var
         i, diff: longint;
       begin
@@ -1097,6 +1166,18 @@ implementation
       begin
         docompare:=(inherited docompare(p)) and
                    (value_set^=Tsetconstnode(p).value_set^);
+      end;
+
+
+    function tsetconstnode.elements : AInt;
+      var
+        i : longint;
+      begin
+        result:=0;
+        if not(assigned(value_set)) then
+          exit;
+        for i:=0 to tsetdef(resultdef).size-1 do
+          result:=result+ PopCnt(Psetbytes(value_set)^[i]);
       end;
 
 

@@ -37,11 +37,11 @@
              cpu_no,                       { 0 }
              cpu_i386,                     { 1 }
              cpu_m68k,                     { 2 }
-             cpu_alpha,                    { 3 }
+             obsolete_cpu_alpha,           { 3 }
              cpu_powerpc,                  { 4 }
              cpu_sparc,                    { 5 }
-             cpu_vm,                       { 6 }
-             cpu_iA64,                     { 7 }
+             obsolete_cpu_vm,              { 6 }
+             obsolete_cpu_ia64,            { 7 }
              cpu_x86_64,                   { 8 }
              cpu_mipseb,                   { 9 }
              cpu_arm,                      { 10 }
@@ -50,7 +50,9 @@
              cpu_mipsel,                   { 13 }
              cpu_jvm,                      { 14 }
              cpu_i8086,                    { 15 }
-             cpu_aarch64                   { 16 }
+             cpu_aarch64,                  { 16 }
+             cpu_wasm,                     { 17 }
+             cpu_sparc64                   { 18 }
        );
 
        tasmmode= (asmmode_none
@@ -91,10 +93,10 @@
              system_i386_freebsd,       { 6 }
              system_m68k_Amiga,         { 7 }
              system_m68k_Atari,         { 8 }
-             system_m68k_Mac,           { 9 }
+             system_m68k_macos,         { 9 }
              system_m68k_linux,         { 10 }
              system_m68k_PalmOS,        { 11 }
-             system_alpha_linux,        { 12 }
+             obsolete_system_alpha_linux,{ 12 }
              system_powerpc_linux,      { 13 }
              system_powerpc_macos,      { 14 }
              system_i386_solaris,       { 15 }
@@ -102,12 +104,12 @@
              system_i386_netbsd,        { 17 }
              system_m68k_netbsd,        { 18 }
              system_i386_Netware,       { 19 }
-             system_i386_qnx,           { 20 }
+             obsolete_system_i386_qnx,  { 20 }
              system_i386_wdosx,         { 21 }
              system_sparc_solaris,      { 22 }
              system_sparc_linux,        { 23 }
              system_i386_openbsd,       { 24 }
-             system_m68k_openbsd,       { 25 }
+             obsolete_system_m68k_openbsd,{ 25 }
              system_x86_64_linux,       { 26 }
              system_powerpc_darwin,     { 27 }
              system_i386_EMX,           { 28 }
@@ -121,7 +123,7 @@
              system_powerpc_Amiga,      { 36 }
              system_x86_64_win64,       { 37 }
              system_arm_wince,          { 38 }
-             system_ia64_win64,         { 39 }
+             obsolete_system_ia64_win64,{ 39 }
              system_i386_wince,         { 40 }
              system_x86_6432_linux,     { 41 }
              system_arm_gba,            { 42 }
@@ -132,11 +134,11 @@
              system_arm_nds,            { 47 }
              system_i386_embedded,      { 48 }
              system_m68k_embedded,      { 49 }
-             system_alpha_embedded,     { 50 }
+             obsolete_system_alpha_embedded,{ 50 }
              system_powerpc_embedded,   { 51 }
              system_sparc_embedded,     { 52 }
-             system_vm_embedded,        { 53 }
-             system_iA64_embedded,      { 54 }
+             obsolete_system_vm_embedded,{ 53 }
+             obsolete_system_ia64_embedded,{ 54 }
              system_x86_64_embedded,    { 55 }
              system_mips_embedded,      { 56 }
              system_arm_embedded,       { 57 }
@@ -172,7 +174,12 @@
              system_x86_64_iphonesim,   { 87 }
              system_aarch64_linux,      { 88 }
              system_i8086_win16,        { 89 }
-             system_i8086_embedded      { 90 }
+             system_i8086_embedded,     { 90 }
+             system_arm_aros,           { 91 }
+             system_wasm_wasm32,        { 92 }
+             system_sparc64_linux,      { 93 }
+             system_sparc64_solaris,    { 94 }
+             system_arm_netbsd          { 95 }
        );
 
      type
@@ -224,6 +231,9 @@
              ,as_clang
              ,as_solaris_as
              ,as_m68k_vasm
+             ,as_m68k_as_aout
+             ,as_wasm_binaryen
+             ,as_powerpc_gas_legacy    { for systems with very old GAS versions only, which don't support eg. named sections }
        );
 
        tlink = (ld_none,

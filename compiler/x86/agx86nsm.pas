@@ -43,7 +43,7 @@ interface
         procedure WriteReference(var ref : treference);
         procedure WriteOper(const o:toper;s : topsize; opcode: tasmop;ops:longint;dest : boolean);
         procedure WriteOper_jmp(const o:toper; ai : taicpu);
-        procedure WriteSection(atype:TAsmSectiontype;const aname:string;alignment : byte);
+        procedure WriteSection(atype:TAsmSectiontype;const aname:string;alignment : longint);
         procedure ResetSectionsList;
         procedure WriteGroups;
       protected
@@ -72,7 +72,7 @@ interface
     const
       line_length = 64;
 
-      nasm_regname_table : array[tregisterindex] of string[7] = (
+      nasm_regname_table : array[tregisterindex] of string[13] = (
         {r386nasm.inc contains the Nasm name of each register.}
 {$if defined(x86_64)}
         {$i r8664nasm.inc}
@@ -82,37 +82,38 @@ interface
         {$i r8086nasm.inc}
 {$endif}
       );
+      { nasm 2.13 expects lowercase cpu names }
       nasm_cpu_name : array[tcputype] of string = (
 {$if defined(x86_64)}
-        'IA64',        // cpu_none,
-        'X64',         // cpu_athlon64,
-        'IA64',        // cpu_core_i,
-        'IA64',        // cpu_core_avx,
-        'IA64'         // cpu_core_avx2
+        'ia64',        // cpu_none,
+        'x64',         // cpu_athlon64,
+        'ia64',        // cpu_core_i,
+        'ia64',        // cpu_core_avx,
+        'ia64'         // cpu_core_avx2
 {$elseif defined(i386)}
-        'IA64',     // cpu_none,
+        'ia64',     // cpu_none,
         '386',      // cpu_386,
         '486',      // cpu_486,
-        'PENTIUM',  // cpu_Pentium,
-        'P2',       // cpu_Pentium2,
-        'P3',       // cpu_Pentium3,
-        'P4',       // cpu_Pentium4,
-        'P4',       // cpu_PentiumM,
-        'IA64',     // cpu_core_i,
-        'IA64',     // cpu_core_avx,
-        'IA64'      // cpu_core_avx2
+        'pentium',  // cpu_Pentium,
+        'p2',       // cpu_Pentium2,
+        'p3',       // cpu_Pentium3,
+        'p4',       // cpu_Pentium4,
+        'p4',       // cpu_PentiumM,
+        'ia64',     // cpu_core_i,
+        'ia64',     // cpu_core_avx,
+        'ia64'      // cpu_core_avx2
 {$elseif defined(i8086)}
-        'IA64',    // cpu_none
+        'ia64',    // cpu_none
         '8086',    // cpu_8086
         '186',     // cpu_186
         '286',     // cpu_286
         '386',     // cpu_386
         '486',     // cpu_486
-        'PENTIUM', // cpu_Pentium
-        'P2',      // cpu_Pentium2
-        'P3',      // cpu_Pentium3
-        'P4',      // cpu_Pentium4
-        'P4'       // cpu_PentiumM
+        'pentium', // cpu_Pentium
+        'p2',      // cpu_Pentium2
+        'p3',      // cpu_Pentium3
+        'p4',      // cpu_Pentium4
+        'p4'       // cpu_PentiumM
 {$endif}
       );
 
@@ -462,7 +463,7 @@ interface
       );
 
     procedure TX86NasmAssembler.WriteSection(atype : TAsmSectiontype;
-      const aname : string; alignment : byte);
+      const aname : string; alignment : longint);
       const
         secnames : array[TAsmSectiontype] of string[length('__DATA, __datacoal_nt,coalesced')] = ('','',
           '.text',
@@ -630,7 +631,7 @@ interface
       quoted   : boolean;
       fixed_opcode: TAsmOp;
       prefix, LastSecName  : string;
-      LastAlign : Byte;
+      LastAlign : LongInt;
       cpu: tcputype;
       prevfileinfo : tfileposinfo;
       previnfile : tinputfile;
@@ -735,17 +736,6 @@ interface
              begin
                consttype:=tai_const(hp).consttype;
                case consttype of
-                 aitconst_64bit,
-                 aitconst_64bit_unaligned:
-                    begin
-                      if assigned(tai_const(hp).sym) then
-                        internalerror(200404292);
-                      writer.AsmWrite(ait_const2str[aitconst_32bit]);
-                      writer.AsmWrite(tostr(longint(lo(tai_const(hp).value))));
-                      writer.AsmWrite(',');
-                      writer.AsmWrite(tostr(longint(hi(tai_const(hp).value))));
-                      writer.AsmLn;
-                    end;
                  aitconst_uleb128bit,
                  aitconst_sleb128bit,
                  aitconst_128bit:
@@ -793,13 +783,21 @@ interface
                  aitconst_fardataseg:
                    writer.AsmWriteLn(#9'DW'#9+current_module.modulename^+'_DATA');
 {$endif i8086}
+{$ifdef x86_64}
+                 aitconst_rva_symbol,
+                 aitconst_secrel32_symbol: ;
+{$endif x86_64}
+{$ifdef i386}
+                 aitconst_rva_symbol,
+                 aitconst_secrel32_symbol,
+{$endif i386}
+                 aitconst_64bit,
                  aitconst_32bit,
                  aitconst_16bit,
                  aitconst_8bit,
-                 aitconst_rva_symbol,
-                 aitconst_secrel32_symbol,
                  aitconst_16bit_unaligned,
-                 aitconst_32bit_unaligned:
+                 aitconst_32bit_unaligned,
+                 aitconst_64bit_unaligned:
                    begin
                      writer.AsmWrite(ait_const2str[tai_const(hp).consttype]);
                      l:=0;
@@ -994,6 +992,60 @@ interface
                     end;
                if fixed_opcode=A_FWAIT then
                 writer.AsmWriteln(#9#9'DB'#9'09bh')
+               else if (fixed_opcode=A_XLAT) and (taicpu(hp).ops=1) and
+                       (taicpu(hp).oper[0]^.typ=top_ref) then
+                begin
+                  writer.AsmWrite(#9#9);
+                  if (taicpu(hp).oper[0]^.ref^.segment<>NR_NO) and
+                     (taicpu(hp).oper[0]^.ref^.segment<>NR_DS) then
+                    writer.AsmWrite(std_regname(taicpu(hp).oper[0]^.ref^.segment)+' ');
+                  case get_ref_address_size(taicpu(hp).oper[0]^.ref^) of
+                    16:
+                      writer.AsmWrite('a16 ');
+                    32:
+                      writer.AsmWrite('a32 ');
+                    64:
+                      writer.AsmWrite('a64 ');
+                  end;
+                  writer.AsmWriteLn('xlatb');
+                end
+               else if is_x86_parameterized_string_op(fixed_opcode) then
+                begin
+                  writer.AsmWrite(#9#9);
+                  i:=get_x86_string_op_si_param(fixed_opcode);
+                  if (i<>-1) and (taicpu(hp).oper[i]^.typ=top_ref) and
+                     (taicpu(hp).oper[i]^.ref^.segment<>NR_NO) and
+                     (taicpu(hp).oper[i]^.ref^.segment<>NR_DS) then
+                    writer.AsmWrite(std_regname(taicpu(hp).oper[i]^.ref^.segment)+' ');
+                  for i:=0 to taicpu(hp).ops-1 do
+                    if taicpu(hp).oper[i]^.typ=top_ref then
+                      begin
+                        case get_ref_address_size(taicpu(hp).oper[i]^.ref^) of
+                          16:
+                            writer.AsmWrite('a16 ');
+                          32:
+                            writer.AsmWrite('a32 ');
+                          64:
+                            writer.AsmWrite('a64 ');
+                        end;
+                        break;
+                      end;
+                  writer.AsmWrite(std_op2str[fixed_opcode]);
+
+                  case taicpu(hp).opsize of
+                    S_B:
+                      writer.AsmWrite('b');
+                    S_W:
+                      writer.AsmWrite('w');
+                    S_L:
+                      writer.AsmWrite('d');
+                    S_Q:
+                      writer.AsmWrite('q');
+                    else
+                      internalerror(2017101101);
+                  end;
+                  writer.AsmLn;
+                end
                else
                 begin
                   prefix:='';
@@ -1008,7 +1060,62 @@ interface
                       (is_segment_reg(taicpu(hp).oper[0]^.reg)) then
                     writer.AsmWriteln(#9#9'DB'#9'066h');
 {$endif not i8086}
-                  writer.AsmWrite(#9#9+prefix+std_op2str[fixed_opcode]+cond2str[taicpu(hp).condition]);
+                  if (fixed_opcode=A_RETW) or (fixed_opcode=A_RETNW) or (fixed_opcode=A_RETFW) or
+{$ifdef x86_64}
+                     (fixed_opcode=A_RETQ) or (fixed_opcode=A_RETNQ) or (fixed_opcode=A_RETFQ) or
+{$else x86_64}
+                     (fixed_opcode=A_RETD) or (fixed_opcode=A_RETND) or
+{$endif x86_64}
+                     (fixed_opcode=A_RETFD) then
+                   begin
+                     case fixed_opcode of
+                       A_RETW:
+                         writer.AsmWrite(#9#9'o16 ret');
+                       A_RETNW:
+                         writer.AsmWrite(#9#9'o16 retn');
+                       A_RETFW:
+                         writer.AsmWrite(#9#9'o16 retf');
+{$ifdef x86_64}
+                       A_RETQ,
+                       A_RETNQ:
+                         writer.AsmWrite(#9#9'ret');
+                       A_RETFQ:
+                         writer.AsmWrite(#9#9'o64 retf');
+{$else x86_64}
+                       A_RETD:
+                         writer.AsmWrite(#9#9'o32 ret');
+                       A_RETND:
+                         writer.AsmWrite(#9#9'o32 retn');
+{$endif x86_64}
+                       A_RETFD:
+                         writer.AsmWrite(#9#9'o32 retf');
+                       else
+                         internalerror(2017111001);
+                     end;
+                   end
+                  else if (fixed_opcode=A_SEGCS) or (fixed_opcode=A_SEGDS) or
+                          (fixed_opcode=A_SEGSS) or (fixed_opcode=A_SEGES) or
+                          (fixed_opcode=A_SEGFS) or (fixed_opcode=A_SEGGS) then
+                    begin
+                      case fixed_opcode of
+                        A_SEGCS:
+                          writer.AsmWrite(#9#9'cs');
+                        A_SEGDS:
+                          writer.AsmWrite(#9#9'ds');
+                        A_SEGSS:
+                          writer.AsmWrite(#9#9'ss');
+                        A_SEGES:
+                          writer.AsmWrite(#9#9'es');
+                        A_SEGFS:
+                          writer.AsmWrite(#9#9'fs');
+                        A_SEGGS:
+                          writer.AsmWrite(#9#9'gs');
+                        else
+                          internalerror(2018020101);
+                      end;
+                    end
+                  else
+                    writer.AsmWrite(#9#9+prefix+std_op2str[fixed_opcode]+cond2str[taicpu(hp).condition]);
                   if taicpu(hp).ops<>0 then
                    begin
                      if is_calljmp(fixed_opcode) then
@@ -1150,7 +1257,7 @@ interface
         for i:=0 to current_asmdata.AsmSymbolDict.Count-1 do
           begin
             sym:=TAsmSymbol(current_asmdata.AsmSymbolDict[i]);
-            if sym.bind=AB_EXTERNAL then
+            if sym.bind in [AB_EXTERNAL,AB_EXTERNAL_INDIRECT] then
               writer.AsmWriteln('EXTERN'#9+sym.name);
           end;
       end;

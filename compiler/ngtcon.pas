@@ -144,17 +144,17 @@ implementation
 
 uses
    SysUtils,
-   systems,tokens,verbose,
+   systems,tokens,verbose,compinnr,
    cutils,globals,widestr,scanner,
    symtable,
-   aasmcpu,defutil,defcmp,
+   defutil,defcmp,
    { pass 1 }
    htypechk,procinfo,
-   nmat,nadd,ncal,nmem,nset,ncnv,ninl,ncon,nld,nflw,
+   nmem,ncnv,ninl,ncon,nld,
    { parser specific stuff }
-   pbase,pexpr,pdecvar,
+   pbase,pexpr,
    { codegen }
-   cpuinfo,cgbase,dbgbase,
+   cpuinfo,cgbase,
    wpobase
    ;
 
@@ -1050,7 +1050,7 @@ function get_next_varsym(def: tabstractrecorddef; const SymList:TFPHashObjectLis
                         begin
                           if target_info.endian=endian_big then
                             setval:=swapendian(cardinal(setval));
-                          ftcb.emit_tai(tai_const.create_32bit(setval),def);
+                          ftcb.emit_tai(tai_const.create_32bit(longint(setval)),def);
                         end;
                       else
                         internalerror(2015112207);
@@ -1675,7 +1675,6 @@ function get_next_varsym(def: tabstractrecorddef; const SymList:TFPHashObjectLis
     procedure tasmlisttypedconstbuilder.parse_objectdef(def:tobjectdef);
       var
         n      : tnode;
-        i      : longint;
         obj    : tobjectdef;
         srsym  : tsym;
         st     : tsymtable;
@@ -1783,16 +1782,15 @@ function get_next_varsym(def: tabstractrecorddef; const SymList:TFPHashObjectLis
                 end;
           end;
         curoffset:=startoffset;
+        { add VMT pointer if we stopped writing fields before the VMT was
+          written }
         if not(m_fpc in current_settings.modeswitches) and
            (oo_has_vmt in def.objectoptions) and
            (def.vmt_offset>=objoffset) then
           begin
-            for i:=1 to def.vmt_offset-objoffset do
-              ftcb.emit_tai(tai_const.create_8bit(0),u8inttype);
-            // TODO VMT type proper tdef?
-            ftcb.emit_tai(tai_const.createname(def.vmt_mangledname,AT_DATA,0),voidpointertype);
-            { this is more general }
-            objoffset:=def.vmt_offset + sizeof(pint);
+            ftcb.next_field:=tfieldvarsym(def.vmt_field);
+            ftcb.emit_tai(tai_const.createname(def.vmt_mangledname,AT_DATA,0),tfieldvarsym(def.vmt_field).vardef);
+            objoffset:=def.vmt_offset+tfieldvarsym(def.vmt_field).vardef.size;
           end;
         ftcb.maybe_end_aggregate(def);
         consume(_RKLAMMER);

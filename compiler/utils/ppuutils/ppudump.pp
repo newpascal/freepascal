@@ -60,16 +60,16 @@ const
 
 { List of all supported cpus }
 const
-  CpuTxt : array[tsystemcpu] of string[9]=
+  CpuTxt : array[tsystemcpu] of string[16]=
     (
     {  0 } 'none',
     {  1 } 'i386',
     {  2 } 'm68k',
-    {  3 } 'alpha',
+    {  3 } 'alpha (obsolete)',
     {  4 } 'powerpc',
     {  5 } 'sparc',
-    {  6 } 'vis',
-    {  7 } 'ia64',
+    {  6 } 'vis (obsolete)',
+    {  7 } 'ia64 (obsolete)',
     {  8 } 'x86_64',
     {  9 } 'mipseb',
     { 10 } 'arm',
@@ -78,12 +78,14 @@ const
     { 13 } 'mipsel',
     { 14 } 'jvm',
     { 15 } 'i8086',
-    { 16 } 'aarch64'
+    { 16 } 'aarch64',
+    { 17 } 'wasm',
+    { 18 } 'sparc64'
     );
 
 { List of all supported system-cpu couples }
 const
-  Targets : array[tsystem] of string[18]=(
+  Targets : array[tsystem] of string[26]=(
   { 0 }   'none',
   { 1 }   'GO32V1 (obsolete)',
   { 2 }   'GO32V2',
@@ -96,7 +98,7 @@ const
   { 9 }   'MacOS-m68k',
   { 10 }  'Linux-m68k',
   { 11 }  'PalmOS-m68k',
-  { 12 }  'Linux-alpha',
+  { 12 }  'Linux-alpha (obsolete)',
   { 13 }  'Linux-ppc',
   { 14 }  'MacOS-ppc',
   { 15 }  'Solaris-i386',
@@ -109,7 +111,7 @@ const
   { 22 }  'Solaris-sparc',
   { 23 }  'Linux-sparc',
   { 24 }  'OpenBSD-i386',
-  { 25 }  'OpenBSD-m68k',
+  { 25 }  'OpenBSD-m68k (obsolete)',
   { 26 }  'Linux-x86-64',
   { 27 }  'Darwin-ppc',
   { 28 }  'OS/2 via EMX',
@@ -123,7 +125,7 @@ const
   { 36 }  'Amiga-PowerPC',
   { 37 }  'Win64-x64',
   { 38 }  'WinCE-ARM',
-  { 39 }  'Win64-iA64',
+  { 39 }  'Win64-iA64 (obsolete)',
   { 40 }  'WinCE-i386',
   { 41 }  'Linux-x64',
   { 42 }  'GBA-arm',
@@ -134,11 +136,11 @@ const
   { 47 }  'NDS-arm',
   { 48 }  'Embedded-i386',
   { 49 }  'Embedded-m68k',
-  { 50 }  'Embedded-alpha',
+  { 50 }  'Embedded-alpha (obsolete)',
   { 51 }  'Embedded-powerpc',
   { 52 }  'Embedded-sparc',
-  { 53 }  'Embedded-vm',
-  { 54 }  'Embedded-iA64',
+  { 53 }  'Embedded-vm (obsolete)',
+  { 54 }  'Embedded-iA64 (obsolete)',
   { 55 }  'Embedded-x64',
   { 56 }  'Embedded-mips',
   { 57 }  'Embedded-arm',
@@ -174,7 +176,12 @@ const
   { 87 }  'iPhoneSim-x86-64',
   { 88 }  'Linux-AArch64',
   { 89 }  'Win16',
-  { 90 }  'Embedded-i8086'
+  { 90 }  'Embedded-i8086',
+  { 91 }  'AROS-arm',
+  { 92 }  'WebAssembly-wasm',
+  { 93 }  'Linux-sparc64',
+  { 94 }  'Solaris-sparc64',
+  { 95 }  'NetBSD-arm'
   );
 
 const
@@ -903,6 +910,10 @@ type
            tables) -- never seen in an assembler/assembler writer, always
            changed to AT_DATA }
          AT_DATA_FORCEINDIRECT,
+         { don't generate an implicit indirect symbol as that might be provided
+           by other means (e.g. the typed const builder) to ensure a correct
+           section name }
+         AT_DATA_NOINDIRECT,
          { Thread-local symbol (ELF targets) }
          AT_TLS,
          { GNU indirect function (ELF targets) }
@@ -971,8 +982,12 @@ begin
          typestr:='Label (with address taken)';
        AT_METADATA :
          typestr:='Metadata';
+       { this shouldn't appear in a PPU }
        AT_DATA_FORCEINDIRECT :
          typestr:='Data (ForceIndirect)';
+       { this shouldn't appear in a PPU }
+       AT_DATA_NOINDIRECT:
+         typestr:='Data (NoIndirect)';
        AT_TLS :
          typestr:='TLS';
        AT_GNU_IFUNC :
@@ -993,7 +1008,7 @@ function getexprint:Tconstexprint;
 
 begin
   getexprint.overflow:=false;
-  getexprint.signed:=boolean(ppufile.getbyte);
+  getexprint.signed:=ppufile.getboolean;
   getexprint.svalue:=ppufile.getint64;
 end;
 
@@ -1558,6 +1573,7 @@ var
   first  : boolean;
   copy_size, min_size, tokenbufsize : longint;
   tokenbuf : pbyte;
+  tbi : longint;
 //  idtoken,
   token : ttoken;
 //  state : tmsgstate;
@@ -1571,26 +1587,29 @@ var
     var
       b,b2 : byte;
     begin
-      b:=tokenbuf[i];
-      inc(i);
+      b:=tokenbuf[tbi];
+      inc(tbi);
       if (b and $80)<>0 then
         begin
-          b2:=tokenbuf[i];
-          inc(i);
+          b2:=tokenbuf[tbi];
+          inc(tbi);
           result:=ttoken(((b and $7f) shl 8) or b2);
         end
       else
         result:=ttoken(b);
     end;
-
   function gettokenbufdword : dword;
   var
     var32 : dword;
   begin
-    var32:=pdword(@tokenbuf[i])^;
-    inc(i,sizeof(dword));
+    var32:=unaligned(pdword(@tokenbuf[tbi])^);
+    inc(tbi,sizeof(dword));
     if ppufile.change_endian then
       var32:=swapendian(var32);
+{$ifdef FPC_BIG_ENDIAN}
+    { Tokens seems to be swapped to little endian in compiler code }
+    var32:=swapendian(var32);
+{$endif}
     result:=var32;
   end;
 
@@ -1598,10 +1617,14 @@ var
   var
     var16 : word;
   begin
-    var16:=pword(@tokenbuf[i])^;
-    inc(i,sizeof(word));
+    var16:=unaligned(pword(@tokenbuf[tbi])^);
+    inc(tbi,sizeof(word));
     if ppufile.change_endian then
       var16:=swapendian(var16);
+{$ifdef FPC_BIG_ENDIAN}
+    { Tokens seems to be swapped to little endian in compiler code }
+    var16:=swapendian(var16);
+{$endif}
     result:=var16;
   end;
 
@@ -1615,26 +1638,38 @@ var
   begin
     if CpuAddrBitSize[cpu]=64 then
       begin
-        var64:=pint64(@tokenbuf[i])^;
-        inc(i,sizeof(int64));
+        var64:=unaligned(pint64(@tokenbuf[tbi])^);
+        inc(tbi,sizeof(int64));
         if ppufile.change_endian then
           var64:=swapendian(var64);
+{$ifdef FPC_BIG_ENDIAN}
+        { Tokens seems to be swapped to little endian in compiler code }
+        var64:=swapendian(var64);
+{$endif}
         result:=var64;
       end
     else if CpuAddrBitSize[cpu]=32 then
       begin
-        var32:=plongint(@tokenbuf[i])^;
-        inc(i,sizeof(longint));
+        var32:=unaligned(plongint(@tokenbuf[tbi])^);
+        inc(tbi,sizeof(longint));
         if ppufile.change_endian then
           var32:=swapendian(var32);
+{$ifdef FPC_BIG_ENDIAN}
+        { Tokens seems to be swapped to little endian in compiler code }
+        var32:=swapendian(var32);
+{$endif}
         result:=var32;
       end
     else if CpuAddrBitSize[cpu]=16 then
       begin
-        var16:=psmallint(@tokenbuf[i])^;
-        inc(i,sizeof(smallint));
+        var16:=unaligned(psmallint(@tokenbuf[tbi])^);
+        inc(tbi,sizeof(smallint));
         if ppufile.change_endian then
           var16:=swapendian(var16);
+{$ifdef FPC_BIG_ENDIAN}
+        { Tokens seems to be swapped to little endian in compiler code }
+        var16:=swapendian(var16);
+{$endif}
         result:=var16;
       end
     else
@@ -1708,7 +1743,7 @@ begin
         end;
       writeln;
 
-      len:=ppufile.getasizeint;
+      len:=ppufile.getlongint;
       if len>0 then
         begin
           space:='    '+space;
@@ -1742,9 +1777,9 @@ begin
       writeln([space,' Tokenbuffer size : ',tokenbufsize]);
       tokenbuf:=allocmem(tokenbufsize);
       ppufile.getdata(tokenbuf^,tokenbufsize);
-      i:=0;
+      tbi:=0;
       write([space,' Tokens: ']);
-      while i<tokenbufsize do
+      while tbi<tokenbufsize do
         begin
           token:=readtoken;
           if token<>_GENERICSPECIALTOKEN then
@@ -1765,44 +1800,44 @@ begin
               begin
                 len:=gettokenbufsizeint;
                 setlength(wstring,len);
-                move(tokenbuf[i],wstring[1],len*2);
+                move(tokenbuf[tbi],wstring[1],len*2);
                 write([' ',wstring]);
-                inc(i,len*2);
+                inc(tbi,len*2);
               end;
             _CSTRING:
               begin
                 len:=gettokenbufsizeint;
                 setlength(astring,len);
-                move(tokenbuf[i],astring[1],len);
+                move(tokenbuf[tbi],astring[1],len);
                 write([' ',astring]);
-                inc(i,len);
+                inc(tbi,len);
               end;
             _CCHAR,
             _INTCONST,
             _REALNUMBER :
               begin
-                write([' ',pshortstring(@tokenbuf[i])^]);
-                inc(i,tokenbuf[i]+1);
+                write([' ',unaligned(pshortstring(@tokenbuf[tbi])^)]);
+                inc(tbi,tokenbuf[tbi]+1);
               end;
             _ID :
               begin
-                write([' ',pshortstring(@tokenbuf[i])^]);
-                inc(i,tokenbuf[i]+1);
+                write([' ',unaligned(pshortstring(@tokenbuf[tbi])^)]);
+                inc(tbi,tokenbuf[tbi]+1);
               end;
             _GENERICSPECIALTOKEN:
               begin
                 { Short version of column change,
                   byte or $80 used }
-                if (tokenbuf[i] and $80)<>0 then
+                if (tokenbuf[tbi] and $80)<>0 then
                   begin
-                    write(['Col: ',tokenbuf[i] and $7f]);
-                    inc(i);
+                    write(['Col: ',tokenbuf[tbi] and $7f]);
+                    inc(tbi);
                   end
                 else
-                  case tspecialgenerictoken(tokenbuf[i]) of
+                  case tspecialgenerictoken(tokenbuf[tbi]) of
                     ST_LOADSETTINGS:
                       begin
-                        inc(i);
+                        inc(tbi);
                         write('Settings');
                         { This does not load pmessage pointer }
                         new_settings.pmessage:=nil;
@@ -1814,42 +1849,42 @@ begin
                           min_size:=copy_size
                         else
                           min_size:= sizeof(tsettings)-sizeof(pointer);
-                        move(tokenbuf[i],new_settings, min_size);
-                        inc(i,copy_size);
+                        move(tokenbuf[tbi],new_settings, min_size);
+                        inc(tbi,copy_size);
                       end;
                     ST_LOADMESSAGES:
                       begin
-                        inc(i);
+                        inc(tbi);
                         write('Messages:');
-                        mesgnb:=tokenbuf[i];
-                        inc(i);
+                        mesgnb:=tokenbuf[tbi];
+                        inc(tbi);
                         for nb:=1 to mesgnb do
                           begin
                             {msgvalue:=}gettokenbufsizeint;
-                            inc(i,sizeof(sizeint));
+                            inc(tbi,sizeof(sizeint));
                             //state:=tmsgstate(gettokenbufsizeint);
                           end;
                       end;
                     ST_LINE:
                       begin
-                        inc(i);
+                        inc(tbi);
                         write(['Line: ',gettokenbufdword]);
                       end;
                     ST_COLUMN:
                       begin
-                        inc(i);
+                        inc(tbi);
                         write(['Col: ',gettokenbufword]);
                       end;
                     ST_FILEINDEX:
                       begin
-                        inc(i);
+                        inc(tbi);
                         write(['File: ',gettokenbufword]);
                       end;
                   end;
               end;
           end;
 
-          if i<tokenbufsize then
+          if tbi<tokenbufsize then
             write(',');
         end;
       writeln;
@@ -1900,7 +1935,8 @@ const
      (mask:potype_propgetter;        str:'Property Getter'),
      (mask:potype_propsetter;        str:'Property Setter'),
      (mask:potype_exceptfilter;      str:'SEH filter'),
-     (mask:potype_mainstub;          str:'main stub')
+     (mask:potype_mainstub;          str:'main stub'),
+     (mask:potype_pkgstub;           str:'package stub')
   );
   procopt : array[1..ord(high(tprocoption))] of tprocopt=(
      (mask:po_classmethod;     str:'ClassMethod'),
@@ -1932,13 +1968,12 @@ const
      (mask:po_global;          str:'Global'),
      (mask:po_syscall;         str:'Syscall'),
      (mask:po_syscall_legacy;  str:'SyscallLegacy'),
-     (mask:po_syscall_sysv;    str:'SyscallSysV'),
-     (mask:po_syscall_basesysv;str:'SyscallBaseSysV'),
-     (mask:po_syscall_sysvbase;str:'SyscallSysVBase'),
-     (mask:po_syscall_r12base; str:'SyscallR12Base'),
-     (mask:po_syscall_stackbase;str:'SyscallStackBase'),
-     (mask:po_syscall_eaxbase; str:'SyscallEAXBase'),
+     (mask:po_syscall_basenone;str:'SyscallBaseNone'),
+     (mask:po_syscall_basefirst;str:'SyscallBaseFirst'),
+     (mask:po_syscall_baselast;str:'SyscallBaseLast'),
+     (mask:po_syscall_basereg; str:'SyscallBaseReg'),
      (mask:po_syscall_has_libsym; str:'Has LibSym'),
+     (mask:po_syscall_has_importnr; str:'Uses ImportNr'),
      (mask:po_inline;          str:'Inline'),
      (mask:po_compilerproc;    str:'CompilerProc'),
      (mask:po_has_importdll;   str:'HasImportDLL'),
@@ -1955,6 +1990,7 @@ const
      (mask:po_rtlproc;         str: 'RTL procedure'),
      (mask:po_auto_raised_visibility; str: 'Visibility raised by compiler'),
      (mask:po_far;             str: 'Far'),
+     (mask:po_hasnearfarcallmodel; str: 'Near/Far explicit'),
      (mask:po_noreturn;        str: 'No return'),
      (mask:po_is_function_ref; str: 'Function reference'),
      (mask:po_is_block;        str: 'C "Block"'),
@@ -1965,7 +2001,6 @@ var
   proctypeoption  : tproctypeoption;
   i     : longint;
   first : boolean;
-  tempbuf : array[0..255] of byte;
 begin
   write([space,'      Return type : ']);
   readderef('', ProcDef.ReturnType);
@@ -2061,7 +2096,8 @@ const
      (mask:vo_volatile;        str:'Volatile'),
      (mask:vo_has_section;     str:'HasSection'),
      (mask:vo_force_finalize;  str:'ForceFinalize'),
-     (mask:vo_is_default_var;  str:'DefaultIntrinsicVar')
+     (mask:vo_is_default_var;  str:'DefaultIntrinsicVar'),
+     (mask:vo_is_far;          str:'IsFar')
   );
 var
   i : longint;
@@ -2291,6 +2327,56 @@ begin
 end;
 
 
+
+function readmanagementoperatoroptions(const space : string):tmanagementoperators;
+{ type is in unit symconst }
+{ Management operator options
+  tmanagementoperator=(
+    mop_none,
+    mop_initialize,
+    mop_finalize,
+    mop_addref,
+    mop_copy);
+}
+type
+  tmopopt=record
+    mask : tmanagementoperator;
+    str  : string[10];
+  end;
+const
+  managementoperatoropt : array[1..ord(high(tmanagementoperator))] of tmopopt=(
+    (mask:mop_initialize;str:'initialize'),
+    (mask:mop_finalize;str:'finalize'),
+    (mask:mop_addref;str:'addref'),
+    (mask:mop_copy;str:'copy')
+  );
+var
+  i      : longint;
+  first  : boolean;
+begin
+  ppufile.getsmallset(result);
+  if result<>[] then
+   begin
+     first:=true;
+     for i:=1 to high(managementoperatoropt) do
+      if (managementoperatoropt[i].mask in result) then
+       begin
+         if first then
+           begin
+             write(space);
+             write('Management operators: ');
+             first:=false;
+           end
+         else
+           write(', ');
+         write(managementoperatoropt[i].str);
+       end;
+   end;
+  if not first then
+    writeln;
+end;
+
+
 procedure readnodetree;
 var
   l : longint;
@@ -2419,7 +2505,6 @@ var
   doublevalue : double;
   singlevalue : single;
   extended : TSplit80bitReal;
-  tempbuf : array[0..127] of char;
   pw : pcompilerwidestring;
   varoptions : tvaroptions;
   propoptions : tpropertyoptions;
@@ -2504,7 +2589,7 @@ begin
                    write  ([space,'  PointerType : ']);
                    readderef('',constdef.TypeRef);
                    constdef.ConstType:=ctInt;
-                   constdef.VInt:=getaint;
+                   constdef.VInt:=getptruint;
                    writeln([space,'        Value : ',constdef.VInt])
                  end;
                conststring,
@@ -2665,7 +2750,7 @@ begin
                  Writeln(['Assembler name : ',getstring]);
                toaddr :
                  begin
-                   Write(['Address : ',getaword]);
+                   Write(['Address : ',getpuint]);
                    if tsystemcpu(ppufile.header.common.cpu)=cpu_i386 then
                      Write([' (Far: ',getbyte<>0,')']);
                    if tsystemcpu(ppufile.header.common.cpu)=cpu_i8086 then
@@ -2720,7 +2805,7 @@ begin
              write  ([space,' DefaultConst : ']);
              readderef('',TPpuParamDef(def).DefaultValue);
              writeln([space,'       ParaNr : ',getword]);
-             writeln([space,'        Univ  : ',boolean(getbyte)]);
+             writeln([space,'        Univ  : ',getboolean]);
              writeln([space,'     VarState : ',getbyte]);
              writeln([space,'         Refs : ',getbyte]);
              if (vo_has_explicit_paraloc in varoptions) then
@@ -2751,8 +2836,8 @@ begin
          ibmacrosym :
            begin
              readcommonsym('Macro symbol ');
-             writeln([space,'       Defined: ',boolean(getbyte)]);
-             writeln([space,'  Compiler var: ',boolean(getbyte)]);
+             writeln([space,'       Defined: ',getboolean]);
+             writeln([space,'  Compiler var: ',getboolean]);
              len:=getlongint;
              writeln([space,'  Value length: ',len]);
              if len > 0 then
@@ -2838,8 +2923,10 @@ procedure readdefinitions(const s:string; ParentDef: TPpuContainerDef);
 
 { type tobjecttyp is in symconst unit }
 { type tvarianttype is in symconst unit }
+{ type thelpertype is in symconst unit }
 var
   b : byte;
+  otb : byte; { Object Type byte, needed later again }
   l,j,tokenbufsize : longint;
   tokenbuf : pbyte;
   calloption : tproccalloption;
@@ -3189,14 +3276,14 @@ begin
              readcommondef('Procedural type (ProcVar) definition',defoptions,def);
              read_abstract_proc_def(calloption,procoptions, TPpuProcDef(def));
              writeln([space,'   Symtable level :',ppufile.getbyte]);
+             if tsystemcpu(ppufile.header.common.cpu)=cpu_jvm then
+               readderef('');
              if not EndOfEntry then
                HasMoreInfos;
              space:='    '+space;
              { parast }
              readsymtable('parast',TPpuProcDef(def));
              delete(space,1,4);
-             if tsystemcpu(ppufile.header.common.cpu)=cpu_jvm then
-               readderef('');
            end;
 
          ibshortstringdef :
@@ -3271,9 +3358,8 @@ begin
                  objdef.Size:=getasizeint;
                  writeln([space,'         DataSize : ',objdef.Size]);
                  writeln([space,'      PaddingSize : ',getword]);
+                 readmanagementoperatoroptions(space);
                end;
-             if not EndOfEntry then
-               HasMoreInfos;
              {read the record definitions and symbols}
              if not(df_copied_def in current_defoptions) then
                begin
@@ -3282,6 +3368,8 @@ begin
                  readsymtable('fields',TPpuRecordDef(def));
                  Delete(space,1,4);
                end;
+             if not EndOfEntry then
+               HasMoreInfos;
            end;
 
          ibobjectdef :
@@ -3293,9 +3381,9 @@ begin
              writeln([space,'   Import lib/pkg : ',getstring]);
              write  ([space,'          Options : ']);
              readobjectdefoptions(objdef);
-             b:=getbyte;
+             otb:=getbyte;
              write  ([space,'             Type : ']);
-             case tobjecttyp(b) of
+             case tobjecttyp(otb) of
                odt_class          : writeln('class');
                odt_object         : writeln('object');
                odt_interfacecom   : writeln('interfacecom');
@@ -3310,7 +3398,7 @@ begin
                odt_interfacejava  : writeln('Java interface');
                else                 WriteWarning('Invalid object type: ' + IntToStr(b));
              end;
-             case tobjecttyp(b) of
+             case tobjecttyp(otb) of
                odt_class, odt_cppclass, odt_objcclass, odt_javaclass:
                  objdef.ObjType:=otClass;
                odt_object:
@@ -3319,6 +3407,15 @@ begin
                  objdef.ObjType:=otInterface;
                odt_helper:
                  objdef.ObjType:=otHelper;
+             end;
+             b:=getbyte;
+             write  ([space,'      Helper Type : ']);
+             case thelpertype(b) of
+               ht_none   : writeln('none');
+               ht_class  : writeln('class helper');
+               ht_record : writeln('record helper');
+               ht_type   : writeln('type helper');
+               else        WriteWarning('Invalid helper type: ' + IntToStr(b));
              end;
              writeln([space,'    External name : ',getstring]);
              objdef.Size:=getasizeint;
@@ -3332,7 +3429,7 @@ begin
              write  ([space,  '   Ancestor Class : ']);
              readderef('',objdef.Ancestor);
 
-             if tobjecttyp(b) in [odt_interfacecom,odt_interfacecorba,odt_dispinterface] then
+             if tobjecttyp(otb) in [odt_interfacecom,odt_interfacecorba,odt_dispinterface] then
                begin
                   { IIDGUID }
                   for j:=1to 16 do
@@ -3341,9 +3438,12 @@ begin
                   writeln([space,'       IID String : ',objdef.IID]);
                end;
 
-             writeln([space,' Abstract methods : ',getlongint]);
+             l:=getlongint;
+             if l > 0 then
+               objdef.Options:=objdef.Options + [ooAbstractMethods];
+             writeln([space,' Abstract methods : ',l]);
 
-             if tobjecttyp(b)=odt_helper then
+             if tobjecttyp(otb)=odt_helper then
                begin
                  write([space,'    Helper parent : ']);
                  readderef('',objdef.HelperParent);
@@ -3359,7 +3459,7 @@ begin
                  readvisibility;
                end;
 
-             if tobjecttyp(b) in [odt_class,odt_objcclass,odt_objcprotocol,odt_javaclass,odt_interfacejava] then
+             if tobjecttyp(otb) in [odt_class,odt_objcclass,odt_objcprotocol,odt_javaclass,odt_interfacejava] then
               begin
                 l:=getlongint;
                 writeln([space,'  Impl Intf Count : ',l]);
@@ -3379,11 +3479,8 @@ begin
                  Include(objdef.Options, ooCopied);
                  writeln('  Copy of def: ');
                  readderef('',objdef.Ancestor);
-               end;
-
-             if not EndOfEntry then
-               HasMoreInfos;
-             if not(df_copied_def in current_defoptions) then
+               end
+             else
                begin
                  {read the record definitions and symbols}
                  space:='    '+space;
@@ -3391,6 +3488,8 @@ begin
                  readsymtable('fields',objdef);
                  Delete(space,1,4);
               end;
+             if not EndOfEntry then
+               HasMoreInfos;
            end;
 
          ibfiledef :
@@ -3579,6 +3678,9 @@ procedure readinterface(silent : boolean);
 var
   b : byte;
   sourcenumber, i : longint;
+  feature : tfeature;
+  features : tfeatures;
+  s : string;
 begin
   with ppufile do
    begin
@@ -3591,6 +3693,20 @@ begin
              CurUnit.Name:=getstring;
              if not silent then
                Writeln(['Module Name: ',CurUnit.Name]);
+           end;
+
+         ibfeatures :
+           begin
+             getsmallset(features);
+             Writeln('Features: ');
+             for feature:=low(tfeatures) to high(tfeature) do
+               if feature in features then
+                 begin
+                   str(feature,s);
+                   s:=copy(s,3,255);
+                   writeln([s]);
+                 end;
+
            end;
 
          ibmoduleoptions:
@@ -3621,13 +3737,11 @@ begin
                while not EndOfEntry do
                  begin
                     Write('Conditional ',getstring);
-                    b:=getbyte;
-                    if boolean(b)=true then
+                    if getboolean then
                       write(' defined at startup')
                     else
                       write(' not defined at startup');
-                    b:=getbyte;
-                    if boolean(b)=true then
+                    if getboolean then
                       writeln(' was used')
                     else
                       writeln;
@@ -3666,6 +3780,8 @@ begin
            if not silent then
              ReadLinkContainer('Link framework: ');
 
+         ibjvmnamespace:
+            Writeln('JVM name space: '+getString);
          ibmainname:
            if not silent then
              Writeln(['Specified main program symbol name: ',getstring]);
@@ -3866,7 +3982,7 @@ begin
       WriteError('!! Error in PPU');
       exit;
     end;
-  if boolean(ppufile.getbyte) then
+  if ppufile.getboolean then
     begin
       readsymtableoptions('interface macro');
       {skip the definition section for macros (since they are never used) }

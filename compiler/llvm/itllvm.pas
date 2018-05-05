@@ -60,8 +60,11 @@ interface
         'blockaddress',
         { fpc pseudo opcodes }
         'type', { type definition }
+        'catch', { catch exception }
+        'filter', { exception filter }
         'invalid1', { la_x_to_inttoptr }
-        'invalid2'  { la_ptrtoint_to_x }
+        'invalid2', { la_ptrtoint_to_x }
+        'asm' { la_asmblock }
       );
 
       llvm_cond2str : array[topcmp] of ansistring = ('',

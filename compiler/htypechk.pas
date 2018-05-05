@@ -26,8 +26,8 @@ unit htypechk;
 interface
 
     uses
-      cclasses,cmsgs,tokens,cpuinfo,
-      node,globtype,
+      cclasses,cmsgs,tokens,
+      node,globtype,compinnr,
       symconst,symtype,symdef,symsym,symbase,
       pgentype;
 
@@ -35,13 +35,13 @@ interface
       Ttok2nodeRec=record
         tok : ttoken;
         nod : tnodetype;
-        inr : integer; // inline number
+        inr : tinlinenumber;
         op_overloading_supported : boolean;
       end;
 
       Ttok2opRec=record
         tok : ttoken;
-        managementoperator: tmanagementoperator;
+        managementoperator : tmanagementoperator;
       end;
 
       pcandidate = ^tcandidate;
@@ -100,58 +100,57 @@ interface
       tregableinfoflag = (
          // can be put in a register if it's the address of a var/out/const parameter
          ra_addr_regable,
-         // orthogonal to above flag: the address of the node is taken and may
-         // possibly escape the block in which this node is declared (e.g. a
-         // local variable is passed as var parameter to another procedure)
-         ra_addr_taken);
+         { orthogonal to above flag: the address of the node is taken and may
+           possibly escape the block in which this node is declared (e.g. a
+           local variable is passed as var parameter to another procedure)
+         }
+         ra_addr_taken,
+         { variable is accessed in a different scope }
+         ra_different_scope);
       tregableinfoflags = set of tregableinfoflag;
 
-  {$i compinnr.inc}
     const
       tok2nodes=27;
       tok2node:array[1..tok2nodes] of ttok2noderec=(
-        (tok:_PLUS       ;nod:addn;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_MINUS      ;nod:subn;inr:-1;op_overloading_supported:true),      { binary and unary overloading supported }
-        (tok:_STAR       ;nod:muln;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_SLASH      ;nod:slashn;inr:-1;op_overloading_supported:true),    { binary overloading supported }
-        (tok:_EQ         ;nod:equaln;inr:-1;op_overloading_supported:true),    { binary overloading supported }
-        (tok:_GT         ;nod:gtn;inr:-1;op_overloading_supported:true),       { binary overloading supported }
-        (tok:_LT         ;nod:ltn;inr:-1;op_overloading_supported:true),       { binary overloading supported }
-        (tok:_GTE        ;nod:gten;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_LTE        ;nod:lten;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_SYMDIF     ;nod:symdifn;inr:-1;op_overloading_supported:true),   { binary overloading supported }
-        (tok:_STARSTAR   ;nod:starstarn;inr:-1;op_overloading_supported:true), { binary overloading supported }
-        (tok:_OP_AS      ;nod:asn;inr:-1;op_overloading_supported:false),      { binary overloading NOT supported }
-        (tok:_OP_IN      ;nod:inn;inr:-1;op_overloading_supported:true),       { binary overloading supported }
-        (tok:_OP_IS      ;nod:isn;inr:-1;op_overloading_supported:false),      { binary overloading NOT supported }
-        (tok:_OP_OR      ;nod:orn;inr:-1;op_overloading_supported:true),       { binary overloading supported }
-        (tok:_OP_AND     ;nod:andn;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_OP_DIV     ;nod:divn;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_OP_NOT     ;nod:notn;inr:-1;op_overloading_supported:true),      { unary overloading supported }
-        (tok:_OP_MOD     ;nod:modn;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_OP_SHL     ;nod:shln;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_OP_SHR     ;nod:shrn;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_OP_XOR     ;nod:xorn;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_ASSIGNMENT ;nod:assignn;inr:-1;op_overloading_supported:true),   { unary overloading supported }
-        (tok:_OP_EXPLICIT;nod:assignn;inr:-1;op_overloading_supported:true),   { unary overloading supported }
-        (tok:_NE         ;nod:unequaln;inr:-1;op_overloading_supported:true),  { binary overloading supported }
-        (tok:_OP_INC     ;nod:inlinen;inr:in_inc_x;op_overloading_supported:true),{ unary overloading supported }
-        (tok:_OP_DEC     ;nod:inlinen;inr:in_dec_x;op_overloading_supported:true) { unary overloading supported }
+        (tok:_PLUS       ;nod:addn;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_MINUS      ;nod:subn;inr:in_none;op_overloading_supported:true),      { binary and unary overloading supported }
+        (tok:_STAR       ;nod:muln;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_SLASH      ;nod:slashn;inr:in_none;op_overloading_supported:true),    { binary overloading supported }
+        (tok:_EQ         ;nod:equaln;inr:in_none;op_overloading_supported:true),    { binary overloading supported }
+        (tok:_GT         ;nod:gtn;inr:in_none;op_overloading_supported:true),       { binary overloading supported }
+        (tok:_LT         ;nod:ltn;inr:in_none;op_overloading_supported:true),       { binary overloading supported }
+        (tok:_GTE        ;nod:gten;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_LTE        ;nod:lten;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_SYMDIF     ;nod:symdifn;inr:in_none;op_overloading_supported:true),   { binary overloading supported }
+        (tok:_STARSTAR   ;nod:starstarn;inr:in_none;op_overloading_supported:true), { binary overloading supported }
+        (tok:_OP_AS      ;nod:asn;inr:in_none;op_overloading_supported:false),      { binary overloading NOT supported }
+        (tok:_OP_IN      ;nod:inn;inr:in_none;op_overloading_supported:true),       { binary overloading supported }
+        (tok:_OP_IS      ;nod:isn;inr:in_none;op_overloading_supported:false),      { binary overloading NOT supported }
+        (tok:_OP_OR      ;nod:orn;inr:in_none;op_overloading_supported:true),       { binary overloading supported }
+        (tok:_OP_AND     ;nod:andn;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_OP_DIV     ;nod:divn;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_OP_NOT     ;nod:notn;inr:in_none;op_overloading_supported:true),      { unary overloading supported }
+        (tok:_OP_MOD     ;nod:modn;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_OP_SHL     ;nod:shln;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_OP_SHR     ;nod:shrn;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_OP_XOR     ;nod:xorn;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_ASSIGNMENT ;nod:assignn;inr:in_none;op_overloading_supported:true),   { unary overloading supported }
+        (tok:_OP_EXPLICIT;nod:assignn;inr:in_none;op_overloading_supported:true),   { unary overloading supported }
+        (tok:_NE         ;nod:unequaln;inr:in_none;op_overloading_supported:true),  { binary overloading supported }
+        (tok:_OP_INC     ;nod:inlinen;inr:in_inc_x;op_overloading_supported:true),  { unary overloading supported }
+        (tok:_OP_DEC     ;nod:inlinen;inr:in_dec_x;op_overloading_supported:true)   { unary overloading supported }
       );
 
       tok2ops=4;
-      tok2op: array[1..tok2ops] of ttok2oprec = (
+      tok2op: array[1..tok2ops] of ttok2oprec=(
         (tok:_OP_INITIALIZE; managementoperator: mop_initialize),
         (tok:_OP_FINALIZE  ; managementoperator: mop_finalize),
-        (tok:_OP_COPY      ; managementoperator: mop_copy),
-        (tok:_OP_CLONE     ; managementoperator: mop_clone)
+        (tok:_OP_ADDREF    ; managementoperator: mop_addref),
+        (tok:_OP_COPY      ; managementoperator: mop_copy)
       );
 
-      { true, if we are parsing stuff which allows array constructors }
-      allow_array_constructor : boolean = false;
-
     function node2opstr(nt:tnodetype):string;
-    function token2managementoperator(optoken : ttoken): tmanagementoperator;
+    function token2managementoperator(optoken:ttoken):tmanagementoperator;
 
     { check operator args and result type }
     function isbinaryoperatoroverloadable(treetyp:tnodetype;ld:tdef;lt:tnodetype;rd:tdef;rt:tnodetype) : boolean;
@@ -234,7 +233,8 @@ implementation
             end;
        end;
 
-    function token2managementoperator(optoken: ttoken): tmanagementoperator;
+
+    function token2managementoperator(optoken:ttoken):tmanagementoperator;
       var
         i : integer;
       begin
@@ -246,6 +246,7 @@ implementation
               break;
             end;
       end;
+
 
     function isbinaryoperatoroverloadable(treetyp:tnodetype;ld:tdef;lt:tnodetype;rd:tdef;rt:tnodetype) : boolean;
 
@@ -503,6 +504,13 @@ implementation
                       exit;
                     end;
 
+                 { <dyn. array> + <dyn. array> is handled by the compiler }
+                 if (treetyp=addn) and (is_dynamic_array(ld) or is_dynamic_array(rd)) then
+                    begin
+                      allowed:=false;
+                      exit;
+                    end;
+
                 allowed:=true;
               end;
             objectdef :
@@ -546,7 +554,7 @@ implementation
       end;
 
 
-    function isunaryoperatoroverloadable(treetyp:tnodetype;inlinenumber:integer;ld:tdef) : boolean;
+    function isunaryoperatoroverloadable(treetyp:tnodetype;inlinenumber:tinlinenumber;ld:tdef) : boolean;
       begin
         result:=false;
         case treetyp of
@@ -707,8 +715,8 @@ implementation
         operpd  : tprocdef;
         ppn     : tcallparanode;
         candidates : tcallcandidates;
-        cand_cnt,
-        inlinenumber: integer;
+        cand_cnt : integer;
+        inlinenumber: tinlinenumber;
       begin
         result:=false;
         operpd:=nil;
@@ -720,7 +728,7 @@ implementation
         if t.nodetype=inlinen then
           inlinenumber:=tinlinenode(t).inlinenumber
         else
-          inlinenumber:=-1;
+          inlinenumber:=in_none;
 
         if not isunaryoperatoroverloadable(t.nodetype,inlinenumber,ld) then
           exit;
@@ -1357,11 +1365,7 @@ implementation
         gotstring,
         gotsubscript,
         gotrecord,
-        gotpointer,
         gotvec,
-        gotclass,
-        gotdynarray,
-        gotderef,
         gottypeconv : boolean;
         fromdef,
         todef    : tdef;
@@ -1372,7 +1376,7 @@ implementation
           begin
             result:=false;
             { allow p^:= constructions with p is const parameter }
-            if gotderef or gotdynarray or (Valid_Const in opts) or
+            if (Valid_Const in opts) or
               ((hp.nodetype=loadn) and
                (loadnf_isinternal_ignoreconst in tloadnode(hp).loadnodeflags)) then
               result:=true
@@ -1420,11 +1424,7 @@ implementation
         result:=false;
         gotsubscript:=false;
         gotvec:=false;
-        gotderef:=false;
         gotrecord:=false;
-        gotclass:=false;
-        gotpointer:=false;
-        gotdynarray:=false;
         gotstring:=false;
         gottypeconv:=false;
         hp:=p;
@@ -1443,14 +1443,8 @@ implementation
              begin
                { check return type }
                case hp.resultdef.typ of
-                 pointerdef :
-                   gotpointer:=true;
-                 objectdef :
-                   gotclass:=is_implicit_pointer_object_type(hp.resultdef);
                  recorddef :
                    gotrecord:=true;
-                 classrefdef :
-                   gotclass:=true;
                  stringdef :
                    gotstring:=true;
                end;
@@ -1460,12 +1454,6 @@ implementation
                      temps like calls that return a structure and we
                      are assigning to a member }
                    if (valid_const in opts) or
-                      { if we got a deref, we won't modify the property itself }
-                      (gotderef) or
-                      { same when we got a class and subscript (= deref) }
-                      (gotclass and gotsubscript) or
-                      { indexing a dynamic array = dereference }
-                      (gotdynarray and gotvec) or
                       (
                        { allowing assignments to typecasted properties
                            a) is Delphi-incompatible
@@ -1492,12 +1480,7 @@ implementation
                    { 1. if it returns a pointer and we've found a deref,
                      2. if it returns a class and a subscription or with is found
                      3. if the address is needed of a field (subscriptn, vecn) }
-                   if (gotpointer and gotderef) or
-                      (gotstring and gotvec) or
-                      (gotclass and gotsubscript) or
-                      (
-                        (gotvec and gotdynarray)
-                      ) or
+                   if (gotstring and gotvec) or
                       (
                        (Valid_Addr in opts) and
                        (hp.nodetype in [subscriptn,vecn])
@@ -1519,8 +1502,10 @@ implementation
                end;
              derefn :
                begin
-                 gotderef:=true;
-                 hp:=tderefnode(hp).left;
+                 { dereference -> always valid }
+                 valid_for_assign:=true;
+                 mayberesettypeconvs;
+                 exit;
                end;
              typeconvn :
                begin
@@ -1535,9 +1520,8 @@ implementation
                  todef:=hp.resultdef;
                  { typeconversions on the assignment side must keep
                    left.location the same }
-                 if not(gotderef or
-                        ((target_info.system in systems_jvm) and
-                         (gotsubscript or gotvec))) then
+                 if not((target_info.system in systems_jvm) and
+                        (gotsubscript or gotvec)) then
                    begin
                      ttypeconvnode(hp).assignment_side:=true;
                      if not assigned(typeconvs) then
@@ -1585,7 +1569,7 @@ implementation
                   end;
 
                  { don't allow assignments to typeconvs that need special code }
-                 if not(gotsubscript or gotvec or gotderef) and
+                 if not(gotsubscript or gotvec) and
                     not(ttypeconvnode(hp).assign_allowed) then
                    begin
                      if report_errors then
@@ -1594,18 +1578,16 @@ implementation
                      exit;
                    end;
                  case hp.resultdef.typ of
-                   pointerdef :
-                     gotpointer:=true;
-                   objectdef :
-                     gotclass:=is_implicit_pointer_object_type(hp.resultdef);
-                   classrefdef :
-                     gotclass:=true;
                    arraydef :
                      begin
                        { pointer -> array conversion is done then we need to see it
                          as a deref, because a ^ is then not required anymore }
                        if ttypeconvnode(hp).convtype=tc_pointer_2_array then
-                         gotderef:=true;
+                         begin
+                           valid_for_assign:=true;
+                           mayberesettypeconvs;
+                           exit
+                         end;
                      end;
                  end;
                  hp:=ttypeconvnode(hp).left;
@@ -1644,14 +1626,18 @@ implementation
                       assign the dynamic array to a variable and then change
                       its elements anyway }
                  if is_dynamic_array(tunarynode(hp).left.resultdef) then
-                   gotdynarray:=true;
+                   begin
+                     result:=true;
+                     mayberesettypeconvs;
+                     exit;
+                   end;
                  hp:=tunarynode(hp).left;
                end;
              asn :
                begin
                  { asn can't be assigned directly, it returns the value in a register instead
                    of reference. }
-                 if not(gotsubscript or gotderef or gotvec) then
+                 if not(gotsubscript or gotvec) then
                    begin
                      if report_errors then
                        CGMessagePos(hp.fileinfo,errmsg);
@@ -1691,7 +1677,6 @@ implementation
                    subscript operation (to a temp location, so the assignment
                    will happen to the temp and be lost) }
                  if not gotsubscript and
-                    not gotderef and
                     not gotvec and
                     not tstoreddef(hp.resultdef).is_intregable then
                    make_not_regable(hp,[ra_addr_regable]);
@@ -1708,8 +1693,13 @@ implementation
                    end;
                  { implicit pointer object types result in dereferencing }
                  hp:=tsubscriptnode(hp).left;
-                 if is_implicit_pointer_object_type(hp.resultdef) then
-                   gotderef:=true;
+                 if is_implicit_pointer_object_type(hp.resultdef) or
+                    (hp.resultdef.typ=classrefdef) then
+                   begin
+                     valid_for_assign:=true;
+                     mayberesettypeconvs;
+                     exit
+                   end;
                end;
              muln,
              divn,
@@ -1720,20 +1710,13 @@ implementation
              subn,
              addn :
                begin
-                 { Allow operators on a pointer, or an integer
-                   and a pointer typecast and deref has been found }
-                 if ((hp.resultdef.typ=pointerdef) or
-                     (is_integer(hp.resultdef) and gotpointer)) and
-                    gotderef then
-                  result:=true
-                 else
                  { Temp strings are stored in memory, for compatibility with
                    delphi only }
-                   if (m_delphi in current_settings.modeswitches) and
-                      ((valid_addr in opts) or
-                       (valid_const in opts)) and
-                      (hp.resultdef.typ=stringdef) then
-                     result:=true
+                 if (m_delphi in current_settings.modeswitches) and
+                    ((valid_addr in opts) or
+                     (valid_const in opts)) and
+                    (hp.resultdef.typ=stringdef) then
+                   result:=true
                  else
                   if report_errors then
                    CGMessagePos(hp.fileinfo,type_e_variable_id_expected);
@@ -1743,11 +1726,7 @@ implementation
              niln,
              pointerconstn :
                begin
-                 { to support e.g. @tmypointer(0)^.data; see tests/tbs/tb0481 }
-                 if gotderef then
-                  result:=true
-                 else
-                  if report_errors then
+                if report_errors then
                    CGMessagePos(hp.fileinfo,type_e_no_assign_to_addr);
                  mayberesettypeconvs;
                  exit;
@@ -1776,10 +1755,7 @@ implementation
                end;
              addrn :
                begin
-                 if gotderef then
-                  result:=true
-                 else
-                  if report_errors then
+                 if report_errors then
                    CGMessagePos(hp.fileinfo,type_e_no_assign_to_addr);
                  mayberesettypeconvs;
                  exit;
@@ -1790,43 +1766,12 @@ implementation
                  if (hp.nodetype=calln) or
                     (nf_no_lvalue in hp.flags) then
                    begin
-                     { check return type }
-                     case hp.resultdef.typ of
-                       arraydef :
-                         begin
-                           { dynamic arrays are allowed when there is also a
-                             vec node }
-                           if is_dynamic_array(hp.resultdef) and
-                              gotvec then
-                            begin
-                              gotderef:=true;
-                              gotpointer:=true;
-                            end;
-                         end;
-                       pointerdef :
-                         gotpointer:=true;
-                       objectdef :
-                         gotclass:=is_implicit_pointer_object_type(hp.resultdef);
-                       recorddef, { handle record like class it needs a subscription }
-                       classrefdef :
-                         gotclass:=true;
-                       stringdef :
-                         gotstring:=true;
-                     end;
-                     { 1. if it returns a pointer and we've found a deref,
-                       2. if it returns a class or record and a subscription or with is found
-                       3. string is returned }
-                     if (gotstring and gotvec) or
-                        (gotpointer and gotderef) or
-                        (gotclass and gotsubscript) then
-                      result:=true
-                     else
                      { Temp strings are stored in memory, for compatibility with
                        delphi only }
-                       if (m_delphi in current_settings.modeswitches) and
-                          (valid_addr in opts) and
-                          (hp.resultdef.typ=stringdef) then
-                         result:=true
+                     if (m_delphi in current_settings.modeswitches) and
+                        (valid_addr in opts) and
+                        (hp.resultdef.typ=stringdef) then
+                       result:=true
                      else
                        if ([valid_const,valid_addr] * opts = [valid_const]) then
                          result:=true
@@ -1868,13 +1813,6 @@ implementation
                  mayberesettypeconvs;
                  exit;
                end;
-             dataconstn:
-               begin
-                 { only created internally, so no additional checks necessary }
-                 result:=true;
-                 mayberesettypeconvs;
-                 exit;
-               end;
              nothingn :
                begin
                  { generics can generate nothing nodes, just allow everything }
@@ -1896,7 +1834,6 @@ implementation
                      begin
                        { loop counter? }
                        if not(Valid_Const in opts) and
-                          not gotderef and
                           (vo_is_loop_counter in tabstractvarsym(tloadnode(hp).symtableentry).varoptions) then
                          begin
                            if report_errors then
@@ -2205,6 +2142,8 @@ implementation
       var
         hpnext,
         hp : pcandidate;
+        psym : tprocsym;
+        i : longint;
       begin
         FIgnoredCandidateProcs.free;
         hp:=FCandidateProcs;
@@ -2213,7 +2152,19 @@ implementation
            hpnext:=hp^.next;
            { free those procdef specializations that are not owned (thus were discarded) }
            if hp^.data.is_specialization and not hp^.data.is_registered then
-             hp^.data.free;
+             begin
+               { also remove the procdef from its symbol's procdeflist }
+               psym:=tprocsym(hp^.data.procsym);
+               for i:=0 to psym.procdeflist.count-1 do
+                 begin
+                   if psym.procdeflist[i]=hp^.data then
+                     begin
+                       psym.procdeflist.delete(i);
+                       break;
+                     end;
+                 end;
+               hp^.data.free;
+             end;
            dispose(hp);
            hp:=hpnext;
          end;
@@ -2221,6 +2172,9 @@ implementation
 
 
     procedure tcallcandidates.collect_overloads_in_struct(structdef:tabstractrecorddef;ProcdefOverloadList:TFPObjectList;searchhelpers,anoninherited:boolean;spezcontext:tspecializationcontext);
+
+      var
+        changedhierarchy : boolean;
 
       function processprocsym(srsym:tprocsym; out foundanything: boolean):boolean;
         var
@@ -2266,7 +2220,9 @@ implementation
                 FProcsym:=tprocsym(srsym);
               if po_overload in pd.procoptions then
                 result:=true;
-              ProcdefOverloadList.Add(pd);
+              { if the hierarchy had been changed we need to check for duplicates }
+              if not changedhierarchy or (ProcdefOverloadList.IndexOf(pd)<0) then
+                ProcdefOverloadList.Add(pd);
             end;
         end;
 
@@ -2275,6 +2231,7 @@ implementation
         hashedid   : THashedIDString;
         hasoverload,
         foundanything : boolean;
+        extendeddef : tabstractrecorddef;
         helperdef  : tobjectdef;
       begin
         if FOperator=NOTOKEN then
@@ -2282,10 +2239,17 @@ implementation
         else
           hashedid.id:=overloaded_names[FOperator];
         hasoverload:=false;
+        extendeddef:=nil;
+        changedhierarchy:=false;
         while assigned(structdef) do
          begin
            { first search in helpers for this type }
-           if (is_class(structdef) or is_record(structdef))
+           if ((structdef.typ=recorddef) or
+                 (
+                   (structdef.typ=objectdef) and
+                   (tobjectdef(structdef).objecttype in objecttypes_with_helpers)
+                 )
+               )
                and searchhelpers then
              begin
                if search_last_objectpascal_helper(structdef,nil,helperdef) then
@@ -2323,8 +2287,17 @@ implementation
                  break;
              end;
            if is_objectpascal_helper(structdef) and
-              (tobjectdef(structdef).extendeddef.typ in [recorddef,objectdef]) then
+              (
+                (tobjectdef(structdef).extendeddef.typ=recorddef) or
+                (
+                  (tobjectdef(structdef).extendeddef.typ=objectdef) and
+                  (tobjectdef(tobjectdef(structdef).extendeddef).objecttype in objecttypes_with_helpers)
+                )
+              ) then
              begin
+               { remember the first extendeddef of the hierarchy }
+               if not assigned(extendeddef) then
+                 extendeddef:=tabstractrecorddef(tobjectdef(structdef).extendeddef);
                { search methods in the extended type as well }
                srsym:=tprocsym(tabstractrecorddef(tobjectdef(structdef).extendeddef).symtable.FindWithHash(hashedid));
                if assigned(srsym) and
@@ -2343,6 +2316,13 @@ implementation
              structdef:=tobjectdef(structdef).childof
            else
              structdef:=nil;
+           { switch over to the extended def's hierarchy }
+           if not assigned(structdef) and assigned(extendeddef) then
+             begin
+               structdef:=extendeddef;
+               extendeddef:=nil;
+               changedhierarchy:=true;
+             end;
          end;
       end;
 
@@ -2586,35 +2566,58 @@ implementation
         ProcdefOverloadList.Free;
       end;
 
+
     procedure tcallcandidates.calc_distance(st_root: tsymtable; objcidcall: boolean);
       var
         pd:tprocdef;
         candidate:pcandidate;
         st: tsymtable;
       begin
+        { Give a small penalty for overloaded methods not defined in the
+          current class/unit }
         st:=nil;
-        if (st_root = nil) or (st_root.defowner = nil) or (st_root.defowner.typ <> objectdef) then
-          st := st_root
+        if objcidcall or
+           not assigned(st_root) or
+           not assigned(st_root.defowner) or
+           (st_root.defowner.typ<>objectdef) then
+          st:=st_root
         else
           repeat
-            candidate := FCandidateProcs;
+            { In case of a method, st_root is the symtable of the first found
+              procsym with the called method's name, but this procsym may not
+              contain any of the overloads that match the used parameters (which
+              are the procdefs that have been collected as candidates) -> walk
+              up the class hierarchy and look for the first class that actually
+              defines at least one of the candidate procdefs.
 
-            while candidate <> nil do
+              The reason is that we will penalise methods in other classes/
+              symtables, so if we pick a symtable that does not contain any of
+              the candidates, this won't help with picking the best/
+              most-inner-scoped one (since all of them will be penalised) }
+            candidate:=FCandidateProcs;
+
+            { the current class contains one of the candidates? }
+            while assigned(candidate) do
               begin
                 pd:=candidate^.data;
-                if pd.owner = st_root then
-                begin
-                  st:=st_root;
-                  break;
-                end;
-                candidate := candidate^.next;
+                if pd.owner=st_root then
+                  begin
+                    { yes -> choose this class }
+                    st:=st_root;
+                    break;
+                  end;
+                candidate:=candidate^.next;
               end;
-            if st=nil then
-              begin
-                if st_root.defowner=nil then
-                  Internalerror(201605301);
 
-                if tobjectdef(st_root.defowner).childof = nil then
+            { None found -> go to parent class }
+            if not assigned(st) then
+              begin
+                if not assigned(st_root.defowner) then
+                  internalerror(201605301);
+
+                { no more parent class -> take current class as root anyway
+                  (could maybe happen in case of a class helper?) }
+                if not assigned(tobjectdef(st_root.defowner).childof) then
                   begin
                     st:=st_root;
                     break;
@@ -2622,28 +2625,27 @@ implementation
 
                 st_root:=tobjectdef(st_root.defowner).childof.symtable;
               end;
-          until st<>nil;
+          until assigned(st);
 
         candidate:=FCandidateProcs;
-        while candidate <> nil do
+        {  when calling Objective-C methods via id.method, then the found
+           procsym will be inside an arbitrary ObjectSymtable, and we don't
+           want to give the methods of that particular objcclass precedence
+           over other methods, so instead check against the symtable in
+           which this objcclass is defined }
+        if objcidcall then
+          st:=st.defowner.owner;
+        while assigned(candidate) do
           begin
             pd:=candidate^.data;
-            { Give a small penalty for overloaded methods not in
-              defined the current class/unit }
-            {  when calling Objective-C methods via id.method, then the found
-               procsym will be inside an arbitrary ObjectSymtable, and we don't
-               want togive the methods of that particular objcclass precedence over
-               other methods, so instead check against the symtable in which this
-               objcclass is defined }
-            if objcidcall then
-              st:=st.defowner.owner;
 
-            if (st<>pd.owner) then
+            if st<>pd.owner then
               candidate^.ordinal_distance:=candidate^.ordinal_distance+1.0;
 
-          candidate:=candidate^.next;
-        end;
+            candidate:=candidate^.next;
+          end;
       end;
+
 
     function tcallcandidates.proc_add(st:tsymtable;pd:tprocdef;objcidcall: boolean):pcandidate;
       var
@@ -3587,7 +3589,7 @@ implementation
           for i:=0 to def.symtable.symlist.count-1 do
             begin
               sym:=tsym(def.symtable.symlist[i]);
-              if sym.typ<>fieldvarsym then
+              if (sym.typ<>fieldvarsym) or (sp_static in sym.symoptions) then
                 continue;
               if not is_valid_for_default(tfieldvarsym(sym).vardef) then
                 begin

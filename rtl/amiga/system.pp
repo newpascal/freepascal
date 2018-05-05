@@ -21,8 +21,18 @@ unit System;
 interface
 
 {$define FPC_IS_SYSTEM}
+{$define FPC_HAS_ANSI_TEXTFILEREC}
+
+{.$define FPC_AMIGA_USE_TINYHEAP}
+
+{$ifdef FPC_AMIGA_USE_TINYHEAP}
+{$define HAS_MEMORYMANAGER}
+{$endif FPC_AMIGA_USE_TINYHEAP}
 
 {$I systemh.inc}
+{$ifdef FPC_AMIGA_USE_TINYHEAP}
+{$i tnyheaph.inc}
+{$endif FPC_AMIGA_USE_TINYHEAP}
 {$I osdebugh.inc}
 
 {$if defined(cpum68k) and defined(fpusoft)}
@@ -97,6 +107,8 @@ implementation
 {$if defined(cpum68k) and defined(fpusoft)}
 
 {$define fpc_softfpu_implementation}
+{$define softfpu_compiler_mul32to64}
+{$define softfpu_inline}
 {$i softfpu.pp}
 {$undef fpc_softfpu_implementation}
 
@@ -114,10 +126,10 @@ implementation
 {$endif defined(cpum68k) and defined(fpusoft)}
 
 {$I system.inc}
+{$ifdef FPC_AMIGA_USE_TINYHEAP}
+{$i tinyheap.inc}
+{$endif FPC_AMIGA_USE_TINYHEAP}
 {$I osdebug.inc}
-{$ifdef cpum68k}
-{$I m68kamiga.inc}
-{$endif}
 
 {$IFDEF AMIGAOS4}
   // Required to allow opening of utility library interface...
@@ -302,11 +314,8 @@ end;
 
 begin
   IsConsole := TRUE;
-  SysResetFPU;
-  if not(IsLibrary) then
-    SysInitFPU;
   StackLength := CheckInitialStkLen(InitialStkLen);
-  StackBottom := Sptr - StackLength;
+  StackBottom := StackTop - StackLength;
 { OS specific startup }
   AOS_wbMsg:=nil;
   ASYS_origDir:=0;
@@ -315,9 +324,14 @@ begin
   SysInitAmigaOS;
 { Set up signals handlers }
 //  InstallSignals;
+{$ifndef FPC_AMIGA_USE_TINYHEAP}
 { Setup heap }
   InitHeap;
+{$endif FPC_AMIGA_USE_TINYHEAP}
   SysInitExceptions;
+{$ifdef cpum68k}
+  fpc_cpucodeinit;
+{$endif}
   initunicodestringmanager;
 { Setup stdin, stdout and stderr }
   SysInitStdIO;
@@ -326,5 +340,7 @@ begin
 { Arguments }
   GenerateArgs;
   InitSystemThreads;
+{$ifdef FPC_HAS_FEATURE_DYNLIBS}
   InitSystemDynLibs;
+{$endif}
 end.

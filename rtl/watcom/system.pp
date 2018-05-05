@@ -21,7 +21,11 @@ INTERFACE
 {$define EXCEPTIONS_IN_SYSTEM}
 {$endif NO_EXCEPTIONS_IN_SYSTEM}
 
+{$define FPC_ANSI_TEXTFILEREC}
 { include system-independent routine headers }
+
+{ wasm does not support SSE3 instructions }
+{$define FASTMOVE_DISABLE_SSE3}
 
 {$include systemh.inc}
 

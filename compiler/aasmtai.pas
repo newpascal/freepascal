@@ -236,6 +236,7 @@ interface
 {$ifdef m68k}
        { m68k only }
        ,top_regset
+       ,top_regpair
        ,top_realconst
 {$endif m68k}
 {$ifdef jvm}
@@ -258,6 +259,7 @@ interface
        ,top_fpcond
        ,top_cond
        ,top_para
+       ,top_asmlist
 {$endif llvm}
        );
 
@@ -268,6 +270,9 @@ interface
         localsym : pointer;
         localsymderef : tderef;
         localsymofs : longint;
+{$ifdef x86}
+        localsegment,
+{$endif x86}
         localindexreg : tregister;
         localscale : byte;
         localgetoffset,
@@ -360,7 +365,8 @@ interface
           ash_endprologue,ash_handler,ash_handlerdata,
           ash_eh,ash_32,ash_no32,
           ash_setframe,ash_stackalloc,ash_pushreg,
-          ash_savereg,ash_savexmm,ash_pushframe
+          ash_savereg,ash_savexmm,ash_pushframe,
+          ash_pushnv,ash_savenv
         );
 
       TSymbolPairKind = (spk_set, spk_thumb_set, spk_localentry);
@@ -396,7 +402,8 @@ interface
         '.seh_endprologue','.seh_handler','.seh_handlerdata',
         '.seh_eh','.seh_32','seh_no32',
         '.seh_setframe','.seh_stackalloc','.seh_pushreg',
-        '.seh_savereg','.seh_savexmm','.seh_pushframe'
+        '.seh_savereg','.seh_savexmm','.seh_pushframe',
+        '.pushnv','.savenv'
       );
       symbolpairkindstr: array[TSymbolPairKind] of string[11]=(
         '.set', '.thumb_set', '.localentry'
@@ -427,6 +434,7 @@ interface
         {$endif defined(arm) or defined(aarch64)}
         {$ifdef m68k}
             top_regset : (dataregset,addrregset,fpuregset: tcpuregisterset);
+            top_regpair : (reghi,reglo: tregister);
             top_realconst : (val_real:bestreal);
         {$endif m68k}
         {$ifdef jvm}
@@ -447,6 +455,7 @@ interface
             top_cond   : (cond: topcmp);
             top_fpcond : (fpcond: tllvmfpcmp);
             top_para   : (paras: tfplist);
+            top_asmlist : (asmlist: tasmlist);
         {$endif llvm}
         end;
         poper=^toper;
@@ -560,7 +569,7 @@ interface
        tai_section = class(tai)
           sectype  : TAsmSectiontype;
           secorder : TasmSectionorder;
-          secalign : byte;
+          secalign : longint;
           name     : pshortstring;
           sec      : TObjSection; { used in binary writer }
           destructor Destroy;override;
@@ -570,7 +579,7 @@ interface
          private
           { this constructor is made private on purpose }
           { because sections should be created via new_section() }
-          constructor Create(Asectype:TAsmSectiontype;const Aname:string;Aalign:byte;Asecorder:TasmSectionorder=secorder_default);
+          constructor Create(Asectype:TAsmSectiontype;const Aname:string;Aalign:longint;Asecorder:TasmSectionorder=secorder_default);
 {$pop}
        end;
 
@@ -615,14 +624,16 @@ interface
           constructor Create_sleb128bit(_value : int64);
           constructor Create_uleb128bit(_value : qword);
           constructor Create_aint(_value : aint);
-          constructor Create_pint(_value : pint);
-          constructor Create_pint_unaligned(_value : pint);
           constructor Create_sizeint(_value : asizeint);
           constructor Create_sizeint_unaligned(_value : asizeint);
           constructor Create_sym(_sym:tasmsymbol);
 {$ifdef i8086}
           constructor Create_sym_near(_sym:tasmsymbol);
           constructor Create_sym_far(_sym:tasmsymbol);
+          constructor Createname_near(const name:string;ofs:asizeint);
+          constructor Createname_far(const name:string;ofs:asizeint);
+          constructor Createname_near(const name:string;_symtyp:Tasmsymtype;ofs:asizeint);
+          constructor Createname_far(const name:string;_symtyp:Tasmsymtype;ofs:asizeint);
 {$endif i8086}
           constructor Create_type_sym(_typ:taiconst_type;_sym:tasmsymbol);
           constructor Create_sym_offset(_sym:tasmsymbol;ofs:asizeint);
@@ -635,9 +646,13 @@ interface
           constructor Create_type_name(_typ:taiconst_type;const name:string;ofs:asizeint);
           constructor Create_type_name(_typ:taiconst_type;const name:string;_symtyp:Tasmsymtype;ofs:asizeint);
           constructor Create_nil_codeptr;
+          constructor Create_nil_codeptr_unaligned;
           constructor Create_nil_dataptr;
+          constructor Create_nil_dataptr_unaligned;
           constructor Create_int_codeptr(_value: int64);
+          constructor Create_int_codeptr_unaligned(_value: int64);
           constructor Create_int_dataptr(_value: int64);
+          constructor Create_int_dataptr_unaligned(_value: int64);
 {$ifdef i8086}
           constructor Create_seg_name(const name:string);
           constructor Create_dgroup;
@@ -789,7 +804,7 @@ interface
            procedure derefimpl;override;
            procedure SetCondition(const c:TAsmCond);
            procedure allocate_oper(opers:longint);
-           procedure loadconst(opidx:longint;l:aint);
+           procedure loadconst(opidx:longint;l:tcgint);
            procedure loadsymbol(opidx:longint;s:tasmsymbol;sofs:longint);
            procedure loadlocal(opidx:longint;s:pointer;sofs:longint;indexreg:tregister;scale:byte;getoffset,forceref:boolean);
            procedure loadref(opidx:longint;const r:treference);
@@ -927,6 +942,9 @@ interface
 implementation
 
     uses
+{$ifdef x86}
+      aasmcpu,
+{$endif x86}
       SysUtils,
       verbose,
       globals;
@@ -949,6 +967,7 @@ implementation
     procedure new_section(list:TAsmList;Asectype:TAsmSectiontype;const Aname:string;Aalign:byte;Asecorder:TasmSectionorder=secorder_default);
       begin
         list.concat(tai_section.create(Asectype,Aname,Aalign,Asecorder));
+        inc(list.section_count);
         list.concat(cai_align.create(Aalign));
       end;
 
@@ -1015,8 +1034,8 @@ implementation
       begin
         inherited ppuload(t,ppufile);
         kind:=TSymbolPairKind(ppufile.getbyte);;
-        sym:=stringdup(ppufile.getstring);
-        value:=stringdup(ppufile.getstring);
+        sym:=ppufile.getpshortstring;
+        value:=ppufile.getpshortstring;
       end;
 
     procedure tai_symbolpair.ppuwrite(ppufile: tcompilerppufile);
@@ -1160,7 +1179,7 @@ implementation
                              TAI_SECTION
  ****************************************************************************}
 
-    constructor tai_section.Create(Asectype:TAsmSectiontype;const Aname:string;Aalign:byte;Asecorder:TasmSectionorder=secorder_default);
+    constructor tai_section.Create(Asectype:TAsmSectiontype;const Aname:string;Aalign:longint;Asecorder:TasmSectionorder=secorder_default);
       begin
         inherited Create;
         typ:=ait_section;
@@ -1176,8 +1195,8 @@ implementation
       begin
         inherited ppuload(t,ppufile);
         sectype:=TAsmSectiontype(ppufile.getbyte);
-        secalign:=ppufile.getbyte;
-        name:=stringdup(ppufile.getstring);
+        secalign:=ppufile.getlongint;
+        name:=ppufile.getpshortstring;
         sec:=nil;
       end;
 
@@ -1192,7 +1211,7 @@ implementation
       begin
         inherited ppuwrite(ppufile);
         ppufile.putbyte(byte(sectype));
-        ppufile.putbyte(secalign);
+        ppufile.putlongint(secalign);
         ppufile.putstring(name^);
       end;
 
@@ -1233,7 +1252,7 @@ implementation
         inherited Create;
         sym:=ppufile.getasmsymbol;
         size:=ppufile.getaint;
-        is_global:=boolean(ppufile.getbyte);
+        is_global:=ppufile.getboolean;
       end;
 
 
@@ -1242,7 +1261,7 @@ implementation
         inherited ppuwrite(ppufile);
         ppufile.putasmsymbol(sym);
         ppufile.putaint(size);
-        ppufile.putbyte(byte(is_global));
+        ppufile.putboolean(is_global);
       end;
 
 
@@ -1316,7 +1335,7 @@ implementation
         inherited ppuload(t,ppufile);
         sym:=ppufile.getasmsymbol;
         size:=ppufile.getlongint;
-        is_global:=boolean(ppufile.getbyte);
+        is_global:=ppufile.getboolean;
       end;
 
 
@@ -1325,7 +1344,7 @@ implementation
         inherited ppuwrite(ppufile);
         ppufile.putasmsymbol(sym);
         ppufile.putlongint(size);
-        ppufile.putbyte(byte(is_global));
+        ppufile.putboolean(is_global);
       end;
 
 
@@ -1560,28 +1579,6 @@ implementation
       end;
 
 
-    constructor tai_const.Create_pint(_value : pint);
-      begin
-         inherited Create;
-         typ:=ait_const;
-         consttype:=aitconst_ptr;
-         value:=_value;
-         sym:=nil;
-         endsym:=nil;
-      end;
-
-
-    constructor tai_const.Create_pint_unaligned(_value: pint);
-      begin
-         inherited Create;
-         typ:=ait_const;
-         consttype:=aitconst_ptr_unaligned;
-         value:=_value;
-         sym:=nil;
-         endsym:=nil;
-      end;
-
-
     constructor tai_const.Create_sizeint(_value : asizeint);
       begin
         inherited Create;
@@ -1631,9 +1628,38 @@ implementation
          consttype:=aitconst_ptr;
       end;
 
+
     constructor tai_const.Create_sym_far(_sym: tasmsymbol);
       begin
         self.create_sym(_sym);
+        consttype:=aitconst_farptr;
+      end;
+
+
+    constructor tai_const.Createname_near(const name:string;ofs:asizeint);
+      begin
+        self.Createname(name,ofs);
+        consttype:=aitconst_ptr;
+      end;
+
+
+    constructor tai_const.Createname_far(const name:string;ofs:asizeint);
+      begin
+        self.Createname(name,ofs);
+        consttype:=aitconst_farptr;
+      end;
+
+
+    constructor tai_const.Createname_near(const name:string;_symtyp:Tasmsymtype;ofs:asizeint);
+      begin
+        self.Createname(name,_symtyp,ofs);
+        consttype:=aitconst_ptr;
+      end;
+
+
+    constructor tai_const.Createname_far(const name:string;_symtyp:Tasmsymtype;ofs:asizeint);
+      begin
+        self.Createname(name,_symtyp,ofs);
         consttype:=aitconst_farptr;
       end;
 {$endif i8086}
@@ -1753,9 +1779,21 @@ implementation
       end;
 
 
+    constructor tai_const.Create_nil_codeptr_unaligned;
+      begin
+        self.Create_int_codeptr_unaligned(0);
+      end;
+
+
     constructor tai_const.Create_nil_dataptr;
       begin
         self.Create_int_dataptr(0);
+      end;
+
+
+    constructor tai_const.Create_nil_dataptr_unaligned;
+      begin
+        self.Create_int_dataptr_unaligned(0);
       end;
 
 
@@ -1780,6 +1818,27 @@ implementation
       end;
 
 
+    constructor tai_const.Create_int_codeptr_unaligned(_value: int64);
+      begin
+        inherited Create;
+        typ:=ait_const;
+{$ifdef i8086}
+        if current_settings.x86memorymodel in x86_far_code_models then
+          consttype:=aitconst_farptr
+        else
+{$endif i8086}
+{$ifdef avr}
+          consttype:=aitconst_gs;
+{$else avr}
+          consttype:=aitconst_ptr_unaligned;
+{$endif avr}
+        sym:=nil;
+        endsym:=nil;
+        symofs:=0;
+        value:=_value;
+      end;
+
+
     constructor tai_const.Create_int_dataptr(_value: int64);
       begin
         inherited Create;
@@ -1790,6 +1849,23 @@ implementation
         else
 {$endif i8086}
           consttype:=aitconst_ptr;
+        sym:=nil;
+        endsym:=nil;
+        symofs:=0;
+        value:=_value;
+      end;
+
+
+    constructor tai_const.Create_int_dataptr_unaligned(_value: int64);
+      begin
+        inherited Create;
+        typ:=ait_const;
+{$ifdef i8086}
+        if current_settings.x86memorymodel in x86_far_data_models then
+          consttype:=aitconst_farptr
+        else
+{$endif i8086}
+          consttype:=aitconst_ptr_unaligned;
         sym:=nil;
         endsym:=nil;
         symofs:=0;
@@ -2385,7 +2461,7 @@ implementation
         inherited ppuload(t,ppufile);
         temppos:=ppufile.getlongint;
         tempsize:=ppufile.getlongint;
-        allocation:=boolean(ppufile.getbyte);
+        allocation:=ppufile.getboolean;
 {$ifdef EXTDEBUG}
         problem:=nil;
 {$endif EXTDEBUG}
@@ -2397,7 +2473,7 @@ implementation
         inherited ppuwrite(ppufile);
         ppufile.putlongint(temppos);
         ppufile.putlongint(tempsize);
-        ppufile.putbyte(byte(allocation));
+        ppufile.putboolean(allocation);
       end;
 
 
@@ -2465,7 +2541,7 @@ implementation
         inherited ppuload(t,ppufile);
         ppufile.getdata(reg,sizeof(Tregister));
         ratype:=tregalloctype(ppufile.getbyte);
-        keep:=boolean(ppufile.getbyte);
+        keep:=ppufile.getboolean;
       end;
 
 
@@ -2474,7 +2550,7 @@ implementation
         inherited ppuwrite(ppufile);
         ppufile.putdata(reg,sizeof(Tregister));
         ppufile.putbyte(byte(ratype));
-        ppufile.putbyte(byte(keep));
+        ppufile.putboolean(keep);
       end;
 
 
@@ -2518,7 +2594,7 @@ implementation
       end;
 
 
-    procedure tai_cpu_abstract.loadconst(opidx:longint;l:aint);
+    procedure tai_cpu_abstract.loadconst(opidx:longint;l:tcgint);
       begin
         allocate_oper(opidx+1);
         with oper[opidx]^ do
@@ -2535,7 +2611,7 @@ implementation
       var
         r : treference;
       begin
-        reference_reset_symbol(r,s,sofs,1);
+        reference_reset_symbol(r,s,sofs,1,[]);
         r.refaddr:=addr_full;
         loadref(opidx,r);
       end;
@@ -2561,6 +2637,9 @@ implementation
                localscale:=scale;
                localgetoffset:=getoffset;
                localforceref:=forceref;
+{$ifdef x86}
+               localsegment:=NR_NO;
+{$endif x86}
              end;
            typ:=top_local;
          end;
@@ -2568,6 +2647,10 @@ implementation
 
 
     procedure tai_cpu_abstract.loadref(opidx:longint;const r:treference);
+{$ifdef x86}
+      var
+        si_param: ShortInt;
+{$endif}
       begin
         allocate_oper(opidx+1);
         with oper[opidx]^ do
@@ -2582,7 +2665,17 @@ implementation
 {$ifdef x86}
             { We allow this exception for x86, since overloading this would be
               too much of a a speed penalty}
-            if (ref^.segment<>NR_NO) and (ref^.segment<>NR_DS) then
+            if is_x86_parameterized_string_op(opcode) then
+              begin
+                si_param:=get_x86_string_op_si_param(opcode);
+                if (si_param<>-1) and (taicpu(self).OperandOrder=op_att) then
+                  si_param:=x86_parameterized_string_op_param_count(opcode)-si_param-1;
+                if (si_param=opidx) and (ref^.segment<>NR_NO) and (ref^.segment<>NR_DS) then
+                  segprefix:=ref^.segment;
+              end
+            else if (opcode=A_XLAT) and (ref^.segment<>NR_NO) and (ref^.segment<>NR_DS) then
+              segprefix:=ref^.segment
+            else if (ref^.segment<>NR_NO) and (ref^.segment<>get_default_segment_of_ref(ref^)) then
               segprefix:=ref^.segment;
 {$endif}
 {$ifndef llvm}
@@ -2638,6 +2731,10 @@ implementation
 
 
     procedure tai_cpu_abstract.loadoper(opidx:longint;o:toper);
+{$ifdef x86}
+      var
+        si_param: ShortInt;
+{$endif x86}
       begin
         allocate_oper(opidx+1);
         clearop(opidx);
@@ -2656,7 +2753,19 @@ implementation
                   new(ref);
                   ref^:=o.ref^;
 {$ifdef x86}
-                  if (ref^.segment<>NR_NO) and (ref^.segment<>NR_DS) then
+                  { We allow this exception for x86, since overloading this would be
+                    too much of a a speed penalty}
+                  if is_x86_parameterized_string_op(opcode) then
+                    begin
+                      si_param:=get_x86_string_op_si_param(opcode);
+                      if (si_param<>-1) and (taicpu(self).OperandOrder=op_att) then
+                        si_param:=x86_parameterized_string_op_param_count(opcode)-si_param-1;
+                      if (si_param=opidx) and (ref^.segment<>NR_NO) and (ref^.segment<>NR_DS) then
+                        segprefix:=ref^.segment;
+                    end
+                  else if (opcode=A_XLAT) and (ref^.segment<>NR_NO) and (ref^.segment<>NR_DS) then
+                    segprefix:=ref^.segment
+                  else if (ref^.segment<>NR_NO) and (ref^.segment<>get_default_segment_of_ref(ref^)) then
                     segprefix:=ref^.segment;
 {$endif x86}
                   if assigned(add_reg_instruction_hook) then
@@ -2795,7 +2904,7 @@ implementation
 {$ifdef x86}
         ppufile.getdata(segprefix,sizeof(Tregister));
 {$endif x86}
-        is_jmp:=boolean(ppufile.getbyte);
+        is_jmp:=ppufile.getboolean;
       end;
 
 
@@ -2812,7 +2921,7 @@ implementation
 {$ifdef x86}
         ppufile.putdata(segprefix,sizeof(Tregister));
 {$endif x86}
-        ppufile.putbyte(byte(is_jmp));
+        ppufile.putboolean(is_jmp);
       end;
 
 
@@ -2885,6 +2994,9 @@ implementation
                 begin
                   ppufile.getderef(localsymderef);
                   localsymofs:=ppufile.getaint;
+{$ifdef x86}
+                  localsegment:=tregister(ppufile.getlongint);
+{$endif x86}
                   localindexreg:=tregister(ppufile.getlongint);
                   localscale:=ppufile.getbyte;
                   localgetoffset:=(ppufile.getbyte<>0);
@@ -2924,6 +3036,9 @@ implementation
                 begin
                   ppufile.putderef(localsymderef);
                   ppufile.putaint(localsymofs);
+{$ifdef x86}
+                  ppufile.putlongint(longint(localsegment));
+{$endif x86}
                   ppufile.putlongint(longint(localindexreg));
                   ppufile.putbyte(localscale);
                   ppufile.putbyte(byte(localgetoffset));
@@ -2946,7 +3061,7 @@ implementation
           if upper(classname)='TAI_ALIGN_ABSTRACT' then
             internalerror(200709191);
 {$endif EXTDEBUG}
-          if b in [1,2,4,8,16,32] then
+          if b in [1,2,4,8,16,32,64] then
             aligntype := b
           else
             aligntype := 1;
@@ -2999,7 +3114,7 @@ implementation
         aligntype:=ppufile.getbyte;
         fillsize:=0;
         fillop:=ppufile.getbyte;
-        use_op:=boolean(ppufile.getbyte);
+        use_op:=ppufile.getboolean;
       end;
 
 
@@ -3008,7 +3123,7 @@ implementation
         inherited ppuwrite(ppufile);
         ppufile.putbyte(aligntype);
         ppufile.putbyte(fillop);
-        ppufile.putbyte(byte(use_op));
+        ppufile.putboolean(use_op);
       end;
 
 
@@ -3029,7 +3144,9 @@ implementation
         sd_reg,        { pushreg }
         sd_regoffset,  { savereg }
         sd_regoffset,  { savexmm }
-        sd_none        { pushframe }
+        sd_none,       { pushframe }
+        sd_reg,        { pushnv }
+        sd_none        { savenv }
       );
 
     constructor tai_seh_directive.create(_kind:TAsmSehDirective);
@@ -3075,7 +3192,7 @@ implementation
           sd_none: ;
           sd_string:
             begin
-              data.name:=stringdup(ppufile.getstring);
+              data.name:=ppufile.getpshortstring;
               data.flags:=ppufile.getbyte;
             end;
 
@@ -3143,7 +3260,7 @@ implementation
       begin
         inherited ppuload(t, ppufile);
         stackslot:=ppufile.getlongint;
-        desc:=stringdup(ppufile.getstring);
+        desc:=ppufile.getpshortstring;
         startlab:=ppufile.getasmsymbol;
         stoplab:=ppufile.getasmsymbol;
       end;
@@ -3194,7 +3311,7 @@ implementation
     constructor tai_jcatch.ppuload(t: taitype; ppufile: tcompilerppufile);
       begin
         inherited ppuload(t, ppufile);
-        name:=stringdup(ppufile.getstring);
+        name:=ppufile.getpshortstring;
         startlab:=ppufile.getasmsymbol;
         startlab.increfs;
         stoplab:=ppufile.getasmsymbol;

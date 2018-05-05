@@ -25,7 +25,7 @@ begin
     P.Email := '';
     P.Description := 'Pascal parsing parts of Free Component Libraries (FCL), FPC''s OOP library.';
     P.NeedLibC:= false;
-    P.OSes:=AllOSes-[embedded,msdos,win16];
+    P.OSes:=AllOSes-[embedded,msdos,win16,macos,palmos];
 
     P.SourcePath.Add('src');
 
@@ -46,7 +46,6 @@ begin
           AddUnit('pscanner');
           AddUnit('pparser');
         end;
-    T.ResourceStrings := True;
     T:=P.Targets.AddUnit('pastounittest.pp');
       with T.Dependencies do
         begin
@@ -68,6 +67,19 @@ begin
       with T.Dependencies do
         begin
           AddUnit('pastree');
+        end;
+    T:=P.Targets.AddUnit('pasresolveeval.pas');
+      with T.Dependencies do
+        begin
+          AddUnit('pastree');
+          AddUnit('pscanner');
+        end;
+    T.ResourceStrings := True;
+    T:=P.Targets.AddUnit('pasuseanalyzer.pas');
+      with T.Dependencies do
+        begin
+          AddUnit('pastree');
+          AddUnit('pasresolver');
         end;
 
 {$ifndef ALLPACKAGES}

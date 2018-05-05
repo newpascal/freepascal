@@ -34,7 +34,7 @@ implementation
     sysutils,
     cutils,cfileutl,cclasses,
     verbose,systems,globtype,globals,
-    symconst,script,
+    symconst,cscript,
     fmodule,aasmbase,aasmtai,aasmdata,aasmcpu,cpubase,symsym,symdef,
     import,export,link,comprsrc,rescmn,i_bsd,expunix,
     cgutils,cgbase,cgobj,cpuinfo,ogbase;
@@ -147,8 +147,8 @@ begin
        begin
          if not(target_info.system in systems_darwin) then
            begin
-             ExeCmd[1]:='ld $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -L. -o $EXE $CATRES';
-             DllCmd[1]:='ld $TARGET $EMUL $OPT -shared -L. -o $EXE $CATRES'
+             ExeCmd[1]:='ld $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -L. -o $EXE $CATRES $FILELIST';
+             DllCmd[1]:='ld $TARGET $EMUL $OPT -shared -L. -o $EXE $CATRES $FILELIST'
            end
          else
            begin
@@ -167,16 +167,16 @@ begin
                programs with problems that require Valgrind will have more
                than 60KB of data (first 4KB of address space is always invalid)
              }
-               ExeCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -multiply_defined suppress -L. -o $EXE $CATRES';
+               ExeCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -multiply_defined suppress -L. -o $EXE $CATRES $FILELIST';
              if not(cs_gdb_valgrind in current_settings.globalswitches) then
                ExeCmd[1]:=ExeCmd[1]+' -pagezero_size 0x10000';
 {$else ndef cpu64bitaddr}
-             ExeCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -multiply_defined suppress -L. -o $EXE $CATRES';
+             ExeCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -multiply_defined suppress -L. -o $EXE $CATRES $FILELIST';
 {$endif ndef cpu64bitaddr}
              if (apptype<>app_bundle) then
-               DllCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $GCSECTIONS -dynamic -dylib -multiply_defined suppress -L. -o $EXE $CATRES'
+               DllCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $GCSECTIONS -dynamic -dylib -multiply_defined suppress -L. -o $EXE $CATRES $FILELIST'
              else
-               DllCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $GCSECTIONS -dynamic -bundle -multiply_defined suppress -L. -o $EXE $CATRES'
+               DllCmd[1]:='ld $PRTOBJ $TARGET $EMUL $OPT $GCSECTIONS -dynamic -bundle -multiply_defined suppress -L. -o $EXE $CATRES $FILELIST'
            end
        end
      else
@@ -388,6 +388,7 @@ end;
 Function TLinkerBSD.WriteResponseFile(isdll:boolean) : Boolean;
 Var
   linkres      : TLinkRes;
+  FilesList    : TLinkRes;
   i            : longint;
   cprtobj,
   gprtobj,
@@ -588,16 +589,44 @@ begin
          else if librarysearchpath.FindFile('crtbegin.o',false,s) then
              LinkRes.AddFileName(s);
    end;
+
   { main objectfiles }
-  while not ObjectFiles.Empty do
+
+  { Generate linkfiles.res file if needed }
+  { Only needed on Windows, due to the limitation of 8196 characters for command line }
+  if (LdSupportsNoResponseFile) and
+     (source_info.system in systems_all_windows) then
    begin
-     s:=ObjectFiles.GetFirst;
-     if s<>'' then
-      if LdSupportsNoResponseFile then
-        LinkRes.AddFileName(s)
-      else
-        LinkRes.AddFileName(maybequoted(s));
+     FilesList:=TLinkRes.Create(outputexedir+'linkfiles.res',false);
+     while not ObjectFiles.Empty do
+      begin
+        s:=ObjectFiles.GetFirst;
+        if s<>'' then
+         begin
+           repeat
+             i:=Pos(source_info.dirsep,s);
+             if i>0 then 
+               s[i]:=target_info.dirsep;
+           until i=0;
+           FilesList.Add(s);
+         end;
+      end;
+     FilesList.writetodisk;
+     FilesList.Free;
+   end
+  else
+   begin
+     while not ObjectFiles.Empty do
+      begin
+        s:=ObjectFiles.GetFirst;
+        if s<>'' then
+          if LdSupportsNoResponseFile then
+            LinkRes.AddFileName(s)
+          else
+            LinkRes.AddFileName(maybequoted(s));
+      end;
    end;
+
   if not LdSupportsNoResponseFile then
    LinkRes.Add(')');
 
@@ -767,12 +796,16 @@ begin
     else
      DynLinKStr:=DynLinkStr+' -dynamic'; // one dash!
    end;
-   
+
 { Use -nopie on OpenBSD }
   if (target_info.system in systems_openbsd) and
      (target_info.system <> system_x86_64_openbsd) then
     Info.ExtraOptions:=Info.ExtraOptions+' -nopie';
-    
+
+{ -N seems to be needed on NetBSD/earm }
+  if (target_info.system in [system_arm_netbsd]) then
+    Info.ExtraOptions:=Info.ExtraOptions+' -N';
+
 { Write used files and libraries }
   WriteResponseFile(false);
 
@@ -784,6 +817,10 @@ begin
   Replace(cmdstr,'$EMUL',EmulStr);
   Replace(cmdstr,'$CATRES',CatFileContent(outputexedir+Info.ResName));
   Replace(cmdstr,'$RES',maybequoted(outputexedir+Info.ResName));
+  if (LdSupportsNoResponseFile) and (source_info.system in systems_all_windows) then
+    Replace(cmdstr,'$FILELIST','-filelist '+maybequoted(outputexedir+'linkfiles.res'))
+  else
+    Replace(cmdstr,'$FILELIST','');
   Replace(cmdstr,'$STATIC',StaticStr);
   Replace(cmdstr,'$STRIP',StripStr);
   Replace(cmdstr,'$GCSECTIONS',GCSectionsStr);
@@ -807,14 +844,17 @@ begin
      not(cs_link_nolink in current_settings.globalswitches) then
     begin
       { we have to use a script to use the IFS hack }
-      linkscript:=TAsmScriptUnix.create(outputexedir+'ppaslink');
+      linkscript:=GenerateScript(outputexedir+'ppaslink');
       linkscript.AddLinkCommand(BinStr,CmdStr,'');
       if (extdbgcmdstr<>'') then
         linkscript.AddLinkCommand(extdbgbinstr,extdbgcmdstr,'');
       linkscript.WriteToDisk;
       BinStr:=linkscript.fn;
       if not path_absolute(BinStr) then
-        BinStr:='./'+BinStr;
+        if cs_link_on_target in current_settings.globalswitches then
+          BinStr:='.'+target_info.dirsep+BinStr
+        else
+          BinStr:='.'+source_info.dirsep+BinStr;
       CmdStr:='';
     end;
 
@@ -835,6 +875,10 @@ begin
          linkscript.free
        end;
    end;
+
+  { Remove linkfiles.res }
+  if (success) and (LdSupportsNoResponseFile) and (source_info.system in systems_all_windows) then
+    DeleteFile(outputexedir+'linkfiles.res');
 
   MakeExecutable:=success;   { otherwise a recursive call to link method }
 end;
@@ -902,6 +946,10 @@ begin
   Replace(cmdstr,'$TARGET',targetstr);
   Replace(cmdstr,'$EMUL',EmulStr);
   Replace(cmdstr,'$CATRES',CatFileContent(outputexedir+Info.ResName));
+  if (LdSupportsNoResponseFile) and (source_info.system in systems_all_windows) then
+    Replace(cmdstr,'$FILELIST','-filelist '+maybequoted(outputexedir+'linkfiles.res'))
+  else
+    Replace(cmdstr,'$FILELIST','');
   Replace(cmdstr,'$RES',maybequoted(outputexedir+Info.ResName));
   Replace(cmdstr,'$INIT',InitStr);
   Replace(cmdstr,'$FINI',FiniStr);
@@ -941,14 +989,17 @@ begin
      not(cs_link_nolink in current_settings.globalswitches) then
     begin
       { we have to use a script to use the IFS hack }
-      linkscript:=TAsmScriptUnix.create(outputexedir+'ppaslink');
+      linkscript:=GenerateScript(outputexedir+'ppaslink');
       linkscript.AddLinkCommand(BinStr,CmdStr,'');
       if (extdbgbinstr<>'') then
         linkscript.AddLinkCommand(extdbgbinstr,extdbgcmdstr,'');
       linkscript.WriteToDisk;
       BinStr:=linkscript.fn;
       if not path_absolute(BinStr) then
-        BinStr:='./'+BinStr;
+        if cs_link_on_target in current_settings.globalswitches then
+          BinStr:='.'+target_info.dirsep+BinStr
+        else
+          BinStr:='.'+source_info.dirsep+BinStr;
       CmdStr:='';
     end;
 
@@ -978,6 +1029,10 @@ begin
       if (target_info.system in systems_darwin) then
         DeleteFile(outputexedir+'linksyms.fpc');
     end;
+
+  { Remove linkfiles.res }
+  if (success) and (LdSupportsNoResponseFile) and (source_info.system in systems_all_windows) then
+    DeleteFile(outputexedir+'linkfiles.res');
 
   MakeSharedLibrary:=success;   { otherwise a recursive call to link method }
 end;
@@ -1050,6 +1105,10 @@ initialization
   RegisterImport(system_arm_darwin,timportlibdarwin);
   RegisterExport(system_arm_darwin,texportlibdarwin);
   RegisterTarget(system_arm_darwin_info);
+
+  RegisterImport(system_arm_netbsd,timportlibbsd);
+  RegisterExport(system_arm_netbsd,texportlibbsd);
+  RegisterTarget(system_arm_netbsd_info);
 {$endif arm}
 {$ifdef aarch64}
   RegisterImport(system_aarch64_darwin,timportlibdarwin);

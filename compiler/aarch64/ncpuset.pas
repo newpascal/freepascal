@@ -47,7 +47,7 @@ implementation
       cpuinfo,
       pass_2,cgcpu,
       ncon,
-      tgobj,ncgutil,regvars,rgobj,aasmcpu,
+      tgobj,ncgutil,rgobj,aasmcpu,
       procinfo,
       cgutils;
 
@@ -124,11 +124,11 @@ implementation
         indexreg:=cg.makeregsize(current_asmdata.CurrAsmList,hregister,OS_ADDR);
         cg.a_load_reg_reg(current_asmdata.CurrAsmList,opcgsize,OS_ADDR,hregister,indexreg);
         { load table address }
-        reference_reset_symbol(href,tablelabel,0,4);
+        reference_reset_symbol(href,tablelabel,0,4,[]);
         basereg:=cg.getaddressregister(current_asmdata.CurrAsmList);
         cg.a_loadaddr_ref_reg(current_asmdata.CurrAsmList,href,basereg);
         { load table slot, 32-bit sign extended }
-        reference_reset_base(href,basereg,0,4);
+        reference_reset_base(href,basereg,0,href.temppos,4,[]);
         href.index:=indexreg;
         href.shiftmode:=SM_LSL;
         href.shiftimm:=2;

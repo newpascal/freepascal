@@ -134,7 +134,11 @@ unit llvmpara;
                     paraloc^.llvmvalueloc:=true;
                   end;
                 LOC_VOID:
-                  ;
+                  begin
+                    { for empty records, ensure these don't get a byval
+                      attribute }
+                    paraloc^.llvmvalueloc:=true;
+                  end;
                 else
                   internalerror(2014012302);
               end;
@@ -151,11 +155,11 @@ unit llvmpara;
               paraloc^.register:=hlcg.getaddressregister(list,paraloc^.def);
               paraloc^.shiftval:=0;
               { remove all other paralocs }
-              nextloc:=paraloc^.next;
-              while assigned(nextloc) do
+              while assigned(paraloc^.next) do
                 begin
-                  dispose(nextloc);
                   nextloc:=paraloc^.next;
+                  paraloc^.next:=nextloc^.next;
+                  dispose(nextloc);
                 end;
             end;
           paraloc^.llvmloc.loc:=paraloc^.loc;

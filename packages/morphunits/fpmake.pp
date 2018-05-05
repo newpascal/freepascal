@@ -49,7 +49,6 @@ begin
     T:=P.Targets.AddUnit('layers.pas');
     T:=P.Targets.AddUnit('inputevent.pas');
     T:=P.Targets.AddUnit('mui.pas');
-    T:=P.Targets.AddUnit('muihelper.pas');
     T:=P.Targets.AddUnit('ahi.pas');
     T:=P.Targets.AddUnit('get9.pas');
     T:=P.Targets.AddUnit('tinygl.pas');
@@ -60,6 +59,7 @@ begin
     T:=P.Targets.AddUnit('workbench.pas');
     T:=P.Targets.AddUnit('icon.pas');
     T:=P.Targets.AddUnit('locale.pas');
+    T:=P.Targets.AddUnit('commodities.pas');
 
 {$ifndef ALLPACKAGES}
     Run;

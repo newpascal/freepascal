@@ -3,7 +3,39 @@
     System dependent Registry implementation - using XML file.
   ---------------------------------------------------------------------}
 
-uses xmlreg;
+uses typinfo, xmlreg;
+
+Const
+  XFileName = 'reg.xml';
+
+Resourcestring
+  SErrTypeNotSupported = 'Registry data type not supported on this platform: %s';
+
+Function RegDataTypeToXmlDataType(RegData : TRegDataType) : TDataType;
+
+begin
+  Case RegData of
+    rdUnknown               : Result := dtUnknown;
+    rdString,rdExpandString : Result := dtString;
+    rdInteger               : Result := dtDword;
+    rdBinary                : Result := dtBinary;
+    rdMultiString           : Result := dtStrings;
+  else
+    Raise ERegistryException.CreateFmt(SErrTypeNotSupported,[GetEnumName(TypeInfo(TRegDataType),Ord(RegData))]);
+  end;
+end;
+
+Function DataTypeToRegDataType(DataType : TDataType) : TRegDataType;
+
+begin
+  Case DataType of
+    dtUnknown: Result:=rdUnknown;
+    dtDword  : Result:=rdInteger;
+    dtString : Result:=rdString;
+    dtBinary : Result:=rdBinary;
+    dtStrings : Result:=rdMultiString;
+  end;
+end;
 
 type
 
@@ -62,8 +94,6 @@ begin
   FreeAndNil(XMLRegistryCache);
 end;
 
-Const
-  XFileName = 'reg.xml';
 
 { TXMLRegistryInstance }
 
@@ -97,7 +127,7 @@ procedure TRegistry.SysRegFree;
 begin
   if Assigned(FSysData) then
     TXMLRegistry(FSysData).Flush;
-  TXMLRegistryInstance.	FreeXMLRegistry(TXMLRegistry(FSysData));
+  TXMLRegistryInstance.FreeXMLRegistry(TXMLRegistry(FSysData));
 end;
 
 function TRegistry.SysCreateKey(const Key: String): Boolean;
@@ -118,34 +148,25 @@ begin
 end;
 
 function TRegistry.SysGetData(const Name: String; Buffer: Pointer;
-          BufSize: Integer; var RegData: TRegDataType): Integer;
+          BufSize: Integer; Out RegData: TRegDataType): Integer;
 
 Var
   DataType : TDataType;
 begin
   Result:=BufSize;
-  If TXmlregistry(FSysData).GetValueData(Name,DataType,Buffer^,Result) then
-    begin
-    Case DataType of
-      dtUnknown : RegData:=rdUnknown;
-      dtString  : RegData:=rdString;
-      dtDWord   : RegData:=rdInteger;
-      dtBinary  : RegData:=rdBinary;
-    end;
-    end
+  If TXmlregistry(FSysData).GetValueDataUnicode(Name,DataType,Buffer^,Result) then
+    RegData:=DataTypeToRegDataType(DataType)
   else
     Result:=-1;
 end;
 
-
-function TRegistry.GetDataInfo(const ValueName: string; var Value: TRegDataInfo
-  ): Boolean;
+function TRegistry.GetDataInfo(const ValueName: string; out Value: TRegDataInfo): Boolean;
 
 Var
   Info : TDataInfo;
 
 begin
-  Result := TXmlRegistry(FSysData).GetValueInfo(ValueName,Info);
+  Result := TXmlRegistry(FSysData).GetValueInfo(ValueName,Info,True);
   If Not Result then
     With Value do
       begin
@@ -155,12 +176,7 @@ begin
   else
     With Value do
       begin
-      Case Info.DataType of
-        dtUnknown: RegData:=rdUnknown;
-        dtDword  : Regdata:=rdInteger;
-        dtString : RegData:=rdString;
-        dtBinary : RegData:=rdBinary;
-      end;
+      RegData:=DataTypeToRegDataType(Info.DataType);
       DataSize:=Info.DataSize;
       end;
 end;
@@ -170,7 +186,7 @@ begin
   Result := 0;
 end;
 
-function TRegistry.GetKeyInfo(var Value: TRegKeyInfo): Boolean;
+function TRegistry.GetKeyInfo(Out Value: TRegKeyInfo): Boolean;
 
 Var
   Info : TKeyInfo;
@@ -265,13 +281,8 @@ Var
   DataType : TDataType;
 
 begin
-  Case RegData of
-    rdUnknown               : DataType := dtUnknown;
-    rdString,rdExpandString : DataType := dtString;
-    rdInteger               : DataType := dtDword;
-    rdBinary                : DataType := dtBinary;
-  end;
-  Result:=TXMLRegistry(FSysData).SetValueData(Name,DataType,Buffer^,BufSize);
+  DataType:=RegDataTypeToXmlDataType(RegData);
+  Result:=TXMLRegistry(FSysData).SetValueDataUnicode(Name,DataType,Buffer^,BufSize);
 end;
 
 procedure TRegistry.RenameValue(const OldName, NewName: string);

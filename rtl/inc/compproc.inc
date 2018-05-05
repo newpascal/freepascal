@@ -37,8 +37,8 @@ Procedure fpc_freemem(p:pointer);compilerproc;
 {$endif FPC_HAS_FEATURE_HEAP}
 
 { used by Default() in code blocks }
-procedure fpc_zeromem(p:pointer;len:ptruint);inline;compilerproc;
-procedure fpc_fillmem(out data;len:ptruint;b : byte);inline;compilerproc;
+procedure fpc_zeromem(p:pointer;len:sizeuint);inline;compilerproc;
+procedure fpc_fillmem(out data;len:sizeuint;b : byte);inline;compilerproc;
 
 procedure fpc_Shortstr_SetLength(var s:shortstring;len:SizeInt); compilerproc;
 procedure fpc_shortstr_assign(len:{$ifdef cpu16}smallint{$else}longint{$endif};sstr,dstr:pointer); compilerproc;
@@ -77,8 +77,11 @@ procedure fpc_dynarray_incr_ref(p : pointer); compilerproc;
 procedure fpc_dynarray_setlength(var p : pointer;pti : pointer; dimcount : sizeint;dims : pdynarrayindex); compilerproc;
 procedure fpc_dynarray_assign(var dest : pointer; src : pointer; ti: pointer); compilerproc;
 {$ifndef VER3_0}
-{ no reference to the Delete() intrinsic, due to typeinfo parameter }
+{ no reference to the Delete()/Insert() intrinsic, due to typeinfo parameter }
 procedure fpc_dynarray_delete(var p : pointer;source,count : SizeInt;pti : pointer);compilerproc;
+procedure fpc_dynarray_insert(var p : pointer;source : SizeInt;data : pointer;count : SizeInt;pti : pointer);compilerproc;
+procedure fpc_dynarray_concat_multi(var dest : pointer; pti: pointer; const sarr:array of pointer); compilerproc;
+procedure fpc_dynarray_concat(var dest : pointer; pti: pointer; const src1,src2 : pointer); compilerproc;
 {$endif VER3_0}
 {$endif FPC_HAS_FEATURE_DYNARRAYS}
 
@@ -431,6 +434,7 @@ procedure fpc_PWideChar_To_ShortStr(out res : shortstring;const p : pwidechar); 
 Function fpc_get_input:PText;compilerproc;
 Function fpc_get_output:PText;compilerproc;
 Procedure fpc_textinit_iso(var t : Text;nr : DWord);compilerproc;
+Procedure fpc_textinit_filename_iso(var t : Text;nr : DWord;const filename : string);compilerproc;
 Procedure fpc_textclose_iso(var t : Text);compilerproc;
 Procedure fpc_Write_End(var f:Text); compilerproc;
 Procedure fpc_Writeln_End(var f:Text); compilerproc;
@@ -590,10 +594,26 @@ function fpc_mod_shortint(n,z : shortint) : shortint; compilerproc;
 {$endif FPC_INCLUDE_SOFTWARE_MOD_DIV}
 
 {$ifdef FPC_INCLUDE_SOFTWARE_MUL}
+{$ifdef VER3_0}
 function fpc_mul_integer(f1,f2 : integer;checkoverflow : boolean) : integer; compilerproc;
 function fpc_mul_word(f1,f2 : word;checkoverflow : boolean) : word; compilerproc;
 function fpc_mul_longint(f1,f2 : longint;checkoverflow : boolean) : longint; compilerproc;
 function fpc_mul_dword(f1,f2 : dword;checkoverflow : boolean) : dword; compilerproc;
+{$else VER3_0}
+
+function fpc_mul_shortint(f1,f2 : shortint) : shortint; compilerproc;
+function fpc_mul_shortint_checkoverflow(f1,f2 : shortint) : shortint; compilerproc;
+function fpc_mul_byte(f1,f2 : byte) : byte; compilerproc;
+function fpc_mul_byte_checkoverflow(f1,f2 : byte) : byte; compilerproc;
+function fpc_mul_integer(f1,f2 : integer) : integer; compilerproc;
+function fpc_mul_integer_checkoverflow(f1,f2 : integer) : integer; compilerproc;
+function fpc_mul_word(f1,f2 : word) : word; compilerproc;
+function fpc_mul_word_checkoverflow(f1,f2 : word) : word; compilerproc;
+function fpc_mul_longint(f1,f2 : longint) : longint; compilerproc;
+function fpc_mul_longint_checkoverflow(f1,f2 : longint) : longint; compilerproc;
+function fpc_mul_dword(f1,f2 : dword) : dword; compilerproc;
+function fpc_mul_dword_checkoverflow(f1,f2 : dword) : dword; compilerproc;
+{$endif VER3_0}
 {$endif FPC_INCLUDE_SOFTWARE_MUL}
 
 { from int64.inc }
@@ -601,17 +621,41 @@ function fpc_div_qword(n,z : qword) : qword; compilerproc;
 function fpc_mod_qword(n,z : qword) : qword; compilerproc;
 function fpc_div_int64(n,z : int64) : int64; compilerproc;
 function fpc_mod_int64(n,z : int64) : int64; compilerproc;
+{$ifdef VER3_0}
 function fpc_mul_qword(f1,f2 : qword;checkoverflow : longbool) : qword; compilerproc;
 function fpc_mul_int64(f1,f2 : int64;checkoverflow : longbool) : int64; compilerproc;
+{$else VER3_0}
+function fpc_mul_qword(f1,f2 : qword) : qword; compilerproc;
+function fpc_mul_qword_checkoverflow(f1,f2 : qword) : qword; compilerproc;
+function fpc_mul_int64(f1,f2 : int64) : int64; compilerproc;
+function fpc_mul_int64_checkoverflow(f1,f2 : int64) : int64; compilerproc;
+{$endif VER3_0}
 function fpc_mul_dword_to_qword(f1,f2 : dword) : qword; compilerproc;
 function fpc_mul_longint_to_int64(f1,f2 : longint) : int64; compilerproc;
+
+function fpc_div_currency(n,z : currency) : currency; compilerproc;
+function fpc_mod_currency(n,z : currency) : currency; compilerproc;
 
 {$ifdef FPC_INCLUDE_SOFTWARE_SHIFT_INT64}
 function fpc_shl_qword(value : qword; shift : sizeint) : qword; compilerproc;
 function fpc_shr_qword(value : qword; shift : sizeint) : qword; compilerproc;
 function fpc_shl_int64(value : int64; shift : sizeint) : int64; compilerproc;
 function fpc_shr_int64(value : int64; shift : sizeint) : int64; compilerproc;
+procedure fpc_shl_assign_qword(var value : qword; shift : sizeint); compilerproc;
+procedure fpc_shr_assign_qword(var value : qword; shift : sizeint); compilerproc;
+procedure fpc_shl_assign_int64(var value : int64; shift : sizeint); compilerproc;
+procedure fpc_shr_assign_int64(var value : int64; shift : sizeint); compilerproc;
 {$endif  FPC_INCLUDE_SOFTWARE_SHIFT_INT64}
+{$ifndef FPC_HAS_INTERNAL_SAR_ASSIGN_QWORD}
+procedure fpc_sar_assign_int64(var AValue : Int64;const Shift : Byte);compilerproc;
+procedure fpc_sar_assign_qword(var AValue : qword;const Shift : Byte);compilerproc;
+{$endif FPC_HAS_INTERNAL_SAR_ASSIGN_QWORD}
+{$ifndef FPC_HAS_INTERNAL_ROX_ASSIGN_QWORD}
+procedure fpc_ror_assign_int64(var AValue : int64;const Dist : Byte);compilerproc;
+procedure fpc_ror_assign_qword(var AValue : QWord;const Dist : Byte);compilerproc;
+procedure fpc_rol_assign_int64(var AValue : int64;const Dist : Byte);compilerproc;
+procedure fpc_rol_assign_qword(var AValue : QWord;const Dist : Byte);compilerproc;
+{$endif FPC_HAS_INTERNAL_ROX_ASSIGN_QWORD}
 
 
 function fpc_popcnt_byte(AValue : Byte): Byte;compilerproc;
@@ -760,6 +804,9 @@ Procedure fpc_reset_typed(var f : TypedFile;Size : Longint); compilerproc;
 Procedure fpc_rewrite_typed(var f : TypedFile;Size : Longint); compilerproc;
 Procedure fpc_reset_typed_iso(var f : TypedFile;Size : Longint); compilerproc;
 Procedure fpc_rewrite_typed_iso(var f : TypedFile;Size : Longint); compilerproc;
+Procedure fpc_reset_typed_name_iso(var f : TypedFile;const FileName : String;Size : Longint); compilerproc;
+Procedure fpc_rewrite_typed_name_iso(var f : TypedFile;const FileName : String;Size : Longint); compilerproc;
+
 Procedure fpc_typed_write(TypeSize : Longint;var f : TypedFile;const Buf); compilerproc;
 Procedure fpc_typed_read(TypeSize : Longint;var f : TypedFile;out Buf); compilerproc;
 Procedure fpc_typed_read_iso(TypeSize : Longint;var f : TypedFile;out Buf); compilerproc;
@@ -773,8 +820,8 @@ function fpc_qword_to_double(q: qword): double; compilerproc;
 function fpc_longword_to_double(i: longword): double; compilerproc;
 {$endif FPC_INCLUDE_SOFTWARE_LONGWORD_TO_DOUBLE}
 
-function fpc_setjmp(var s : jmp_buf) : {$ifdef CPU16}smallint{$else}longint{$endif}; compilerproc;
-procedure fpc_longjmp(var s : jmp_buf; value : {$ifdef CPU16}smallint{$else}longint{$endif}); compilerproc;
+function fpc_setjmp(var s : jmp_buf) : {$if defined(CPUINT8)}shortint{$elseif defined(CPUINT16)}smallint{$else}longint{$endif}; compilerproc;
+procedure fpc_longjmp(var s : jmp_buf; value : {$if defined(CPUINT8)}shortint{$elseif defined(CPUINT16)}smallint{$else}longint{$endif}); compilerproc;
 
 {$ifdef cpui8086}
 { i8086 stack checking }

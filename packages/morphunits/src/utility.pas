@@ -60,7 +60,7 @@ const
   TAG_MORE   = 2;
   TAG_SKIP   = 3;
 
-  TAG_USER   = 1 Shl 31;
+  TAG_USER   = DWord(1 Shl 31);
 
   TAGFILTER_AND = 0;
   TAGFILTER_NOT = 1;
@@ -211,15 +211,22 @@ function GetUniqueID: LongWord; SysCall MOS_UtilityBase 270;
 // varargs version
 function AllocNamedObject(Name: STRPTR; const Tags: array of PtrUInt): PNamedObject; inline;
 
-function TAG_(Value: Pointer): LongWord; overload; inline;
-function TAG_(Value: PChar): LongWord; overload; inline;
-function TAG_(Value: Boolean): LongWord; overload; inline;
-function TAG_(Value: LongInt): LongWord; overload; inline;
+function TAG_(Value: Pointer): PtrUInt; overload; inline;
+function TAG_(Value: PChar): PtrUInt; overload; inline;
+function TAG_(Value: Boolean): PtrUInt; overload; inline;
+function TAG_(Value: LongInt): PtrUInt; overload; inline;
+function TAG_(Value: LongWord): PtrUInt; overload; inline;
 
-function AsTag(Value: Pointer): LongWord; overload; inline;
-function AsTag(Value: PChar): LongWord; overload; inline;
-function AsTag(Value: Boolean): LongWord; overload; inline;
-function AsTag(Value: LongInt): LongWord; overload; inline;
+function AsTag(Value: Pointer): PtrUInt; overload; inline;
+function AsTag(Value: PChar): PtrUInt; overload; inline;
+function AsTag(Value: Boolean): PtrUInt; overload; inline;
+function AsTag(Value: LongInt): PtrUInt; overload; inline;
+function AsTag(Value: LongWord): PtrUInt; overload; inline;
+
+// Hook and Dispatcher Helper
+{ This procedure is used to pop Dispatcher arguments from the EmulHandle }
+procedure DISPATCHERARG(var cl; var obj; var msg);
+function HookEntry: PtrUInt;
 
 implementation
 
@@ -228,17 +235,17 @@ begin
   AllocNamedObject := AllocNamedObjectA(Name, @Tags);
 end;
 
-function TAG_(Value: Pointer): LongWord; inline;
+function TAG_(Value: Pointer): PtrUInt; inline;
 begin
-  TAG_ := LongWord(Value);
+  TAG_ := PtrUInt(Value);
 end;
 
-function TAG_(Value: PChar): LongWord; inline;
+function TAG_(Value: PChar): PtrUInt; inline;
 begin
-  TAG_ := LongWord(Value);
+  TAG_ := PtrUInt(Value);
 end;
 
-function TAG_(Value: Boolean): LongWord; inline;
+function TAG_(Value: Boolean): PtrUInt; inline;
 begin
   if Value then
     TAG_ := LTrue
@@ -246,9 +253,14 @@ begin
     TAG_ := LFalse;
 end;
 
-function TAG_(Value: LongInt): LongWord; inline;
+function TAG_(Value: LongInt): PtrUInt; inline;
 begin
-  TAG_ := LongWord(Value);
+  TAG_ := PtrUInt(Value);
+end;
+
+function TAG_(Value: LongWord): PtrUInt; inline;
+begin
+  TAG_ := PtrUInt(Value);
 end;
 
 function AsTag(Value: Pointer): LongWord; inline;
@@ -256,12 +268,12 @@ begin
   AsTag := LongWord(Value);
 end;
 
-function AsTag(Value: PChar): LongWord; inline;
+function AsTag(Value: PChar): PtrUInt; inline;
 begin
-  AsTag := LongWord(Value);
+  AsTag := PtrUInt(Value);
 end;
 
-function AsTag(Value: Boolean): LongWord; inline;
+function AsTag(Value: Boolean): PtrUInt; inline;
 begin
   if Value then
     AsTag := LTrue
@@ -269,9 +281,46 @@ begin
     AsTag := LFalse;
 end;
 
-function AsTag(Value: LongInt): LongWord; inline;
+function AsTag(Value: LongInt): PtrUInt; inline;
 begin
-  AsTag := LongWord(Value);
+  AsTag := PtrUInt(Value);
+end;
+
+function AsTag(Value: LongWord): PtrUInt; inline;
+begin
+  AsTag := PtrUInt(Value);
+end;
+
+{ This procedure is used to pop Dispatcher arguments from the EmulHandle }
+procedure DISPATCHERARG(var cl; var obj; var msg);
+begin
+  with GetEmulHandle^ do
+  begin
+    PtrUInt(cl) := reg[regA0];
+    PtrUInt(obj) := reg[regA2];
+    PtrUInt(msg) := reg[regA1];
+  end;
+end;
+{
+// assembler implementation, kept for reference
+asm
+  lwz r6,32(r2) // REG_a0
+  stw r6,(r3)   // cl
+  lwz r6,40(r2) // REG_a2
+  stw r6,(r4)   // obj
+  lwz r6,36(r2) // REG_a1
+  stw r6,(r5)   // msg
+end;}
+
+type
+  THookSubEntryFunc = function(a, b, c: Pointer): PtrUInt;
+
+function HookEntry: PtrUInt;
+var
+  hook: PHook;
+begin
+  hook := REG_A0;
+  HookEntry := THookSubEntryFunc(hook^.h_SubEntry)(hook, REG_A2, REG_A1);
 end;
 
 begin

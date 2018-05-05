@@ -29,13 +29,16 @@ unit ag68kvasm;
     uses
        aasmbase,systems,
        aasmtai,aasmdata,
-       aggas,ag68kgas,
+       assemble,aggas,ag68kgas,
        cpubase,cgutils,
        globtype;
 
   type
     tm68kvasm = class(Tm68kGNUassembler)
-      constructor create(info: pasminfo; smart: boolean); override;
+    protected
+      function sectionattrs(atype:TAsmSectiontype):string; override;
+    public
+      constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean); override;
       function MakeCmdLine: TCmdStr; override;
     end;
 
@@ -44,7 +47,7 @@ unit ag68kvasm;
     uses
        cutils,cfileutl,globals,verbose,
        cgbase,
-       assemble,script,
+       cscript,
        itcpugas,cpuinfo,
        aasmcpu;
 
@@ -54,10 +57,35 @@ unit ag68kvasm;
 {****************************************************************************}
 
 
-    constructor tm68kvasm.create(info: pasminfo; smart: boolean);
+    constructor tm68kvasm.CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean);
       begin
         inherited;
         InstrWriter := Tm68kInstrWriter.create(self);
+      end;
+
+    function tm68kvasm.sectionattrs(atype:TAsmSectiontype):string;
+      begin
+        case atype of
+          sec_code, sec_fpc, sec_init, sec_fini:
+            result:='acrx';
+          { map sec_rodata as read-write, otherwise the linker (vlink) complains if it
+            has to write into the relocations in a rodata section. (KB) }
+          sec_data, sec_rodata:
+            result:='adrw';
+          sec_rodata_norel:
+            case target_info.system of
+              { stop vlink from complaining when it merges ro sections into rw ones (KB) }
+              system_m68k_atari: result:='adrw';
+            else
+              result:='adr';
+            end;
+          sec_bss, sec_threadvar:
+            result:='aurw';
+          sec_stab, sec_stabstr:
+            result:='dr';
+          else
+            result:='';
+        end;
       end;
 
     function tm68kvasm.MakeCmdLine: TCmdStr;
@@ -67,8 +95,10 @@ unit ag68kvasm;
         result:=asminfo^.asmcmd;
 
         case target_info.system of
-          system_m68k_amiga: objtype:='-Fhunk';
-          system_m68k_atari: objtype:='-Fvobj'; // fix me?
+          { a.out doesn't support named sections }
+          system_m68k_amiga: objtype:='-Felf';
+          { atari never had a standard object format, a.out is limited, vasm/vlink author recommends vobj }
+          system_m68k_atari: objtype:='-Fvobj';
           system_m68k_linux: objtype:='-Felf';
         else
           internalerror(2016052601);

@@ -1,8 +1,8 @@
 {
-    This unit implements support import,export,link routines
-    for the (arm) GameBoy Advance target
+    Copyright (c) 2005-2017 by Free Pascal Compiler team
 
-    Copyright (c) 2001-2002 by Peter Vreman
+    This unit implements support import, export, link routines
+    for the Embedded Target
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@ implementation
     uses
        SysUtils,
        cutils,cfileutl,cclasses,
-       globtype,globals,systems,verbose,comphook,script,fmodule,i_embed,link,
+       globtype,globals,systems,verbose,comphook,cscript,fmodule,i_embed,link,
        cpuinfo;
 
     type
@@ -601,7 +601,14 @@ begin
       ct_flip_n_click,
       
       { Nordic Semiconductor }
-      ct_nrf52832,
+      ct_nrf51422_xxaa,
+      ct_nrf51422_xxab,
+      ct_nrf51422_xxac,
+      ct_nrf51822_xxaa,
+      ct_nrf51822_xxab,
+      ct_nrf51822_xxac,
+      ct_nrf52832_xxaa,
+      ct_nrf52840_xxaa,
       
       ct_sc32442b,
       ct_thumb2bare:
@@ -1503,4 +1510,8 @@ initialization
   RegisterTarget(system_mipsel_embedded_info);
 {$endif mipsel}
 
+{$ifdef m68k}
+  RegisterLinker(ld_embedded,TLinkerEmbedded);
+  RegisterTarget(system_m68k_embedded_info);
+{$endif m68k}
 end.

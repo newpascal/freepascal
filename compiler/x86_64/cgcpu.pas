@@ -28,9 +28,9 @@ unit cgcpu;
     uses
        cgbase,cgutils,cgobj,cgx86,
        aasmbase,aasmtai,aasmdata,aasmcpu,
-       cpubase,cpuinfo,cpupara,parabase,
+       cpubase,parabase,
        symdef,
-       node,symconst,rgx86,procinfo;
+       symconst,rgx86,procinfo;
 
     type
       tcgx86_64 = class(tcgx86)
@@ -47,6 +47,8 @@ unit cgcpu;
 
         procedure a_loadmm_intreg_reg(list: TAsmList; fromsize, tosize : tcgsize;intreg, mmreg: tregister; shuffle: pmmshuffle); override;
         procedure a_loadmm_reg_intreg(list: TAsmList; fromsize, tosize : tcgsize;mmreg, intreg: tregister;shuffle : pmmshuffle); override;
+
+        function use_ms_abi: boolean;
       private
         function use_push: boolean;
         function saved_xmm_reg_size: longint;
@@ -58,46 +60,18 @@ unit cgcpu;
 
     uses
        globtype,globals,verbose,systems,cutils,cclasses,
-       symsym,symtable,defutil,paramgr,fmodule,cpupi,
-       rgobj,tgobj,rgcpu,ncgutil;
+       symtable,paramgr,cpupi,
+       rgcpu,ncgutil;
 
 
     procedure Tcgx86_64.init_register_allocators;
-      const
-        win64_saved_std_regs : array[0..7] of tsuperregister = (RS_RBX,RS_RDI,RS_RSI,RS_R12,RS_R13,RS_R14,RS_R15,RS_RBP);
-        others_saved_std_regs : array[0..4] of tsuperregister = (RS_RBX,RS_R12,RS_R13,RS_R14,RS_R15);
-        saved_regs_length : array[boolean] of longint = (5,7);
-
-        win64_saved_xmm_regs : array[0..9] of tsuperregister = (RS_XMM6,RS_XMM7,
-          RS_XMM8,RS_XMM9,RS_XMM10,RS_XMM11,RS_XMM12,RS_XMM13,RS_XMM14,RS_XMM15);
       var
-        i : longint;
+        ms_abi: boolean;
       begin
         inherited init_register_allocators;
 
-        if (length(saved_standard_registers)<>saved_regs_length[target_info.system=system_x86_64_win64]) then
-          begin
-            if target_info.system=system_x86_64_win64 then
-              begin
-                SetLength(saved_standard_registers,Length(win64_saved_std_regs));
-                SetLength(saved_mm_registers,Length(win64_saved_xmm_regs));
-
-                for i:=low(win64_saved_std_regs) to high(win64_saved_std_regs) do
-                  saved_standard_registers[i]:=win64_saved_std_regs[i];
-
-                for i:=low(win64_saved_xmm_regs) to high(win64_saved_xmm_regs) do
-                  saved_mm_registers[i]:=win64_saved_xmm_regs[i];
-              end
-            else
-              begin
-                SetLength(saved_standard_registers,Length(others_saved_std_regs));
-                SetLength(saved_mm_registers,0);
-
-                for i:=low(others_saved_std_regs) to high(others_saved_std_regs) do
-                  saved_standard_registers[i]:=others_saved_std_regs[i];
-              end;
-          end;
-        if target_info.system=system_x86_64_win64 then
+        ms_abi:=use_ms_abi;
+        if ms_abi then
           begin
             if (cs_userbp in current_settings.optimizerswitches) and assigned(current_procinfo) and (current_procinfo.framepointer=NR_STACK_POINTER_REG) then
               begin
@@ -152,14 +126,16 @@ unit cgcpu;
     function tcgx86_64.saved_xmm_reg_size: longint;
       var
         i: longint;
+        regs_to_save_mm: tcpuregisterarray;
       begin
         result:=0;
         if (target_info.system<>system_x86_64_win64) or
            (not uses_registers(R_MMREGISTER)) then
           exit;
-        for i:=low(saved_mm_registers) to high(saved_mm_registers) do
+        regs_to_save_mm:=paramanager.get_saved_registers_mm(current_procinfo.procdef.proccalloption);
+        for i:=low(regs_to_save_mm) to high(regs_to_save_mm) do
           begin
-            if (saved_mm_registers[i] in rg[R_MMREGISTER].used_in_proc) then
+            if (regs_to_save_mm[i] in rg[R_MMREGISTER].used_in_proc) then
               inc(result,tcgsize2size[OS_VECTOR]);
           end;
       end;
@@ -176,6 +152,8 @@ unit cgcpu;
         suppress_endprologue: boolean;
         stackmisalignment: longint;
         xmmsize: longint;
+        regs_to_save_int,
+        regs_to_save_mm: tcpuregisterarray;
 
       procedure push_one_reg(reg: tregister);
         begin
@@ -193,15 +171,17 @@ unit cgcpu;
           usedregs: tcpuregisterset;
         begin
           usedregs:=rg[R_INTREGISTER].used_in_proc-paramanager.get_volatile_registers_int(current_procinfo.procdef.proccalloption);
-          for r := low(saved_standard_registers) to high(saved_standard_registers) do
-            if saved_standard_registers[r] in usedregs then
+          for r := low(regs_to_save_int) to high(regs_to_save_int) do
+            if regs_to_save_int[r] in usedregs then
               begin
                 inc(stackmisalignment,sizeof(pint));
-                push_one_reg(newreg(R_INTREGISTER,saved_standard_registers[r],R_SUBWHOLE));
+                push_one_reg(newreg(R_INTREGISTER,regs_to_save_int[r],R_SUBWHOLE));
               end;
         end;
 
       begin
+        regs_to_save_int:=paramanager.get_saved_registers_int(current_procinfo.procdef.proccalloption);
+        regs_to_save_mm:=paramanager.get_saved_registers_mm(current_procinfo.procdef.proccalloption);
         hitem:=list.last;
         { pi_has_unwind_info may already be set at this point if there are
           SEH directives in assembler body. In this case, .seh_endprologue
@@ -254,7 +234,7 @@ unit cgcpu;
               begin
                 localsize:=align(localsize,target_info.stackalign)+xmmsize;
                 reference_reset_base(current_procinfo.save_regs_ref,NR_STACK_POINTER_REG,
-                  localsize-xmmsize,tcgsize2size[OS_VECTOR]);
+                  localsize-xmmsize,ctempposinvalid,tcgsize2size[OS_VECTOR],[]);
               end;
 
             { allocate stackframe space }
@@ -278,10 +258,10 @@ unit cgcpu;
                     if use_push and (xmmsize<>0) then
                       begin
                         href:=current_procinfo.save_regs_ref;
-                        for r:=low(saved_mm_registers) to high(saved_mm_registers) do
-                          if saved_mm_registers[r] in rg[R_MMREGISTER].used_in_proc then
+                        for r:=low(regs_to_save_mm) to high(regs_to_save_mm) do
+                          if regs_to_save_mm[r] in rg[R_MMREGISTER].used_in_proc then
                             begin
-                              a_loadmm_reg_ref(list,OS_VECTOR,OS_VECTOR,newreg(R_MMREGISTER,saved_mm_registers[r],R_SUBMMWHOLE),href,nil);
+                              a_loadmm_reg_ref(list,OS_VECTOR,OS_VECTOR,newreg(R_MMREGISTER,regs_to_save_mm[r],R_SUBMMWHOLE),href,nil);
                               inc(href.offset,tcgsize2size[OS_VECTOR]);
                             end;
                       end;
@@ -312,11 +292,11 @@ unit cgcpu;
         href:=current_procinfo.save_regs_ref;
         if (not use_push) then
           begin
-            for r:=low(saved_standard_registers) to high(saved_standard_registers) do
-              if saved_standard_registers[r] in rg[R_INTREGISTER].used_in_proc then
+            for r:=low(regs_to_save_int) to high(regs_to_save_int) do
+              if regs_to_save_int[r] in rg[R_INTREGISTER].used_in_proc then
                 begin
                   templist.concat(cai_seh_directive.create_reg_offset(ash_savereg,
-                    newreg(R_INTREGISTER,saved_standard_registers[r],R_SUBWHOLE),
+                    newreg(R_INTREGISTER,regs_to_save_int[r],R_SUBWHOLE),
                     href.offset+frame_offset));
                  inc(href.offset,sizeof(aint));
                 end;
@@ -326,12 +306,12 @@ unit cgcpu;
             if (href.offset mod tcgsize2size[OS_VECTOR])<>0 then
               inc(href.offset,tcgsize2size[OS_VECTOR]-(href.offset mod tcgsize2size[OS_VECTOR]));
 
-            for r:=low(saved_mm_registers) to high(saved_mm_registers) do
+            for r:=low(regs_to_save_mm) to high(regs_to_save_mm) do
               begin
-                if saved_mm_registers[r] in rg[R_MMREGISTER].used_in_proc then
+                if regs_to_save_mm[r] in rg[R_MMREGISTER].used_in_proc then
                   begin
                     templist.concat(cai_seh_directive.create_reg_offset(ash_savexmm,
-                      newreg(R_MMREGISTER,saved_mm_registers[r],R_SUBMMWHOLE),
+                      newreg(R_MMREGISTER,regs_to_save_mm[r],R_SUBMMWHOLE),
                       href.offset+frame_offset));
                     inc(href.offset,tcgsize2size[OS_VECTOR]);
                   end;
@@ -353,7 +333,7 @@ unit cgcpu;
         var
           href : treference;
         begin
-          reference_reset_base(href,NR_STACK_POINTER_REG,a,0);
+          reference_reset_base(href,NR_STACK_POINTER_REG,a,ctempposinvalid,0,[]);
           { normally, lea is a better choice than an add }
           list.concat(Taicpu.op_ref_reg(A_LEA,TCGSize2OpSize[OS_ADDR],href,NR_STACK_POINTER_REG));
         end;
@@ -362,7 +342,9 @@ unit cgcpu;
         href : treference;
         hreg : tregister;
         r : longint;
+        regs_to_save_mm: tcpuregisterarray;
       begin
+        regs_to_save_mm:=paramanager.get_saved_registers_mm(current_procinfo.procdef.proccalloption);;
         { Prevent return address from a possible call from ending up in the epilogue }
         { (restoring registers happens before epilogue, providing necessary padding) }
         if (current_procinfo.flags*[pi_has_unwind_info,pi_do_call,pi_has_saved_regs])=[pi_has_unwind_info,pi_do_call] then
@@ -375,11 +357,11 @@ unit cgcpu;
                 if (saved_xmm_reg_size<>0) then
                   begin
                     href:=current_procinfo.save_regs_ref;
-                    for r:=low(saved_mm_registers) to high(saved_mm_registers) do
-                      if saved_mm_registers[r] in rg[R_MMREGISTER].used_in_proc then
+                    for r:=low(regs_to_save_mm) to high(regs_to_save_mm) do
+                      if regs_to_save_mm[r] in rg[R_MMREGISTER].used_in_proc then
                         begin
                           { Allocate register so the optimizer does not remove the load }
-                          hreg:=newreg(R_MMREGISTER,saved_mm_registers[r],R_SUBMMWHOLE);
+                          hreg:=newreg(R_MMREGISTER,regs_to_save_mm[r],R_SUBMMWHOLE);
                           a_reg_alloc(list,hreg);
                           a_loadmm_ref_reg(list,OS_VECTOR,OS_VECTOR,href,hreg,nil);
                           inc(href.offset,tcgsize2size[OS_VECTOR]);
@@ -399,7 +381,7 @@ unit cgcpu;
                   'add $constant,%rsp' and 'lea offset(FPREG),%rsp' as belonging to
                   the function epilog.
                   Neither 'leave' nor even 'mov %FPREG,%rsp' are allowed. }
-                reference_reset_base(href,current_procinfo.framepointer,0,sizeof(pint));
+                reference_reset_base(href,current_procinfo.framepointer,0,ctempposinvalid,sizeof(pint),[]);
                 list.concat(Taicpu.op_ref_reg(A_LEA,tcgsize2opsize[OS_ADDR],href,NR_STACK_POINTER_REG));
                 list.concat(Taicpu.op_reg(A_POP,tcgsize2opsize[OS_ADDR],current_procinfo.framepointer));
               end
@@ -411,7 +393,7 @@ unit cgcpu;
         list.concat(Taicpu.Op_none(A_RET,S_NO));
         if (pi_has_unwind_info in current_procinfo.flags) then
           begin
-            tx86_64procinfo(current_procinfo).dump_scopes(list);
+            tcpuprocinfo(current_procinfo).dump_scopes(list);
             list.concat(cai_seh_directive.create(ash_endproc));
           end;
       end;
@@ -447,7 +429,7 @@ unit cgcpu;
         para2.init;
         paramanager.getintparaloc(list,pd,1,para1);
         paramanager.getintparaloc(list,pd,2,para2);
-        reference_reset_symbol(href,l,0,1);
+        reference_reset_symbol(href,l,0,1,[]);
         { TODO: using RSP is correct only while the stack is fixed!!
           (true now, but will change if/when allocating from stack is implemented) }
         a_load_reg_cgpara(list,OS_ADDR,NR_STACK_POINTER_REG,para1);
@@ -504,6 +486,15 @@ unit cgcpu;
            not shufflescalar(shuffle) then
           internalerror(2009112515);
         list.concat(taicpu.op_reg_reg(opc,S_NO,mmreg,intreg));
+      end;
+
+
+    function tcgx86_64.use_ms_abi: boolean;
+      begin
+        if assigned(current_procinfo) then
+          use_ms_abi:=x86_64_use_ms_abi(current_procinfo.procdef.proccalloption)
+        else
+          use_ms_abi:=target_info.system=system_x86_64_win64;
       end;
 
 

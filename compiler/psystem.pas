@@ -40,13 +40,12 @@ interface
 implementation
 
     uses
-      globals,globtype,verbose,constexp,cpuinfo,
+      globals,globtype,verbose,constexp,cpuinfo,compinnr,
       systems,
       symconst,symtype,symsym,symdef,symcpu,symtable,
-      aasmtai,aasmdata,aasmcpu,
-      ncgutil,ncgrtti,fmodule,
-      node,nbas,nflw,nset,ncon,ncnv,nld,nmem,ncal,nmat,nadd,ninl,nopt
-      ;
+      aasmtai,aasmcpu,
+      fmodule,
+      node,nbas,nflw,nset,ncon,ncnv,nld,nmem,ncal,nmat,nadd,ninl;
 
 
     procedure create_intern_symbols;
@@ -88,6 +87,9 @@ implementation
         systemunit.insert(csyssym.create('Assert',in_assert_x_y));
         systemunit.insert(csyssym.create('Val',in_val_x));
         systemunit.insert(csyssym.create('Addr',in_addr_x));
+{$ifdef i8086}
+        systemunit.insert(csyssym.create('FarAddr',in_faraddr_x));
+{$endif i8086}
         systemunit.insert(csyssym.create('TypeInfo',in_typeinfo_x));
         systemunit.insert(csyssym.create('SetLength',in_setlength_x));
         systemunit.insert(csyssym.create('Copy',in_copy_x));
@@ -107,6 +109,7 @@ implementation
         systemunit.insert(csyssym.create('SetString',in_setstring_x_y_z));
         systemunit.insert(csyssym.create('Insert',in_insert_x_y_z));
         systemunit.insert(csyssym.create('Delete',in_delete_x_y_z));
+        systemunit.insert(csyssym.create('GetTypeKind',in_gettypekind_x));
         systemunit.insert(cconstsym.create_ord('False',constord,0,pasbool8type));
         systemunit.insert(cconstsym.create_ord('True',constord,1,pasbool8type));
       end;
@@ -163,8 +166,10 @@ implementation
 {$ifdef i8086}
         if current_settings.x86memorymodel in x86_far_code_models then
           voidcodepointertype:=voidfarpointertype
+        else if current_settings.x86memorymodel=mm_tiny then
+          voidcodepointertype:=voidnearpointertype
         else
-          voidcodepointertype:=voidnearpointertype;
+          voidcodepointertype:=voidnearcspointertype;
         voidstackpointertype:=voidnearsspointertype;
 {$else i8086}
         voidcodepointertype:=voidpointertype;
@@ -314,6 +319,10 @@ implementation
         create_fpu_types;
         s64currencytype:=corddef.create(scurrency,low(int64),high(int64),true);
 {$endif sparc}
+{$ifdef sparc64}
+        create_fpu_types;
+        s64currencytype:=corddef.create(scurrency,low(int64),high(int64),true);
+{$endif sparc64}
 {$ifdef m68k}
         create_fpu_types;
         s64currencytype:=corddef.create(scurrency,low(int64),high(int64),true);
@@ -370,11 +379,14 @@ implementation
   {$endif i8086}
 {$endif x86}
         set_default_ptr_types;
-        openchararraytype:=carraydef.create(0,-1,sizesinttype);
+        openchararraytype:=carraydef.create_openarray;
         tarraydef(openchararraytype).elementdef:=cansichartype;
         cfiletype:=cfiledef.createuntyped;
-        cvarianttype:=cvariantdef.create(vt_normalvariant);
-        colevarianttype:=cvariantdef.create(vt_olevariant);
+        if f_variants in features then
+          begin
+            cvarianttype:=cvariantdef.create(vt_normalvariant);
+            colevarianttype:=cvariantdef.create(vt_olevariant);
+          end;
 
 {$ifdef cpufpemu}
         { Normal types }
@@ -392,7 +404,7 @@ implementation
         else
         *)
 {$endif cpufpemu}
-        if init_settings.fputype <> fpu_none then
+        if init_settings.fputype<>fpu_none then
           begin
             addtype('Single',s32floattype);
             addtype('Double',s64floattype);
@@ -462,8 +474,11 @@ implementation
         addtype('WideChar',cwidechartype);
         addtype('Text',cfiledef.createtext);
         addtype('TypedFile',cfiledef.createtyped(voidtype));
-        addtype('Variant',cvarianttype);
-        addtype('OleVariant',colevarianttype);
+        if f_variants in features then
+          begin
+            addtype('Variant',cvarianttype);
+            addtype('OleVariant',colevarianttype);
+          end;
         { Internal types }
         addtype('$undefined',cundefinedtype);
         addtype('$formal',cformaltype);
@@ -523,8 +538,11 @@ implementation
 {$endif x86}
         addtype('$openchararray',openchararraytype);
         addtype('$file',cfiletype);
-        addtype('$variant',cvarianttype);
-        addtype('$olevariant',colevarianttype);
+        if f_variants in features then
+          begin
+            addtype('$variant',cvarianttype);
+            addtype('$olevariant',colevarianttype);
+          end;
         if init_settings.fputype<>fpu_none then
           begin
             addtype('$s32real',s32floattype);
@@ -671,11 +689,15 @@ implementation
             loadtype('vtblarray',vmtarraytype);
             loadtype('__vtbl_ptr_type',vmttype);
           end;
-        loadtype('variant',cvarianttype);
-        loadtype('olevariant',colevarianttype);
+        if f_variants in features then
+          begin
+            loadtype('variant',cvarianttype);
+            loadtype('olevariant',colevarianttype);
+          end;
         loadtype('methodpointer',methodpointertype);
         loadtype('nestedprocpointer',nestedprocpointertype);
         loadtype('HRESULT',hresultdef);
+        loadtype('TTYPEKIND',typekindtype);
         set_default_int_types;
         set_default_ptr_types;
         set_current_module(oldcurrentmodule);

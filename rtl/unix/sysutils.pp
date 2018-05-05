@@ -38,6 +38,9 @@ interface
 {$DEFINE HAS_LOCALTIMEZONEOFFSET}
 {$DEFINE HAS_GETTICKCOUNT64}
 
+// this target has an fileflush implementation, don't include dummy
+{$DEFINE SYSUTILS_HAS_FILEFLUSH_IMPL}
+
 { used OS file system APIs use ansistring }
 {$define SYSUTILS_HAS_ANSISTR_FILEUTIL_IMPL}
 { OS has an ansistring/single byte environment variable API }
@@ -443,9 +446,15 @@ end;
 
 Function FileOpenNoLocking (Const FileName : RawbyteString; Mode : Integer) : Longint;
 
+  Function IsHandleDirectory(Handle : Longint) : boolean;
+  Var Info : Stat;
+  begin
+    Result := (fpFStat(Handle, Info)<0) or fpS_ISDIR(info.st_mode);
+  end;
+
 Var
   SystemFileName: RawByteString;
-  LinuxFlags : longint;
+  fd,LinuxFlags : longint;
 begin
   LinuxFlags:=0;
   case (Mode and (fmOpenRead or fmOpenWrite or fmOpenReadWrite)) of
@@ -456,8 +465,18 @@ begin
 
   SystemFileName:=ToSingleByteFileSystemEncodedFileName(FileName);
   repeat
-    FileOpenNoLocking:=fpOpen (pointer(SystemFileName),LinuxFlags);
-  until (FileOpenNoLocking<>-1) or (fpgeterrno<>ESysEINTR);
+    fd:=fpOpen (pointer(SystemFileName),LinuxFlags);
+  until (fd<>-1) or (fpgeterrno<>ESysEINTR);
+
+  { Do not allow to open directories with FileOpen.
+    This would cause weird behavior of TFileStream.Size, 
+    TMemoryStream.LoadFromFile etc. }
+  if (fd<>-1) and IsHandleDirectory(fd) then
+    begin
+    fpClose(fd);
+    fd:=feInvalidHandle;
+    end;
+  FileOpenNoLocking:=fd;  
 end;
 
 
@@ -468,6 +487,10 @@ begin
   FileOpen:=DoFileLocking(FileOpen, Mode);
 end;
 
+function FileFlush(Handle: THandle): Boolean;
+begin
+  Result:= fpfsync(handle)=0;
+end;
 
 Function FileCreate (Const FileName : RawByteString) : Longint;
 
@@ -1431,6 +1454,7 @@ end;
 
 var
   _HomeDir: string;
+  _HasPackageDataDir: boolean;
 
 Function GetHomeDir : String;
 var
@@ -1440,7 +1464,7 @@ begin
   Result:=_HomeDir;
   if Result <> '' then
     exit;
-  if IsJniLibrary then
+  if IsLibrary then
     begin
       // For shared library get the package name of a host Java application
       h:=FileOpen('/proc/self/cmdline', fmOpenRead or fmShareDenyNone);
@@ -1451,8 +1475,8 @@ begin
           SetLength(Result, strlen(PChar(Result)));
           FileClose(h);
           Result:='/data/data/' + Result;
-          IsJniLibrary:=DirectoryExists(Result);
-          if IsJniLibrary then
+          _HasPackageDataDir:=DirectoryExists(Result);
+          if _HasPackageDataDir then
             begin
               Result:=Result + '/files/';
               ForceDirectories(Result);
@@ -1502,7 +1526,7 @@ begin
   else
     Result:=IncludeTrailingPathDelimiter(XdgConfigHome);
 {$ifdef android}
-  if IsJniLibrary then
+  if _HasPackageDataDir then
     exit;
 {$endif android}
   if VendorName<>'' then
@@ -1518,7 +1542,7 @@ begin
   else
     Result:=IncludeTrailingPathDelimiter(XdgConfigHome);
 {$ifdef android}
-  if IsJniLibrary then
+  if _HasPackageDataDir then
     begin
       Result:=Result+'config'+ConfigExtension;
       exit;
@@ -1608,14 +1632,11 @@ var
   dlinfo: dl_info;
   s: string;
 begin
-  if IsJniLibrary then
-    begin
-      FillChar(dlinfo, sizeof(dlinfo), 0);
-      dladdr(@InitAndroid, @dlinfo);
-      s:=dlinfo.dli_fname;
-      if s <> '' then
-        SetDefaultSysLogTag(ExtractFileName(s));
-    end;
+  FillChar(dlinfo, sizeof(dlinfo), 0);
+  dladdr(@InitAndroid, @dlinfo);
+  s:=dlinfo.dli_fname;
+  if s <> '' then
+    SetDefaultSysLogTag(ExtractFileName(s));
 end;
 
 {$endif android}

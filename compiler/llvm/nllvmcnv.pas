@@ -37,6 +37,7 @@ interface
           function first_int_to_real: tnode; override;
           function first_int_to_bool: tnode; override;
           function first_nil_to_methodprocvar: tnode; override;
+          function first_real_to_real: tnode; override;
          { procedure second_int_to_int;override; }
          { procedure second_string_to_string;override; }
          { procedure second_cstring_to_pchar;override; }
@@ -67,6 +68,7 @@ uses
   aasmbase,aasmdata,
   llvmbase,aasmllvm,
   procinfo,
+  ncal,
   symconst,symdef,defutil,
   cgbase,cgutils,tgobj,hlcgobj,pass_2;
 
@@ -114,6 +116,28 @@ function tllvmtypeconvnode.first_nil_to_methodprocvar: tnode;
   end;
 
 
+function tllvmtypeconvnode.first_real_to_real: tnode;
+  begin
+    result:=inherited;
+    if assigned(result) then
+      exit;
+    { fptosui always uses round to zero, while we have to use the current
+      rounding mode when converting from another floating point type to
+      currency/comp to be compatible with the regular code generators ->
+      call round() instead }
+    if (tfloatdef(resultdef).floattype in [s64currency,s64comp]) and
+       not(tfloatdef(left.resultdef).floattype in [s64currency,s64comp]) then
+      begin
+        result:=ccallnode.createinternfromunit('SYSTEM','ROUND',
+          ccallparanode.create(left,nil));
+        left:=nil;
+        { left was already been multiplied by 10000 by typecheck_real_to_real
+          -> ensure we don't do that again with the result of round }
+        result:=ctypeconvnode.create_internal(result,resultdef);
+      end;
+  end;
+
+
 procedure tllvmtypeconvnode.second_pointer_to_array;
   var
     hreg: tregister;
@@ -122,7 +146,7 @@ procedure tllvmtypeconvnode.second_pointer_to_array;
     { insert type conversion }
     hreg:=hlcg.getaddressregister(current_asmdata.CurrAsmList,cpointerdef.getreusable(resultdef));
     hlcg.a_loadaddr_ref_reg(current_asmdata.CurrAsmList,tpointerdef(left.resultdef).pointeddef,cpointerdef.getreusable(resultdef),location.reference,hreg);
-    reference_reset_base(location.reference,hreg,0,location.reference.alignment);
+    reference_reset_base(location.reference,hreg,0,location.reference.temppos,location.reference.alignment,location.reference.volatility);
   end;
 
 
@@ -168,7 +192,7 @@ procedure tllvmtypeconvnode.second_nil_to_methodprocvar;
     href: treference;
   begin
     tg.gethltemp(current_asmdata.CurrAsmList,resultdef,resultdef.size,tt_normal,href);
-    location_reset_ref(location,LOC_REFERENCE,def_cgsize(resultdef),href.alignment);
+    location_reset_ref(location,LOC_REFERENCE,def_cgsize(resultdef),href.alignment,href.volatility);
     location.reference:=href;
     hlcg.g_ptrtypecast_ref(current_asmdata.CurrAsmList,cpointerdef.getreusable(resultdef),cpointerdef.getreusable(methodpointertype),href);
     hlcg.g_load_const_field_by_name(current_asmdata.CurrAsmList,trecorddef(methodpointertype),0,'proc',href);
@@ -227,22 +251,40 @@ procedure tllvmtypeconvnode.second_nothing;
   var
     hreg: tregister;
   begin
+    { insert LLVM-level type conversions for same-sized entities that are
+      nevertheless different types }
     if left.resultdef<>resultdef then
       begin
-        { handle sometype(voidptr^) and "absolute" }
+           { handle sometype(voidptr^) and "absolute" }
         if not is_void(left.resultdef) and
            not(nf_absolute in flags) and
            (left.resultdef.typ<>formaldef) and
            (resultdef.typ<>formaldef) and
+           { can't get/check the size of open arrays, and they are allowed to
+             change sizesduring conversions }
            not is_open_array(resultdef) and
            not is_open_array(left.resultdef) and
-          (left.resultdef.size<>resultdef.size) then
+           { TP-style child objects can be cast to parent objects, and their
+             sizes may differ }
+           (not is_object(resultdef) or
+            not def_is_related(left.resultdef,resultdef)) and
+           { in case of ISO-like I/O, the typed file def includes a
+             get/put buffer of the size of the file's elements }
+           not(
+               (m_isolike_io in current_settings.modeswitches) and
+               (left.resultdef.typ=filedef) and
+               (tfiledef(left.resultdef).filetyp=ft_typed) and
+               (resultdef.typ=filedef) and
+               (tfiledef(resultdef).filetyp=ft_untyped)
+           ) and
+           { anything else with different size that ends up here is an error }
+           (left.resultdef.size<>resultdef.size) then
           internalerror(2014012216);
         hlcg.location_force_mem(current_asmdata.CurrAsmList,left.location,left.resultdef);
         hreg:=hlcg.getaddressregister(current_asmdata.CurrAsmList,cpointerdef.getreusable(resultdef));
         hlcg.a_loadaddr_ref_reg(current_asmdata.CurrAsmList,left.resultdef,cpointerdef.getreusable(resultdef),left.location.reference,hreg);
-        location_reset_ref(location,left.location.loc,left.location.size,left.location.reference.alignment);
-        reference_reset_base(location.reference,hreg,0,location.reference.alignment);
+        location_reset_ref(location,left.location.loc,left.location.size,left.location.reference.alignment,left.location.reference.volatility);
+        reference_reset_base(location.reference,hreg,0,location.reference.temppos,location.reference.alignment,location.reference.volatility);
       end
     else
       location_copy(location,left.location);

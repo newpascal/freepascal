@@ -48,7 +48,7 @@ interface
       symconst,symdef,paramgr,
       aasmbase,aasmtai,aasmdata,aasmcpu,defutil,htypechk,
       cgbase,cgutils,cgcpu,
-      cpuinfo,pass_1,pass_2,regvars,procinfo,
+      cpuinfo,pass_1,pass_2,procinfo,
       cpupara,
       ncon,nset,nadd,
       ncgutil,tgobj,rgobj,rgcpu,cgobj,cg64f32,
@@ -137,8 +137,8 @@ interface
           current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg(A_CP,tmpreg1,tmpreg2));
           for i:=2 to tcgsize2size[left.location.size] do
             begin
-              tmpreg1:=GetNextReg(tmpreg1);
-              tmpreg2:=GetNextReg(tmpreg2);
+              tmpreg1:=cg.GetNextReg(tmpreg1);
+              tmpreg2:=cg.GetNextReg(tmpreg2);
               current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg(A_CPC,tmpreg1,tmpreg2));
             end;
         end;
@@ -231,9 +231,9 @@ interface
             else
               begin
                 if left.location.loc<>LOC_CONSTANT then
-                  tmpreg1:=GetNextReg(tmpreg1);
+                  tmpreg1:=cg.GetNextReg(tmpreg1);
                 if right.location.loc<>LOC_CONSTANT then
-                  tmpreg2:=GetNextReg(tmpreg2);
+                  tmpreg2:=cg.GetNextReg(tmpreg2);
               end;
             if right.location.loc=LOC_CONSTANT then
               begin

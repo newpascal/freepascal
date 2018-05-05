@@ -31,8 +31,8 @@ implementation
 
     uses
        SysUtils,
-       cutils,cfileutl,cclasses,rescmn,comprsrc,
-       globtype,globals,systems,verbose,script,fmodule,i_morph,link;
+       cutils,cfileutl,cclasses,rescmn,comprsrc,aasmbase,
+       globtype,globals,systems,verbose,cscript,fmodule,i_morph,link;
 
     type
        PlinkerMorphOS=^TlinkerMorphOS;
@@ -43,6 +43,7 @@ implementation
        public
           constructor Create; override;
           procedure SetDefaultInfo; override;
+          procedure InitSysInitUnitName; override;
           function  MakeExecutable:boolean; override;
        end;
 
@@ -73,9 +74,15 @@ begin
      end
     else
      begin
-      ExeCmd[1]:='vlink -b elf32amiga $OPT $STRIP -o $EXE -T $RES';
+      ExeCmd[1]:='vlink -b elf32amiga $OPT $STRIP $GCSECTIONS -o $EXE -T $RES';
      end;
    end;
+end;
+
+
+Procedure TLinkerMorphOS.InitSysInitUnitName;
+begin
+  sysinitunit:='si_prc';
 end;
 
 
@@ -113,8 +120,11 @@ begin
 
   LinkRes.Add('INPUT (');
   { add objectfiles, start with prt0 always }
-  s:=FindObjectFile('prt0','',false);
-  LinkRes.AddFileName(s);
+  if not (target_info.system in systems_internal_sysinit) then
+    begin
+      s:=FindObjectFile('prt0','',false);
+      LinkRes.AddFileName(Unix2AmigaPath(maybequoted(s)));
+    end;
   while not ObjectFiles.Empty do
    begin
     s:=ObjectFiles.GetFirst;
@@ -198,9 +208,11 @@ var
   binstr,
   cmdstr  : TCmdStr;
   success : boolean;
+  GCSectionsStr: string;
   StripStr: string[40];
 begin
   StripStr:='';
+  GCSectionsStr:='';
 
   if not(cs_link_nolink in current_settings.globalswitches) then
    Message1(exec_i_linking,current_module.exefilename);
@@ -209,6 +221,8 @@ begin
    begin
     if (cs_link_strip in current_settings.globalswitches) then
      StripStr:='-s -P __abox__';
+    if create_smartlink_sections then
+     GCSectionsStr:='-gc-all -sc -sd';
    end;
 
 { Write used files and libraries }
@@ -222,6 +236,7 @@ begin
     Replace(cmdstr,'$EXE',Unix2AmigaPath(maybequoted(ScriptFixFileName(current_module.exefilename))));
     Replace(cmdstr,'$RES',Unix2AmigaPath(maybequoted(ScriptFixFileName(outputexedir+Info.ResName))));
     Replace(cmdstr,'$STRIP',StripStr);
+    Replace(cmdstr,'$GCSECTIONS',GCSectionsStr);
    end
   else
    begin

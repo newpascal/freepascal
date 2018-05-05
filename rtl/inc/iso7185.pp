@@ -29,6 +29,11 @@ unit iso7185;
     Procedure Reset(var f : TypedFile);   [INTERNPROC: fpc_in_Reset_TypedFile];
     Procedure Rewrite(var f : TypedFile); [INTERNPROC: fpc_in_Rewrite_TypedFile];
 
+    Procedure Rewrite(var t : Text;const filename : string);
+    Procedure Reset(var t : Text;const filename : string);
+    Procedure Reset(var f : TypedFile;const filename : string);   [INTERNPROC: fpc_in_Reset_TypedFile_Name];
+    Procedure Rewrite(var f : TypedFile;const filename : string); [INTERNPROC: fpc_in_Rewrite_TypedFile_Name];
+
     Function Eof(Var t: Text): Boolean;
     Function Eof:Boolean;
     Function Eoln(Var t: Text): Boolean;
@@ -47,53 +52,9 @@ unit iso7185;
 
   implementation
 
-{$IFDEF UNIX}
-  function getTempDir: string;
-    var
-      key: string;
-      value: string;
-      i_env, i_key, i_value: integer;
-      pd : char; // Pathdelim not available ?
-    begin
-      value := '/tmp/';  (** default for UNIX **)
-      pd:='/';
-      while (envp <> NIL) and assigned(envp^) do
-      begin
-        i_env := 0;
-        i_key := 1;
-        while not (envp^[i_env] in ['=', #0]) do
-        begin
-          key[i_key] := envp^[i_env];
-          inc(i_env);
-          inc(i_key);
-        end;
-        setlength(key, i_key - 1);
-        if (key = 'TEMP') or (key = 'TMP') or (key = 'TMPDIR') then
-        begin
-          inc(i_env);    (** skip '=' **)
-          i_value := 1;
-          while (envp^[i_env] <> #0) do
-          begin
-            value[i_value] := envp^[i_env];
-            inc(i_env);
-            inc(i_value);
-          end;
-          setlength(value, i_value - 1);
-        end;
-        inc(envp);
-      end;
-      i_value:=length(value);
-      if (i_value>0) and (value[i_value]<>pd) then
-       value:=value+pd;
-      getTempDir := value;
-    end;
-{$else}    
-  function getTempDir: string;
-  begin
-    getTempDir:='';
-  end;
-{$ENDIF}  
 
+{$i isotmp.inc}
+ 
 {$i-}
     procedure DoAssign(var t : Text);
 {$ifndef FPC_HAS_FEATURE_RANDOM}
@@ -126,6 +87,30 @@ unit iso7185;
           { create file name? }
           0:
             DoAssign(t);
+          fmOutput:
+            Write(t,#26);
+        end;
+
+        System.Reset(t);
+      End;
+
+
+    Procedure Rewrite(var t : Text;const filename : string);[IOCheck];
+      Begin
+        { create file name? }
+        if Textrec(t).mode=0 then
+          Assign(t,filename);
+
+        System.Rewrite(t);
+      End;
+
+
+    Procedure Reset(var t : Text;const filename : string);[IOCheck];
+      Begin
+        case Textrec(t).mode of
+          { create file name? }
+          0:
+            Assign(t,filename);
           fmOutput:
             Write(t,#26);
         end;
@@ -219,10 +204,8 @@ unit iso7185;
 
 
     Function Eof(var f:TypedFile): Boolean;[IOCheck];
-      Type
-        UnTypedFile = File;
       Begin
-        Eof:=System.Eof(UnTypedFile(f));
+        Eof:=FileRec(f)._private[1]=1;
       End;
 
 begin

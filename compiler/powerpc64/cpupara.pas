@@ -37,6 +37,8 @@ type
       tcpuregisterset; override;
     function get_volatile_registers_fpu(calloption: tproccalloption):
       tcpuregisterset; override;
+    function get_saved_registers_int(calloption: tproccalloption):
+      tcpuregisterarray; override;
     function push_addr_param(varspez: tvarspez; def: tdef; calloption:
       tproccalloption): boolean; override;
     function ret_in_param(def: tdef; pd: tabstractprocdef): boolean; override;
@@ -77,6 +79,18 @@ function tcpuparamanager.get_volatile_registers_fpu(calloption:
   tproccalloption): tcpuregisterset;
 begin
   result := [RS_F0..RS_F13];
+end;
+
+function tcpuparamanager.get_saved_registers_int(calloption: tproccalloption):
+  tcpuregisterarray;
+const
+  saved_regs: array[0..17] of tsuperregister = (
+    RS_R14, RS_R15, RS_R16, RS_R17, RS_R18, RS_R19,
+    RS_R20, RS_R21, RS_R22, RS_R23, RS_R24, RS_R25,
+    RS_R26, RS_R27, RS_R28, RS_R29, RS_R30, RS_R31
+    );
+begin
+  result:=saved_regs;
 end;
 
 procedure tcpuparamanager.getintparaloc(list: TAsmList; pd : tabstractprocdef; nr: longint; var cgpara: tcgpara);
@@ -185,7 +199,7 @@ begin
         (varspez = vs_const) and
         (
          (
-          (not (calloption in [pocall_cdecl, pocall_cppdecl]) and
+          (not (calloption in cdecl_pocalls) and
           (def.size > 8))
          ) or
          (calloption = pocall_mwpascal)
@@ -371,7 +385,7 @@ begin
     end;
 
     { currently only support C-style array of const }
-    if (p.proccalloption in [pocall_cdecl, pocall_cppdecl]) and
+    if (p.proccalloption in cstylearrayofconst) and
       is_array_of_const(hp.vardef) then begin
       paraloc := hp.paraloc[side].add_location;
       { hack: the paraloc must be valid, but is not actually used }
@@ -714,7 +728,7 @@ implemented
         { create_paraloc_info_intern might be also called when being outside of
           code generation so current_procinfo might be not set }
         if assigned(current_procinfo) then
-          tppcprocinfo(current_procinfo).needs_frame_pointer := true;
+          tcpuprocinfo(current_procinfo).needs_frame_pointer := true;
       end;
       paraloc^.reference.offset := stack_offset;
 
@@ -744,7 +758,7 @@ begin
 
   result := create_paraloc_info_intern(p, callerside, p.paras, curintreg,
     curfloatreg, curmmreg, cur_stack_offset, false);
-  if (p.proccalloption in [pocall_cdecl, pocall_cppdecl, pocall_mwpascal]) then begin
+  if (p.proccalloption in cstylearrayofconst) then begin
     { just continue loading the parameters in the registers }
     result := create_paraloc_info_intern(p, callerside, varargspara, curintreg,
       curfloatreg, curmmreg, cur_stack_offset, true);

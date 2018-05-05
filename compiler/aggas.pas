@@ -46,9 +46,10 @@ interface
       TGNUAssembler=class(texternalassembler)
       protected
         function sectionname(atype:TAsmSectiontype;const aname:string;aorder:TAsmSectionOrder):string;virtual;
+        function sectionattrs(atype:TAsmSectiontype):string;virtual;
         function sectionattrs_coff(atype:TAsmSectiontype):string;virtual;
-        function sectionalignment_aix(atype:TAsmSectiontype;secalign: byte):string;
-        procedure WriteSection(atype:TAsmSectiontype;const aname:string;aorder:TAsmSectionOrder;secalign:byte);
+        function sectionalignment_aix(atype:TAsmSectiontype;secalign: longint):string;
+        procedure WriteSection(atype:TAsmSectiontype;const aname:string;aorder:TAsmSectionOrder;secalign:longint);virtual;
         procedure WriteExtraHeader;virtual;
         procedure WriteExtraFooter;virtual;
         procedure WriteInstruction(hp: tai);
@@ -215,11 +216,7 @@ implementation
 {$else arm}
           '.data',
 {$endif arm}
-{$if defined(m68k)} { Amiga/m68k GNU AS doesn't seem to like .rodata (KB) }
-          '.data',
-{$else}
           '.rodata',
-{$endif}
           '.bss',
           '.threadvar',
           '.pdata',
@@ -342,11 +339,7 @@ implementation
           secname:=secnames_pic[atype]
         else
           secname:=secnames[atype];
-{$ifdef m68k}
-        { Amiga/Atari GNU AS doesn't support .section .fpc }
-        if (atype=sec_fpc) and (target_info.system in [system_m68k_amiga, system_m68k_atari]) then
-            secname:=secnames[sec_data];
-{$endif}
+
         if (atype=sec_fpc) and (Copy(aname,1,3)='res') then
           begin
             result:=secname+'.'+aname;
@@ -361,8 +354,24 @@ implementation
           Thus, data which normally goes into .rodata and .rodata_norel sections must
           end up in .data section }
         if (atype in [sec_rodata,sec_rodata_norel]) and
-          (target_info.system=system_i386_go32v2) then
+          (target_info.system in [system_i386_go32v2,system_m68k_palmos]) then
           secname:='.data';
+
+        { Windows correctly handles reallocations in readonly sections }
+        if (atype=sec_rodata) and
+          (target_info.system in systems_all_windows+systems_nativent-[system_i8086_win16]) then
+          secname:='.rodata';
+
+        { Use .rodata and .data.rel.ro for Android with PIC }
+        if (target_info.system in systems_android) and (cs_create_pic in current_settings.moduleswitches) then
+          begin
+            case atype of
+              sec_rodata:
+                secname:='.data.rel.ro';
+              sec_rodata_norel:
+                secname:='.rodata';
+            end;
+          end;
 
         { section type user gives the user full controll on the section name }
         if atype=sec_user then
@@ -384,6 +393,14 @@ implementation
           result:=secname;
       end;
 
+    function TGNUAssembler.sectionattrs(atype:TAsmSectiontype):string;
+      begin
+        result:='';
+        if (target_info.system in [system_i386_win32,system_x86_64_win64]) then
+          begin
+            result:=sectionattrs_coff(atype);
+          end;
+      end;
 
     function TGNUAssembler.sectionattrs_coff(atype:TAsmSectiontype):string;
       begin
@@ -424,7 +441,7 @@ implementation
       end;
 
 
-    function TGNUAssembler.sectionalignment_aix(atype:TAsmSectiontype;secalign: byte): string;
+    function TGNUAssembler.sectionalignment_aix(atype:TAsmSectiontype;secalign: longint): string;
       var
         l: longint;
       begin
@@ -440,16 +457,21 @@ implementation
       end;
 
 
-    procedure TGNUAssembler.WriteSection(atype:TAsmSectiontype;const aname:string;aorder:TAsmSectionOrder;secalign:byte);
+    procedure TGNUAssembler.WriteSection(atype:TAsmSectiontype;const aname:string;aorder:TAsmSectionOrder;secalign:longint);
       var
         s : string;
       begin
         writer.AsmLn;
         case target_info.system of
          system_i386_OS2,
-         system_i386_EMX,
+         system_i386_EMX: ;
          system_m68k_atari, { atari tos/mint GNU AS also doesn't seem to like .section (KB) }
-         system_m68k_amiga: ; { amiga has old GNU AS (2.14), which blews up from .section (KB) }
+         system_m68k_amiga: { amiga has old GNU AS (2.14), which blews up from .section (KB) }
+           begin
+             { ... but vasm is GAS compatible on amiga/atari, and supports named sections }
+             if create_smartlink_sections then
+               writer.AsmWrite('.section ');
+           end;
          system_powerpc_darwin,
          system_i386_darwin,
          system_i386_iphonesim,
@@ -506,19 +528,20 @@ implementation
 
             TODO: This likely applies to all systems which smartlink without
             creating libraries }
-          if (target_info.system in [system_i386_win32,system_x86_64_win64]) and
-            is_smart_section(atype) and (aname<>'') then
-            begin
-              s:=sectionattrs_coff(atype);
-              if (s<>'') then
-                writer.AsmWrite(',"'+s+'"');
-            end
-         else if target_info.system in systems_aix then
-           begin
-             s:=sectionalignment_aix(atype,secalign);
-             if s<>'' then
-               writer.AsmWrite(','+s);
-           end;
+          begin
+            if is_smart_section(atype) and (aname<>'') then
+              begin
+                s:=sectionattrs(atype);
+                if (s<>'') then
+                  writer.AsmWrite(',"'+s+'"');
+              end;
+            if target_info.system in systems_aix then
+              begin
+                s:=sectionalignment_aix(atype,secalign);
+                if s<>'' then
+                  writer.AsmWrite(','+s);
+              end;
+          end;
         end;
         writer.AsmLn;
         LastSecType:=atype;

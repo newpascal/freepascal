@@ -29,11 +29,11 @@ unit agppcgas;
 {$i fpcdefs.inc}
 
   interface
-  
+
     uses
        systems,aasmbase,
        aasmtai,aasmdata,
-       aggas,
+       assemble,aggas,
        cpubase,cgutils,
        globtype;
 
@@ -43,20 +43,23 @@ unit agppcgas;
     end;
 
     TPPCGNUAssembler=class(TGNUassembler)
-      constructor create(info: pasminfo; smart: boolean); override;
+      constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean); override;
       function MakeCmdLine: TCmdStr; override;
       procedure WriteExtraHeader; override;
     end;
 
     TPPCAppleGNUAssembler=class(TAppleGNUassembler)
-      constructor create(info: pasminfo; smart: boolean); override;
+      constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean); override;
       function MakeCmdLine: TCmdStr; override;
     end;
 
     TPPCAIXAssembler=class(TPPCGNUAssembler)
-      constructor create(info: pasminfo; smart: boolean); override;
+      max_alignment : array[TAsmSectionType] of longint;
+      constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean); override;
      protected
       function sectionname(atype: TAsmSectiontype; const aname: string; aorder: TAsmSectionOrder): string; override;
+      procedure WriteSection(atype:TAsmSectiontype;const aname:string;aorder:TAsmSectionOrder;secalign:longint); override;
+      procedure WriteAsmList; override;
       procedure WriteExtraHeader; override;
       procedure WriteExtraFooter; override;
       procedure WriteDirectiveName(dir: TAsmDirective); override;
@@ -72,7 +75,6 @@ unit agppcgas;
     uses
        cutils,globals,verbose,
        cgbase,
-       assemble,
        itcpugas,cpuinfo,
        aasmcpu;
 
@@ -159,7 +161,7 @@ unit agppcgas;
              end;
 {$ifdef cpu64bitaddr}
            if (refaddr=addr_pic) and
-	      (target_info.system=system_powerpc64_linux) then
+              (target_info.system=system_powerpc64_linux) then
              s := s + '@got';
 {$endif cpu64bitaddr}
 
@@ -186,7 +188,7 @@ unit agppcgas;
         end;
       getreferencestring:=s;
     end;
-    
+
 
     function getopstr_jmp(asminfo: pasminfo; const o:toper) : string;
     var
@@ -313,7 +315,11 @@ unit agppcgas;
                   end;
                   case c.cond of
                     C_LT..C_NU:
-                      cond2str := tempstr+gas_regname(newreg(R_SPECIALREGISTER,c.cr,R_SUBWHOLE));
+                      begin
+                        if byte(c.cr)=0 then
+                          Comment(V_error,'Wrong use of whole CR register for '+tempstr);
+                        cond2str := tempstr+gas_regname(newreg(R_SPECIALREGISTER,c.cr,R_SUBWHOLE));
+                      end;
                     C_T,C_F,C_DNZT,C_DNZF,C_DZT,C_DZF:
                       cond2str := tempstr+tostr(c.crbit);
                     else
@@ -398,11 +404,9 @@ unit agppcgas;
 {                         GNU PPC Assembler writer                           }
 {****************************************************************************}
 
-    constructor TPPCGNUAssembler.create(info: pasminfo; smart: boolean);
+    constructor TPPCGNUAssembler.CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean);
       begin
         inherited;
-        if assigned(InstrWriter) then
-          InstrWriter.free;
         InstrWriter := TPPCInstrWriter.create(self);
       end;
 
@@ -440,11 +444,9 @@ unit agppcgas;
 {                      GNU/Apple PPC Assembler writer                        }
 {****************************************************************************}
 
-    constructor TPPCAppleGNUAssembler.create(info: pasminfo; smart: boolean);
+    constructor TPPCAppleGNUAssembler.CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean);
       begin
         inherited;
-        if assigned(InstrWriter) then
-          InstrWriter.free;
         InstrWriter := TPPCInstrWriter.create(self);
       end;
 
@@ -471,12 +473,76 @@ unit agppcgas;
 {                         AIX PPC Assembler writer                           }
 {****************************************************************************}
 
-    constructor TPPCAIXAssembler.create(info: pasminfo; smart: boolean);
+    constructor TPPCAIXAssembler.CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean);
+      var
+         cur_sectype : TAsmSectionType;
       begin
         inherited;
         InstrWriter := TPPCInstrWriter.create(self);
+        { Use 8-byte alignment as default for all sections }
+        for cur_sectype:=low(TAsmSectionType) to high(TAsmSectionType) do
+           max_alignment[cur_sectype]:=8;
       end;
 
+    procedure TPPCAIXAssembler.WriteSection(atype:TAsmSectiontype;const aname:string;aorder:TAsmSectionOrder;secalign:longint);
+
+      begin
+        secalign:=max_alignment[atype];
+        Inherited WriteSection(atype,aname,aorder,secalign);
+      end;
+
+    procedure TPPCAIXAssembler.WriteAsmList;
+      var
+        cur_sectype : TAsmSectionType;
+        cur_list : TAsmList;
+        hal : tasmlisttype;
+        hp : tai;
+        max_al : longint;
+      begin
+        { Parse all asmlists to get maximum alignement used for all types }
+        for hal:=low(TasmlistType) to high(TasmlistType) do
+          begin
+            if not (current_asmdata.asmlists[hal].empty) then
+              begin
+                cur_sectype:=sec_none;
+                hp:=tai(current_asmdata.asmlists[hal].First);
+                while assigned(hp) do
+                  begin
+                    case hp.typ of 
+                     ait_align :
+                       begin
+                         if tai_align_abstract(hp).aligntype > max_alignment[cur_sectype] then
+                           begin 
+                             max_alignment[cur_sectype]:=tai_align_abstract(hp).aligntype;
+                             current_asmdata.asmlists[hal].InsertAfter(tai_comment.Create(strpnew('Alignment put to '+tostr(tai_align_abstract(hp).aligntype))),hp);
+                           end;
+                       end;
+                     ait_section :
+                       begin
+                         cur_sectype:=tai_section(hp).sectype;
+                         if tai_section(hp).secalign > max_alignment[cur_sectype] then
+                           begin
+                             max_alignment[cur_sectype]:=tai_section(hp).secalign;
+                             current_asmdata.asmlists[hal].InsertAfter(tai_comment.Create(strpnew('Section '
+                               +sectionname(tai_section(hp).sectype,'',secorder_default)+' alignment put to '+tostr(tai_section(hp).secalign))),hp);
+                           end;
+                       end;
+                     end;
+                    hp:=tai(hp.next);
+                  end;
+              end;
+          end;
+        { sec_data, sec_rodata and sec_bss all are converted into .data[RW],
+          in WriteSection below,
+          so we take the maximum alignment of the three }
+        max_al:=max_alignment[sec_data];
+        max_al:=max(max_al,max_alignment[sec_rodata]);
+        max_al:=max(max_al,max_alignment[sec_bss]);
+        max_alignment[sec_data]:=max_al;
+        max_alignment[sec_rodata]:=max_al;
+        max_alignment[sec_bss]:=max_al;
+        Inherited WriteAsmList;
+      end;
 
     procedure TPPCAIXAssembler.WriteExtraHeader;
       var
@@ -486,9 +552,18 @@ unit agppcgas;
         { map cr registers to plain numbers }
         for i:=0 to 7 do
           writer.AsmWriteln(#9'.set'#9'cr'+tostr(i)+','+tostr(i));
-        { make sure we always have a code and toc section, the linker expects
-          that }
-        writer.AsmWriteln(#9'.csect .text[PR]');
+        { Ensure .data and .rodata sections are aligned to 8-byte boundary,
+          required for correct RTTI alignment.
+          AIX assembler seems to only care for the first
+          alignment value given }
+        writer.AsmWriteln(#9'.csect .data[RW],'+sectionalignment_aix(sec_data,max_alignment[sec_data]));
+        writer.AsmWriteln(#9'.csect _data.bss_[BS],'+sectionalignment_aix(sec_data,max_alignment[sec_data]));
+        { .rodata is translated into .text[RO]
+          see sectionname in aggas unit. }
+        writer.AsmWriteln(#9'.csect .text[RO],'+sectionalignment_aix(sec_rodata_norel,max_alignment[sec_rodata_norel]));
+        { make sure we always have a code and toc section,
+          the linker expects that }
+        writer.AsmWriteln(#9'.csect .text[PR],'+sectionalignment_aix(sec_code,max_alignment[sec_code]));
         { set _text_s, to be used by footer below } 
         writer.AsmWriteln(#9'_text_s:');
         writer.AsmWriteln(#9'.toc');
@@ -499,7 +574,7 @@ unit agppcgas;
       begin
         inherited WriteExtraFooter;
         { link between data and text section }
-        writer.AsmWriteln(#9'.csect .data[RW],4');
+        writer.AsmWriteln(#9'.csect .data[RW],3');
 {$ifdef cpu64bitaddr}
         writer.AsmWriteln('text_pos:'#9'.llong _text_s')
 {$else cpu64bitaddr}
@@ -571,6 +646,23 @@ unit agppcgas;
          dollarsign: '$';
        );
 
+    as_ppc_gas_legacy_info : tasminfo =
+       (
+         id     : as_powerpc_gas_legacy;
+
+         idtxt  : 'AS-LEGACY';
+         asmbin : 'as';
+{$ifdef cpu64bitaddr}
+         asmcmd : '-a64 $ENDIAN -o $OBJ $EXTRAOPT $ASM';
+{$else cpu64bitaddr}
+         asmcmd: '$ENDIAN -o $OBJ $EXTRAOPT $ARCH $ASM';
+{$endif cpu64bitaddr}
+         supported_targets : [system_powerpc_morphos];
+         flags : [af_needar];
+         labelprefix : '.L';
+         comment : '# ';
+         dollarsign: '$';
+       );
 
     as_ppc_gas_darwin_powerpc_info : tasminfo =
        (
@@ -631,9 +723,24 @@ unit agppcgas;
          dollarsign : '.'
        );
 
+    as_ppc_clang_darwin_info : tasminfo =
+       (
+         id     : as_clang;
+         idtxt  : 'CLANG';
+         asmbin : 'clang';
+         asmcmd : '-c -o $OBJ $EXTRAOPT -arch $ARCH $DARWINVERSION -x assembler $ASM';
+         supported_targets : [system_powerpc_darwin, system_powerpc64_darwin];
+         flags : [af_needar,af_smartlink_sections,af_supports_dwarf];
+         labelprefix : 'L';
+         comment : '# ';
+         dollarsign: '$';
+       );
+
 begin
   RegisterAssembler(as_ppc_gas_info,TPPCGNUAssembler);
+  RegisterAssembler(as_ppc_gas_legacy_info,TPPCGNUAssembler);
   RegisterAssembler(as_ppc_gas_darwin_powerpc_info,TPPCAppleGNUAssembler);
+  RegisterAssembler(as_ppc_clang_darwin_info,TPPCAppleGNUAssembler);
   RegisterAssembler(as_ppc_aix_powerpc_info,TPPCAIXAssembler);
   RegisterAssembler(as_ppc_gas_aix_powerpc_info,TPPCAIXAssembler);
 end.

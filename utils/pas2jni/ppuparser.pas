@@ -169,7 +169,8 @@ begin
     end;
   end;
   ec:=ReadProcessOutput(ppudumpprog, '-Fj' + LineEnding + un, s, err);
-  if Copy(s, 1, 1) <> '[' then begin
+  err:=Trim(err);
+  if (Copy(s, 1, 1) <> '[') and ((ec = 0) or (err = '')) then begin
     ec:=-1;
     err:='Output of ppudump is not in JSON format.' + LineEnding + 'Probably old version of ppudump has been used.';
   end;
@@ -268,6 +269,8 @@ var
             continue;
           d:=TClassDef.Create(CurDef, dtClass);
           TClassDef(d).CType:=ct;
+          if ct = ctInterface then
+            TClassDef(d).IID:=it.Get('IID', '');
         end
         else
         if jt = 'rec' then begin
@@ -385,6 +388,9 @@ var
         if jt = 'array' then
           d:=TArrayDef.Create(CurDef, dtArray)
         else
+        if jt = 'classref' then
+          d:=TClassRefDef.Create(CurDef, dtClassRef)
+        else
           continue;
 
         if (CurObjName = '') and not (d.DefType in [dtEnum, dtArray]) then begin
@@ -409,6 +415,13 @@ var
                 AncestorClass:=TClassDef(_GetRef(it.Get('Ancestor', TJSONObject(nil)), TClassDef));
               if CType in [ctObject, ctRecord] then
                 Size:=it.Integers['Size'];
+              arr:=it.Get('Options', TJSONArray(nil));
+              if arr <> nil then
+                for j:=0 to arr.Count - 1 do begin
+                  s:=arr.Strings[j];
+                  if s = 'abstract_methods' then
+                    HasAbstractMethods:=True;
+                end;
               _ReadDefs(d, it, 'Fields');
             end;
           dtProc, dtProcType:
@@ -443,7 +456,10 @@ var
                     ProcOpt:=ProcOpt + [poOverload]
                   else
                   if s = 'abstract' then
-                    TClassDef(Parent).HasAbstractMethods:=True;
+                    TClassDef(Parent).HasAbstractMethods:=True
+                  else
+                  if s = 'classmethod' then
+                    ProcOpt:=ProcOpt + [poClassMethod];
                 end;
 
                 ReturnType:=_GetRef(it.Get('RetType', TJSONObject(nil)));
@@ -540,6 +556,10 @@ var
               RangeHigh:=it.Get('High', -1);
               RangeType:=_GetRef(it.Get('RangeType', TJSONObject(nil)));
               ElType:=_GetRef(it.Get('ElType', TJSONObject(nil)));
+            end;
+          dtClassRef:
+            with TClassRefDef(d) do begin
+              ClassRef:=_GetRef(it.Get('Ref', TJSONObject(nil)));;
             end;
         end;
       end;

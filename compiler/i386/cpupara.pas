@@ -40,12 +40,11 @@ unit cpupara;
           function get_volatile_registers_int(calloption : tproccalloption):tcpuregisterset;override;
           function get_volatile_registers_fpu(calloption : tproccalloption):tcpuregisterset;override;
           function get_volatile_registers_mm(calloption : tproccalloption):tcpuregisterset;override;
-          procedure get_para_regoff(proccalloption: tproccalloption; paraloc: pcgparalocation; out reg: Byte; out off: LongInt);override;
+          function get_saved_registers_int(calloption : tproccalloption):tcpuregisterarray;override;
           function create_paraloc_info(p : tabstractprocdef; side: tcallercallee):longint;override;
           function create_varargs_paraloc_info(p : tabstractprocdef; varargspara:tvarargsparalist):longint;override;
           procedure createtempparaloc(list: TAsmList;calloption : tproccalloption;parasym : tparavarsym;can_use_final_stack_loc : boolean;var cgpara:TCGPara);override;
           function get_funcretloc(p : tabstractprocdef; side: tcallercallee; forcetempdef: tdef): TCGPara;override;
-          function parseparaloc(p : tparavarsym;const s : string) : boolean;override;
        private
           procedure create_stdcall_paraloc_info(p : tabstractprocdef; side: tcallercallee;paras:tparalist;var parasize:longint);
           procedure create_register_paraloc_info(p : tabstractprocdef; side: tcallercallee;paras:tparalist;var parareg,parasize:longint);
@@ -106,7 +105,7 @@ unit cpupara;
                       only records of a size of 1,2 or 4 bytes in FUNCTION_RETURN_REG }
                     if ((pd.proccalloption in [pocall_stdcall,pocall_register]) and
                         (def.size in [1,2,4])) or
-                       ((pd.proccalloption in [pocall_cdecl,pocall_cppdecl]) and
+                       ((pd.proccalloption in cdecl_pocalls) and
                         (def.size>0) and
                         (def.size<=8)) then
                      begin
@@ -123,7 +122,7 @@ unit cpupara;
                 recorddef :
                   begin
                     { EMX port of GCC returns small records in the FUNCTION_RETURN_REG up to 4 bytes in registers. }
-                    if ((pd.proccalloption in [pocall_cdecl,pocall_cppdecl]) and
+                    if ((pd.proccalloption in cdecl_pocalls) and
                         (def.size>0) and
                         (def.size<=4)) then
                      begin
@@ -264,10 +263,10 @@ unit cpupara;
           pocall_cdecl,
           pocall_syscall,
           pocall_cppdecl,
-          pocall_mwpascal :
+          pocall_mwpascal,
+          pocall_pascal:
             result:=[RS_EAX,RS_EDX,RS_ECX];
           pocall_far16,
-          pocall_pascal,
           pocall_oldfpccall :
             result:=[RS_EAX,RS_EDX,RS_ECX,RS_ESI,RS_EDI,RS_EBX];
           else
@@ -287,55 +286,31 @@ unit cpupara;
         result:=[0..first_mm_imreg-1];
       end;
 
-    procedure tcpuparamanager.get_para_regoff(proccalloption: tproccalloption; paraloc: pcgparalocation; out reg: Byte; out off: LongInt);
-    var
-      I : SizeInt;
-    begin
-      with paraloc^ do
-        case loc of
-          LOC_REGISTER:
-            begin
-              for I := 0 to high(parasupregs) do
-                if getsupreg(register)=parasupregs[I] then
-                  begin
-                    reg:=I;
-                    break;
-                  end;
-              off:=0;
-            end;
-          LOC_REFERENCE:
-            begin
-              reg:=255;
-              off:=reference.offset;
-            end;
-        end;
-    end;
 
-    function tcpuparamanager.parseparaloc(p : tparavarsym;const s : string) : boolean;
-      var
-        paraloc : pcgparalocation;
+    function tcpuparamanager.get_saved_registers_int(calloption : tproccalloption):tcpuregisterarray;
+      const
+        saveregs : array[0..3] of tsuperregister = (RS_EBX,RS_ESI,RS_EDI,RS_EBP);
+        saveregs_oldfpccall : array[0..0] of tsuperregister = (RS_EBP);
       begin
-        result:=false;
-        case target_info.system of
-          system_i386_aros:
-            begin
-              p.paraloc[callerside].alignment:=4;
-              paraloc:=p.paraloc[callerside].add_location;
-              paraloc^.loc:=LOC_REGISTER;
-              paraloc^.size:=def_cgsize(p.vardef);
-              paraloc^.def:=p.vardef;
-              paraloc^.register:=std_regnum_search(lowercase(s));
-              if paraloc^.register = NR_NO then
-                exit;
-
-              { copy to callee side }
-              p.paraloc[calleeside].add_location^:=paraloc^;
-            end;
+        case calloption of
+          pocall_internproc,
+          pocall_register,
+          pocall_safecall,
+          pocall_stdcall,
+          pocall_cdecl,
+          pocall_syscall,
+          pocall_cppdecl,
+          pocall_mwpascal,
+          pocall_pascal:
+            result:=saveregs;
+          pocall_far16,
+          pocall_oldfpccall :
+            result:=saveregs_oldfpccall;
           else
-            internalerror(2016090103);
+            internalerror(2018050401);
         end;
-        result:=true;
       end;
+
 
     function  tcpuparamanager.get_funcretloc(p : tabstractprocdef; side: tcallercallee; forcetempdef: tdef): TCGPara;
       var

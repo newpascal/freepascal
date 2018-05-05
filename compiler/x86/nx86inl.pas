@@ -49,6 +49,11 @@ interface
           function first_trunc_real: tnode; override;
           function first_popcnt: tnode; override;
           function first_fma: tnode; override;
+          function first_frac_real : tnode; override;
+          function first_int_real : tnode; override;
+
+          function simplify(forinline : boolean) : tnode; override;
+
           { second pass override to generate these nodes }
           procedure second_IncludeExclude;override;
           procedure second_pi; override;
@@ -64,11 +69,11 @@ interface
 
           procedure second_prefetch;override;
 
-{$ifndef i8086}
           procedure second_abs_long;override;
-{$endif not i8086}
           procedure second_popcnt;override;
           procedure second_fma;override;
+          procedure second_frac_real;override;
+          procedure second_int_real;override;
        private
           procedure load_fpu_location(lnode: tnode);
        end;
@@ -78,14 +83,14 @@ implementation
     uses
       systems,
       globtype,globals,
-      cutils,verbose,
-      symconst,
+      verbose,compinnr,
       defutil,
-      aasmbase,aasmtai,aasmdata,aasmcpu,
-      symtype,symdef,symcpu,
-      cgbase,pass_2,
-      cpuinfo,cpubase,paramgr,nutils,
-      nbas,ncon,ncal,ncnv,nld,ncgutil,
+      aasmbase,aasmdata,aasmcpu,
+      symconst,symtype,symdef,symcpu,
+      ncnv,
+      cgbase,pass_1,pass_2,
+      cpuinfo,cpubase,nutils,
+      ncal,ncgutil,
       tgobj,
       cga,cgutils,cgx86,cgobj,hlcgobj;
 
@@ -275,6 +280,57 @@ implementation
        end;
 
 
+     function tx86inlinenode.first_frac_real : tnode;
+       begin
+         if (current_settings.fputype>=fpu_sse41) and
+           ((is_double(resultdef)) or (is_single(resultdef))) then
+           begin
+             maybe_remove_round_trunc_typeconv;
+             expectloc:=LOC_MMREGISTER;
+             Result:=nil;
+           end
+         else
+           Result:=inherited first_frac_real;
+       end;
+
+
+     function tx86inlinenode.first_int_real : tnode;
+       begin
+         if (current_settings.fputype>=fpu_sse41) and
+           ((is_double(resultdef)) or (is_single(resultdef))) then
+           begin
+             Result:=nil;
+             expectloc:=LOC_MMREGISTER;
+           end
+         else
+           Result:=inherited first_int_real;
+       end;
+
+
+     function tx86inlinenode.simplify(forinline : boolean) : tnode;
+       var
+         temp : tnode;
+       begin
+         if (current_settings.fputype>=fpu_sse41) and
+           (inlinenumber=in_int_real) and (left.nodetype=typeconvn) and
+           not(nf_explicit in left.flags) and
+           (ttypeconvnode(left).left.resultdef.typ=floatdef) and
+           ((is_double(ttypeconvnode(left).left.resultdef)) or (is_single(ttypeconvnode(left).left.resultdef))) then
+           begin
+             { get rid of the type conversion }
+             temp:=ttypeconvnode(left).left;
+             ttypeconvnode(left).left:=nil;
+             left.free;
+             left:=temp;
+             result:=self.getcopy;
+             tinlinenode(result).resultdef:=temp.resultdef;
+             typecheckpass(result);
+           end
+         else
+           Result:=inherited simplify(forinline);
+       end;
+
+
      procedure tx86inlinenode.second_pi;
        begin
          location_reset(location,LOC_FPUREGISTER,def_cgsize(resultdef));
@@ -282,6 +338,7 @@ implementation
          tcgx86(cg).inc_fpu_stack;
          location.register:=NR_FPU_RESULT_REG;
        end;
+
 
      { load the FPU into the an fpu register }
      procedure tx86inlinenode.load_fpu_location(lnode: tnode);
@@ -341,7 +398,7 @@ implementation
              case tfloatdef(resultdef).floattype of
                s32real:
                  begin
-                   reference_reset_symbol(href,current_asmdata.RefAsmSymbol(target_info.cprefix+'FPC_ABSMASK_SINGLE',AT_DATA),0,4);
+                   reference_reset_symbol(href,current_asmdata.RefAsmSymbol(target_info.cprefix+'FPC_ABSMASK_SINGLE',AT_DATA),0,4,[]);
                    tcgx86(cg).make_simple_ref(current_asmdata.CurrAsmList, href);
                    if UseAVX then
                      current_asmdata.CurrAsmList.concat(taicpu.op_ref_reg_reg(
@@ -351,7 +408,7 @@ implementation
                  end;
                s64real:
                  begin
-                   reference_reset_symbol(href,current_asmdata.RefAsmSymbol(target_info.cprefix+'FPC_ABSMASK_DOUBLE',AT_DATA),0,4);
+                   reference_reset_symbol(href,current_asmdata.RefAsmSymbol(target_info.cprefix+'FPC_ABSMASK_DOUBLE',AT_DATA),0,4,[]);
                    tcgx86(cg).make_simple_ref(current_asmdata.CurrAsmList, href);
                    if UseAVX then
                      current_asmdata.CurrAsmList.concat(taicpu.op_ref_reg_reg(
@@ -403,7 +460,7 @@ implementation
 {$endif x86_64}
           begin
             load_fpu_location(left);
-            location_reset_ref(location,LOC_REFERENCE,OS_S64,0);
+            location_reset_ref(location,LOC_REFERENCE,OS_S64,0,[]);
             tg.GetTemp(current_asmdata.CurrAsmList,resultdef.size,resultdef.alignment,tt_normal,location.reference);
             emit_ref(A_FISTP,S_IQ,location.reference);
             tcgx86(cg).dec_fpu_stack;
@@ -449,7 +506,7 @@ implementation
             if (current_settings.fputype>=fpu_sse3) then
               begin
                 load_fpu_location(left);
-                location_reset_ref(location,LOC_REFERENCE,OS_S64,0);
+                location_reset_ref(location,LOC_REFERENCE,OS_S64,0,[]);
                 tg.GetTemp(current_asmdata.CurrAsmList,resultdef.size,resultdef.alignment,tt_normal,location.reference);
                 emit_ref(A_FISTTP,S_IQ,location.reference);
                 tcgx86(cg).dec_fpu_stack;
@@ -474,7 +531,7 @@ implementation
                 emit_const_ref(A_OR,S_W,$0f00,newcw);
                 load_fpu_location(left);
                 emit_ref(A_FLDCW,S_NO,newcw);
-                location_reset_ref(location,LOC_REFERENCE,OS_S64,0);
+                location_reset_ref(location,LOC_REFERENCE,OS_S64,0,[]);
                 tg.GetTemp(current_asmdata.CurrAsmList,resultdef.size,resultdef.alignment,tt_normal,location.reference);
                 emit_ref(A_FISTP,S_IQ,location.reference);
                 tcgx86(cg).dec_fpu_stack;
@@ -528,9 +585,12 @@ implementation
                case tfloatdef(resultdef).floattype of
                  s32real:
                    { we use S_NO instead of S_XMM here, regardless of the register size, as the size of the memory location is 32/64 bit }
-                   current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(A_VSQRTSS,S_NO,left.location.register,location.register,location.register));
+                   { using left.location.register here as 2nd parameter is crucial to break dependency chains }
+                   current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(A_VSQRTSS,S_NO,left.location.register,left.location.register,location.register));
                  s64real:
-                   current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(A_VSQRTSD,S_NO,left.location.register,location.register,location.register));
+                   { we use S_NO instead of S_XMM here, regardless of the register size, as the size of the memory location is 32/64 bit }
+                   { using left.location.register here as 2nd parameter is crucial to break dependency chains }
+                   current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(A_VSQRTSD,S_NO,left.location.register,left.location.register,location.register));
                  else
                    internalerror(200510031);
                end
@@ -610,7 +670,7 @@ implementation
                  begin
                    r:=cg.getintregister(current_asmdata.CurrAsmList,OS_ADDR);
                    cg.a_loadaddr_ref_reg(current_asmdata.CurrAsmList,left.location.reference,r);
-                   reference_reset_base(ref,r,0,left.location.reference.alignment);
+                   reference_reset_base(ref,r,0,left.location.reference.temppos,left.location.reference.alignment,left.location.reference.volatility);
                    current_asmdata.CurrAsmList.concat(taicpu.op_ref(A_PREFETCHNTA,S_NO,ref));
                  end;
                else
@@ -620,14 +680,13 @@ implementation
        end;
 
 
-{$ifndef i8086}
     procedure tx86inlinenode.second_abs_long;
       var
         hregister : tregister;
         opsize : tcgsize;
         hp : taicpu;
       begin
-{$ifdef i386}
+{$if defined(i8086) or defined(i386)}
         if not(CPUX86_HAS_CMOV in cpu_capabilities[current_settings.cputype]) then
           begin
             opsize:=def_cgsize(left.resultdef);
@@ -635,13 +694,13 @@ implementation
             hlcg.location_force_reg(current_asmdata.CurrAsmList,left.location,left.resultdef,left.resultdef,false);
             location:=left.location;
             location.register:=cg.getintregister(current_asmdata.CurrAsmList,opsize);
-            emit_reg_reg(A_MOV,S_L,left.location.register,location.register);
-            emit_const_reg(A_SAR,tcgsize2opsize[opsize],31,left.location.register);
-            emit_reg_reg(A_XOR,S_L,left.location.register,location.register);
-            emit_reg_reg(A_SUB,S_L,left.location.register,location.register);
+            cg.a_load_reg_reg(current_asmdata.CurrAsmList,opsize,opsize,left.location.register,location.register);
+            cg.a_op_const_reg(current_asmdata.CurrAsmList,OP_SAR,opsize,tcgsize2size[opsize]*8-1,left.location.register);
+            cg.a_op_reg_reg(current_asmdata.CurrAsmList,OP_XOR,opsize,left.location.register,location.register);
+            cg.a_op_reg_reg(current_asmdata.CurrAsmList,OP_SUB,opsize,left.location.register,location.register);
           end
         else
-{$endif i386}
+{$endif i8086 or i386}
           begin
             opsize:=def_cgsize(left.resultdef);
             secondpass(left);
@@ -657,7 +716,6 @@ implementation
             current_asmdata.CurrAsmList.concat(hp);
           end;
       end;
-{$endif not i8086}
 
 {*****************************************************************************
                      INCLUDE/EXCLUDE GENERIC HANDLING
@@ -934,6 +992,96 @@ implementation
          else
 {$endif i8086}
            internalerror(2014032301);
+      end;
+
+
+    procedure tx86inlinenode.second_frac_real;
+      var
+        extrareg : TRegister;
+      begin
+        if use_vectorfpu(resultdef) then
+          begin
+            secondpass(left);
+            hlcg.location_force_mmregscalar(current_asmdata.CurrAsmList,left.location,left.resultdef,true);
+            location_reset(location,LOC_MMREGISTER,left.location.size);
+            location.register:=cg.getmmregister(current_asmdata.CurrAsmList,location.size);
+            if UseAVX then
+              case tfloatdef(resultdef).floattype of
+                s32real:
+                  begin
+                    { using left.location.register here as 3rd parameter is crucial to break dependency chains }
+                    current_asmdata.CurrAsmList.concat(taicpu.op_const_reg_reg_reg(A_VROUNDSS,S_NO,3,left.location.register,left.location.register,location.register));
+                    current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(A_VSUBSS,S_NO,location.register,left.location.register,location.register));
+                  end;
+                s64real:
+                  begin
+                    { using left.location.register here as 3rd parameter is crucial to break dependency chains }
+                    current_asmdata.CurrAsmList.concat(taicpu.op_const_reg_reg_reg(A_VROUNDSD,S_NO,3,left.location.register,left.location.register,location.register));
+                    current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(A_VSUBSD,S_NO,location.register,left.location.register,location.register));
+                  end;
+                else
+                  internalerror(2017052102);
+              end
+            else
+              begin
+                extrareg:=cg.getmmregister(current_asmdata.CurrAsmList,location.size);
+                cg.a_loadmm_loc_reg(current_asmdata.CurrAsmList,location.size,left.location,location.register,mms_movescalar);
+                case tfloatdef(resultdef).floattype of
+                  s32real:
+                    begin
+                      current_asmdata.CurrAsmList.concat(taicpu.op_const_reg_reg(A_ROUNDSS,S_NO,3,left.location.register,extrareg));
+                      current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg(A_SUBSS,S_NO,extrareg,location.register));
+                    end;
+                  s64real:
+                    begin
+                      current_asmdata.CurrAsmList.concat(taicpu.op_const_reg_reg(A_ROUNDSD,S_NO,3,left.location.register,extrareg));
+                      current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg(A_SUBSD,S_NO,extrareg,location.register));
+                    end;
+                  else
+                    internalerror(2017052103);
+                end;
+              end;
+          end
+        else
+          internalerror(2017052101);
+      end;
+
+
+    procedure tx86inlinenode.second_int_real;
+      var
+        extrareg : TRegister;
+      begin
+        if use_vectorfpu(resultdef) then
+          begin
+            secondpass(left);
+            hlcg.location_force_mmregscalar(current_asmdata.CurrAsmList,left.location,left.resultdef,true);
+            location_reset(location,LOC_MMREGISTER,left.location.size);
+            location.register:=cg.getmmregister(current_asmdata.CurrAsmList,location.size);
+            if UseAVX then
+              case tfloatdef(resultdef).floattype of
+                s32real:
+                  { using left.location.register here as 3rd parameter is crucial to break dependency chains }
+                  current_asmdata.CurrAsmList.concat(taicpu.op_const_reg_reg_reg(A_VROUNDSS,S_NO,3,left.location.register,left.location.register,location.register));
+                s64real:
+                  { using left.location.register here as 3rd parameter is crucial to break dependency chains }
+                  current_asmdata.CurrAsmList.concat(taicpu.op_const_reg_reg_reg(A_VROUNDSD,S_NO,3,left.location.register,left.location.register,location.register));
+                else
+                  internalerror(2017052105);
+              end
+            else
+              begin
+                case tfloatdef(resultdef).floattype of
+                  s32real:
+                    current_asmdata.CurrAsmList.concat(taicpu.op_const_reg_reg(A_ROUNDSS,S_NO,3,left.location.register,location.register));
+                  s64real:
+                    current_asmdata.CurrAsmList.concat(taicpu.op_const_reg_reg(A_ROUNDSD,S_NO,3,left.location.register,location.register));
+                  else
+                    internalerror(2017052106);
+                end;
+              end;
+          end
+        else
+          internalerror(2017052107);
       end;
 
 end.

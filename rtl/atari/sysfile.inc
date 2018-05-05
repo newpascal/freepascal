@@ -55,7 +55,7 @@ begin
   DoDirSeparators(p1,p1changeable);
   DoDirSeparators(p2,p2changeable);
 
-  dosResult:=gemdos_frename(p1,p2);
+  dosResult:=gemdos_frename(0,p1,p2);
   if dosResult < 0 then
     Error2InOutRes(dosResult);
 
@@ -173,7 +173,6 @@ procedure do_open(var f;p:pchar;flags:longint; pchangeable: boolean);
 }
 var
   oldp     : pchar;
-  handle   : longint;
   dosResult: longint;
 begin
 { close first if opened }
@@ -222,13 +221,19 @@ begin
   if (flags and $1000)<>0 then
     dosResult:=gemdos_fcreate(p,0)
   else
-    dosResult:=gemdos_fopen(p,filerec(f).mode);
+    dosResult:=gemdos_fopen(p,flags and 3);
 
   if oldp<>p then
     freemem(p);
 
   if dosResult < 0 then
-    Error2InOutRes(dosResult);
+    begin
+      Error2InOutRes(dosResult);
+      filerec(f).mode:=fmClosed;
+      exit;
+    end
+  else
+    filerec(f).handle:=word(dosResult);
 
   { append mode }
   if ((Flags and $100)<>0) and

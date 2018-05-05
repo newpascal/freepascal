@@ -42,6 +42,7 @@ type
      opsize : topsize;
 
      procedure loadregset(opidx:longint; const dataregs,addrregs,fpuregs:tcpuregisterset);
+     procedure loadregpair(opidx:longint; const _reghi,_reglo: tregister);
      procedure loadrealconst(opidx:longint; const value_real: bestreal);
 
      constructor op_none(op : tasmop);
@@ -64,11 +65,10 @@ type
      { this is only allowed if _op1 is an int value (_op1^.isintvalue=true) }
      constructor op_ref_ref(op : tasmop;_size : topsize;_op1,_op2 : treference);
 
+     { this is used for mulx/divx/remx regpair generation }
      constructor op_reg_reg_reg(op : tasmop;_size : topsize;_op1,_op2,_op3 : tregister);
-     constructor op_const_reg_reg(op : tasmop;_size : topsize;_op1 : longint;_op2 : tregister;_op3 : tregister);
-     constructor op_const_ref_reg(op : tasmop;_size : topsize;_op1 : longint;_op2 : treference;_op3 : tregister);
-     constructor op_reg_reg_ref(op : tasmop;_size : topsize;_op1,_op2 : tregister; _op3 : treference);
-     constructor op_const_reg_ref(op : tasmop;_size : topsize;_op1 : longint;_op2 : tregister;_op3 : treference);
+     constructor op_const_reg_reg(op : tasmop;_size : topsize;_op1 : longint; _op2,_op3 : tregister);
+     constructor op_ref_reg_reg(op : tasmop;_size : topsize;_op1 : treference; _op2,_op3 : tregister);
 
      constructor op_reg_regset(op: tasmop; _size : topsize; _op1: tregister;const _op2data,_op2addr,_op2fpu: tcpuregisterset);
      constructor op_regset_reg(op: tasmop; _size : topsize;const _op1data,_op1addr,_op1fpu: tcpuregisterset; _op2: tregister);
@@ -147,6 +147,19 @@ type
                  add_reg_instruction_hook(self,newreg(R_FPUREGISTER,i,R_SUBWHOLE));
              end;
          end;
+      end;
+
+    procedure taicpu.loadregpair(opidx:longint; const _reghi,_reglo: tregister);
+      begin
+        allocate_oper(opidx+1);
+        with oper[opidx]^ do
+          begin
+            if typ<>top_regpair then
+              clearop(opidx);
+            typ:=top_regpair;
+            reghi:=_reghi;
+            reglo:=_reglo;
+          end;
       end;
 
     procedure taicpu.loadrealconst(opidx:longint; const value_real: bestreal);
@@ -310,7 +323,7 @@ type
          loadreg(2,_op3);
       end;
 
-    constructor taicpu.op_const_reg_reg(op : tasmop;_size : topsize;_op1 : longint;_op2 : tregister;_op3 : tregister);
+    constructor taicpu.op_const_reg_reg(op : tasmop;_size : topsize;_op1 : longint; _op2,_op3 : tregister);
       begin
          inherited create(op);
          init(_size);
@@ -320,38 +333,15 @@ type
          loadreg(2,_op3);
       end;
 
-    constructor taicpu.op_reg_reg_ref(op : tasmop;_size : topsize;_op1,_op2 : tregister;_op3 : treference);
+    constructor taicpu.op_ref_reg_reg(op : tasmop;_size : topsize;_op1 : treference; _op2,_op3 : tregister);
       begin
          inherited create(op);
          init(_size);
          ops:=3;
-         loadreg(0,_op1);
+         loadref(0,_op1);
          loadreg(1,_op2);
-         loadref(2,_op3);
-      end;
-
-
-    constructor taicpu.op_const_ref_reg(op : tasmop;_size : topsize;_op1 : longint;_op2 : treference;_op3 : tregister);
-      begin
-         inherited create(op);
-         init(_size);
-         ops:=3;
-         loadconst(0,aword(_op1));
-         loadref(1,_op2);
          loadreg(2,_op3);
       end;
-
-
-    constructor taicpu.op_const_reg_ref(op : tasmop;_size : topsize;_op1 : longint;_op2 : tregister;_op3 : treference);
-      begin
-         inherited create(op);
-         init(_size);
-         ops:=3;
-         loadconst(0,aword(_op1));
-         loadreg(1,_op2);
-         loadref(2,_op3);
-      end;
-
 
    constructor taicpu.op_ref_regset(op: tasmop; _size : topsize; _op1: treference;const _op2data,_op2addr,_op2fpu: tcpuregisterset);
      Begin
@@ -498,9 +488,13 @@ type
           A_ADD, A_ADDQ, A_ADDX, A_SUB, A_SUBQ, A_SUBX,
           A_AND, A_LSR, A_LSL, A_ASR, A_ASL, A_EOR, A_EORI, A_OR,
           A_ROL, A_ROR, A_ROXL, A_ROXR,
-          A_MULS, A_MULU, A_DIVS, A_DIVU, A_DIVSL, A_DIVUL, A_REMS, A_REMU,
           A_BSET, A_BCLR:
             if opnr=1 then
+              result:=operand_readwrite;
+          A_MULS, A_MULU, A_DIVS, A_DIVU, A_DIVSL, A_DIVUL, A_REMS, A_REMU:
+            { FIXME: actually, one of the operand of the 3 op DIV/MUL is write only,
+                     but we can't handle it easily... }
+            if opnr>0 then
               result:=operand_readwrite;
           A_DBRA:
             if opnr=0 then

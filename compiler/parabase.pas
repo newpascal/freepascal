@@ -26,13 +26,16 @@ unit parabase;
 
     uses
        cclasses,globtype,
-       aasmbase,cpubase,cgbase,cgutils,
-       symtype, ppu;
+{$ifdef llvm}
+       aasmbase,
+{$endif}
+       cgbase,cgutils,
+       symtype;
 
     type
        TCGParaReference = record
           index       : tregister;
-          offset      : aint;
+          offset      : asizeint;
        end;
 
        PCGParaLocation = ^TCGParaLocation;
@@ -139,6 +142,19 @@ unit parabase;
 {$endif x86_64}
        end;
 
+
+       trttiparaloc = record
+         { contains the regtype in bits 0-6 and whether it's reference or not
+           in bit 7 }
+         loctype : byte;
+         regsub : byte;
+         regindex : word;
+         { either stack offset or shiftval }
+         offset : aint;
+       end;
+
+
+       trttiparalocs = array of trttiparaloc;
 
 
 implementation

@@ -95,10 +95,10 @@ implementation
 
     uses
       systems,
-      verbose,globals,cutils,
+      verbose,globals,cutils,compinnr,
       globtype,constexp,
-      symconst,symtype,symdef,symtable,
-      defutil,
+      symconst,symtype,symdef,
+      defcmp,defutil,
       htypechk,pass_1,
       cgbase,
       ncon,ncnv,ncal,nadd,nld,nbas,nflw,ninl,
@@ -189,7 +189,8 @@ implementation
         result:=
           (left.resultdef.typ=orddef) and
           (right.resultdef.typ=orddef) and
-          (is_64bitint(left.resultdef) or is_64bitint(right.resultdef));
+          { include currency as well }
+          (is_64bit(left.resultdef) or is_64bit(right.resultdef));
 {$endif cpu64bitaly}
       end;
 
@@ -429,7 +430,9 @@ implementation
           u32bit:
             procname := procname + 'dword';
           s32bit:
-            procname := procname + 'longint'
+            procname := procname + 'longint';
+          scurrency:
+            procname := procname + 'currency';
           else
             internalerror(2015070501);
         end;
@@ -493,16 +496,18 @@ implementation
         power,shiftval : longint;
         statements : tstatementnode;
         temp,resulttemp : ttempcreatenode;
+        masknode : tnode;
+        invertsign: Boolean;
       begin
         result := nil;
         { divide/mod a number by a constant which is a power of 2? }
         if (right.nodetype = ordconstn) and
-          ispowerof2(tordconstnode(right).value,power) and
+          isabspowerof2(tordconstnode(right).value,power) and
 {$ifdef cpu64bitalu}
           { for 64 bit, we leave the optimization to the cg }
             (not is_signed(resultdef)) then
 {$else cpu64bitalu}
-           (((nodetype=divn) and is_64bit(resultdef)) or
+           (((nodetype=divn) and is_oversizedord(resultdef)) or
             (nodetype=modn) or
             not is_signed(resultdef)) then
 {$endif cpu64bitalu}
@@ -511,6 +516,7 @@ implementation
               begin
                 if is_signed(resultdef) then
                   begin
+                    invertsign:=tordconstnode(right).value<0;
                     if is_64bitint(left.resultdef) then
                       if not (cs_opt_size in current_settings.optimizerswitches) then
                         shiftval:=63
@@ -519,7 +525,7 @@ implementation
                         { the divide helper                               }
                         exit
                     else
-                      shiftval:=31;
+                      shiftval:=left.resultdef.size*8-1;
 
                     result:=internalstatements(statements);
                     temp:=ctempcreatenode.create(left.resultdef,left.resultdef.size,tt_persistent,true);
@@ -530,23 +536,46 @@ implementation
                      left));
                     left:=nil;
 
-                    addstatement(statements,cassignmentnode.create(ctemprefnode.create(resulttemp),
-                      cinlinenode.create(in_sar_x_y,false,
-                        ccallparanode.create(cordconstnode.create(power,u8inttype,false),
-                        ccallparanode.create(caddnode.create(addn,ctemprefnode.create(temp),
-                          caddnode.create(andn,
-                            cinlinenode.create(in_sar_x_y,false,
-                              ccallparanode.create(cordconstnode.create(shiftval,u8inttype,false),
-                              ccallparanode.create(ctemprefnode.create(temp),nil))
-                            ),
-                            cordconstnode.create(tordconstnode(right).value-1,
-                              right.resultdef,false)
-                          )),nil
-                        ))))
-                    );
+                    { masknode is (sar(temp,shiftval) and ((1 shl power)-1))
+                      for power=1 (i.e. division by 2), masknode is simply (temp shr shiftval)}
+                    if power=1 then
+                      masknode:=
+                        cshlshrnode.create(shrn,
+                          ctemprefnode.create(temp),
+                          cordconstnode.create(shiftval,u8inttype,false)
+                        )
+                    else
+                      masknode:=
+                        caddnode.create(andn,
+                          cinlinenode.create(in_sar_x_y,false,
+                            ccallparanode.create(cordconstnode.create(shiftval,u8inttype,false),
+                            ccallparanode.create(ctemprefnode.create(temp),nil))
+                          ),
+                          cordconstnode.create(tcgint((qword(1) shl power)-1),
+                            right.resultdef,false)
+                        );
+
+                    if invertsign then
+                      addstatement(statements,cassignmentnode.create(ctemprefnode.create(resulttemp),
+                        cunaryminusnode.create(
+                          cinlinenode.create(in_sar_x_y,false,
+                            ccallparanode.create(cordconstnode.create(power,u8inttype,false),
+                            ccallparanode.create(caddnode.create(addn,ctemprefnode.create(temp),
+                              masknode),nil
+                            )))))
+                      )
+                    else
+                      addstatement(statements,cassignmentnode.create(ctemprefnode.create(resulttemp),
+                        cinlinenode.create(in_sar_x_y,false,
+                          ccallparanode.create(cordconstnode.create(power,u8inttype,false),
+                          ccallparanode.create(caddnode.create(addn,ctemprefnode.create(temp),
+                            masknode),nil
+                          ))))
+                      );
                     addstatement(statements,ctempdeletenode.create(temp));
                     addstatement(statements,ctempdeletenode.create_normal_temp(resulttemp));
                     addstatement(statements,ctemprefnode.create(resulttemp));
+                    right.Free;
                   end
                 else
                   begin
@@ -560,7 +589,7 @@ implementation
                   exit;
 
                 shiftval:=left.resultdef.size*8-1;
-                dec(tordconstnode(right).value.uvalue);
+                tordconstnode(right).value.uvalue:=qword((qword(1) shl power)-1);
 
                 result:=internalstatements(statements);
                 temp:=ctempcreatenode.create(left.resultdef,left.resultdef.size,tt_persistent,true);
@@ -568,28 +597,33 @@ implementation
                 addstatement(statements,resulttemp);
                 addstatement(statements,temp);
                 addstatement(statements,cassignmentnode.create(ctemprefnode.create(temp),left));
-                { sign:=sar(left,sizeof(left)*8-1); }
-                addstatement(statements,cassignmentnode.create(ctemprefnode.create(resulttemp),
-                  cinlinenode.create(in_sar_x_y,false,
-                    ccallparanode.create(cordconstnode.create(shiftval,u8inttype,false),
-                    ccallparanode.create(ctemprefnode.create(temp),nil)
-                  )
-                )));
+                { mask:=sar(left,sizeof(left)*8-1) and ((1 shl power)-1); }
+                if power=1 then
+                  masknode:=
+                    cshlshrnode.create(shrn,
+                      ctemprefnode.create(temp),
+                      cordconstnode.create(shiftval,u8inttype,false)
+                    )
+                else
+                  masknode:=
+                    caddnode.create(andn,
+                      cinlinenode.create(in_sar_x_y,false,
+                        ccallparanode.create(cordconstnode.create(shiftval,u8inttype,false),
+                        ccallparanode.create(ctemprefnode.create(temp),nil))
+                      ),
+                      cordconstnode.create(tcgint((qword(1) shl power)-1),
+                        right.resultdef,false)
+                    );
+                addstatement(statements,cassignmentnode.create(ctemprefnode.create(resulttemp),masknode));
 
-                { result:=((((left xor sign)-sign) and right) xor sign)-sign; }
+                { result:=((left+mask) and right)-mask; }
                 addstatement(statements,cassignmentnode.create(ctemprefnode.create(resulttemp),
                   caddnode.create(subn,
-                    caddnode.create(xorn,
-                      caddnode.create(andn,
-                        right,
-                        caddnode.create(subn,
-                          caddnode.create(xorn,
-                            ctemprefnode.create(resulttemp),
-                            ctemprefnode.create(temp)),
-                          ctemprefnode.create(resulttemp))
-                        ),
-                      ctemprefnode.create(resulttemp)
-                    ),
+                    caddnode.create(andn,
+                      right,
+                      caddnode.create(addn,
+                        ctemprefnode.create(temp),
+                        ctemprefnode.create(resulttemp))),
                   ctemprefnode.create(resulttemp))
                 ));
 
@@ -599,7 +633,7 @@ implementation
               end
             else
               begin
-                dec(tordconstnode(right).value.uvalue);
+                tordconstnode(right).value.uvalue:=qword((qword(1) shl power)-1);
                 result := caddnode.create(andn,left,right);
               end;
             { left and right are reused }
@@ -701,6 +735,28 @@ implementation
                 result:=left;
                 left:=nil;
               end;
+          end
+        else if is_constintnode(left) then
+          begin
+            lvalue:=tordconstnode(left).value;
+            { shl/shr are unsigned operations, so cut off upper bits }
+            case resultdef.size of
+              1:
+                lvalue:=tordconstnode(left).value and byte($ff);
+              2:
+                lvalue:=tordconstnode(left).value and word($ffff);
+              4:
+                lvalue:=tordconstnode(left).value and dword($ffffffff);
+              8:
+                lvalue:=tordconstnode(left).value and qword($ffffffffffffffff);
+              else
+                internalerror(2013122301);
+            end;
+            { '0 shl x' and '0 shr x' are 0 }
+            if (lvalue=0) and
+               ((cs_opt_level4 in current_settings.optimizerswitches) or
+                not might_have_sideeffects(right)) then
+              result:=cordconstnode.create(0,resultdef,true);
           end;
       end;
 
@@ -737,36 +793,52 @@ implementation
               exit;
            end;
 
-         { calculations for ordinals < 32 bit have to be done in
-           32 bit for backwards compatibility. That way 'shl 33' is
-           the same as 'shl 1'. It's ugly but compatible with delphi/tp/gcc }
-         if (not is_64bit(left.resultdef)) and
-            (torddef(left.resultdef).ordtype<>u32bit) then
+{$ifdef SUPPORT_MMX}
+         if (cs_mmx in current_settings.localswitches) and
+           is_mmx_able_array(left.resultdef) and
+           ((is_mmx_able_array(right.resultdef) and
+             equal_defs(left.resultdef,right.resultdef)
+            ) or is_constintnode(right)) then
            begin
-             { keep singness of orignal type }
-             if is_signed(left.resultdef) then
+             if not(mmx_type(left.resultdef) in [mmxu16bit,mmxs16bit,mmxfixed16,mmxu32bit,mmxs32bit,mmxu64bit,mmxs64bit]) then
+               CGMessage3(type_e_operator_not_supported_for_types,node2opstr(nodetype),left.resultdef.typename,right.resultdef.typename);
+             if not(is_mmx_able_array(right.resultdef)) then
+               inserttypeconv(right,sinttype);
+           end
+         else
+{$endif SUPPORT_MMX}
+           begin
+             { calculations for ordinals < 32 bit have to be done in
+               32 bit for backwards compatibility. That way 'shl 33' is
+               the same as 'shl 1'. It's ugly but compatible with delphi/tp/gcc }
+             if (not is_64bit(left.resultdef)) and
+                (torddef(left.resultdef).ordtype<>u32bit) then
                begin
+                 { keep singness of orignal type }
+                 if is_signed(left.resultdef) then
+                   begin
 {$if defined(cpu64bitalu) or defined(cpu32bitalu)}
-                 inserttypeconv(left,s32inttype)
+                     inserttypeconv(left,s32inttype)
 {$elseif defined(cpu16bitalu) or defined(cpu8bitalu)}
-                 inserttypeconv(left,get_common_intdef(torddef(left.resultdef),torddef(sinttype),true));
+                     inserttypeconv(left,get_common_intdef(torddef(left.resultdef),torddef(sinttype),true));
 {$else}
-                 internalerror(2013031301);
+                     internalerror(2013031301);
 {$endif}
-               end
-             else
-               begin
+                   end
+                 else
+                   begin
 {$if defined(cpu64bitalu) or defined(cpu32bitalu)}
-                 inserttypeconv(left,u32inttype);
+                     inserttypeconv(left,u32inttype);
 {$elseif defined(cpu16bitalu) or defined(cpu8bitalu)}
-                 inserttypeconv(left,get_common_intdef(torddef(left.resultdef),torddef(uinttype),true));
+                     inserttypeconv(left,get_common_intdef(torddef(left.resultdef),torddef(uinttype),true));
 {$else}
-                 internalerror(2013031301);
+                     internalerror(2013031301);
 {$endif}
-               end
-           end;
+                   end
+               end;
 
-         inserttypeconv(right,sinttype);
+             inserttypeconv(right,sinttype);
+           end;
 
          resultdef:=left.resultdef;
 

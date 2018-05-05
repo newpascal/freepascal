@@ -238,20 +238,6 @@ unit cpubase;
 *****************************************************************************}
 
     const
-      { Registers which must be saved when calling a routine declared as
-        cppdecl, cdecl, stdcall, safecall, palmossyscall. The registers
-        saved should be the ones as defined in the target ABI and / or GCC.
-
-        This value can be deduced from the CALLED_USED_REGISTERS array in the
-        GCC source.
-      }
-      saved_standard_registers : array[0..0] of tsuperregister =
-        (RS_NO);
-
-      { this is only for the generic code which is not used for this architecture }
-      saved_address_registers : array[0..0] of tsuperregister = (RS_INVALID);
-      saved_mm_registers : array[0..0] of tsuperregister = (RS_INVALID);
-
       { Required parameter alignment when calling a routine declared as
         stdcall and cdecl. The alignment value should be the one defined
         by GCC or the target ABI.
@@ -358,6 +344,18 @@ unit cpubase;
       end;      
       function findreg_by_number(r:Tregister):tregisterindex;
       begin
+        { the register table for MIPS cpu only contains 
+          R_SUBFS and R_SUBD register types.
+          This function is called by dbgstabs unit,
+          here were are only interested in register,
+          not its subtype, thus we change subreg to
+          R_SUBFS or R_SUBD.  }
+        case getsubreg(r) of
+          R_SUBFD:
+            setsubreg(r, R_SUBFS);
+          R_SUBL, R_SUBW, R_SUBD, R_SUBQ:
+            setsubreg(r, R_SUBD);
+        end;
         result:=rgBase.findreg_by_number_table(r,regnumber_index);
       end;
 
@@ -397,6 +395,12 @@ unit cpubase;
 
     function dwarf_reg(r:tregister):shortint;
       begin
+        case getsubreg(r) of
+          R_SUBFD:
+            setsubreg(r, R_SUBFS);
+          R_SUBL, R_SUBW, R_SUBD, R_SUBQ:
+            setsubreg(r, R_SUBD);
+        end;
         result:=regdwarf_table[findreg_by_number(r)];
         if result=-1 then
           internalerror(200603251);

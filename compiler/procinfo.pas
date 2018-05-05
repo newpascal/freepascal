@@ -29,14 +29,12 @@ unit procinfo;
       { common }
       cclasses,
       { global }
-      globtype,globals,verbose,
+      globtype,
       { symtable }
-      symconst,symtype,symdef,symsym,
+      symconst,symdef,symsym,
       { aasm }
-      cpubase,cpuinfo,cgbase,cgutils,
-      aasmbase,aasmtai,aasmdata,
-      optutils
-      ;
+      cpubase,cgbase,cgutils,
+      aasmbase,aasmdata;
 
     const
       inherited_inlining_flags : tprocinfoflags =
@@ -202,7 +200,7 @@ implementation
         { asmlists }
         aktproccode:=TAsmList.Create;
         aktlocaldata:=TAsmList.Create;
-        reference_reset(save_regs_ref,sizeof(aint));
+        reference_reset(save_regs_ref,sizeof(aint),[]);
         { labels }
         current_asmdata.getjumplabel(CurrExitLabel);
         current_asmdata.getjumplabel(CurrGOTLabel);

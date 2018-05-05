@@ -17,7 +17,7 @@ unit pkgoptions;
 interface
 
 // pkgglobals must be AFTER fpmkunit
-uses Classes, Sysutils, Inifiles, fprepos, fpTemplate, fpmkunit, pkgglobals, fgl;
+uses Classes, Sysutils, Inifiles, fpTemplate, fpmkunit, pkgglobals, fgl;
 
 Const
   UnitConfigFileName   = 'fpunits.cfg';
@@ -28,15 +28,20 @@ Const
   CurrentConfigVersion = 5;
 
 Type
+  TFPRepositoryType = (fprtUnknown, fprtInstalled, fprtAvailable);
 
   { TFppkgOptionSection }
 
   TCompilerOptions = class;
+  TFppkgOptions = class;
   TFppkgOptionSection = class(TPersistent)
   private
     FOptionParser: TTemplateParser;
     FName: string;
   protected
+    class function GetKey: string; virtual;
+    procedure AddKeyValueToStrings(AStrings: TStrings; AKey, AValue: string); overload;
+    procedure AddKeyValueToStrings(AStrings: TStrings; AKey: string; AValue: Integer); overload;
     property OptionParser: TTemplateParser read FOptionParser;
   public
     constructor Create(AnOptionParser: TTemplateParser); virtual;
@@ -114,6 +119,7 @@ Type
   TFppkgRepositoryOptionSection = class(TFppkgOptionSection)
   private
     FDescription: string;
+    FInstallRepositoryName: string;
     FPath: string;
     FPrefix: string;
     FRepositoryName: string;
@@ -123,18 +129,43 @@ Type
     procedure SetPrefix(AValue: string);
     procedure SetRepositoryName(AValue: string);
     procedure SetPath(AValue: string);
+  protected
+    procedure SaveToStrings(AStrings: TStrings); override;
+    class function GetKey: string; override;
   public
     procedure AddKeyValue(const AKey, AValue: string); override;
     procedure LogValues(ALogLevel: TLogLevel); override;
     function AllowDuplicate: Boolean; override;
     function GetRepositoryType: TFPRepositoryType; virtual;
 
-    function InitRepository(AParent: TComponent; ACompilerOptions: TCompilerOptions): TFPRepository; virtual;
-
     property RepositoryName: string read FRepositoryName write SetRepositoryName;
     property Description: string read FDescription write SetDescription;
     property Path: string read GetPath write SetPath;
     property Prefix: string read GetPrefix write SetPrefix;
+    property InstallRepositoryName: string read FInstallRepositoryName write FInstallRepositoryName;
+  end;
+  TFppkgRepositoryOptionSectionClass = class of TFppkgRepositoryOptionSection;
+
+  { TFppkgIncludeFilesOptionSection }
+
+  TFppkgIncludeFilesOptionSection = class(TFppkgOptionSection)
+  private
+    FOptions: TFppkgOptions;
+    // Only used for logging
+    FOptionCache: TStringList;
+    FCurrentDir: String;
+
+    procedure IncludeFile(AFileName: string);
+    procedure IncludeFileMask(AFileNameMask: string);
+  protected
+    class function GetKey: string; override;
+  public
+    constructor Create(AnOptionParser: TTemplateParser; AnOptions: TFppkgOptions; ACurrentDir: string);
+    destructor Destroy; override;
+    procedure SaveToStrings(AStrings: TStrings); override;
+    procedure AddKeyValue(const AKey, AValue: string); override;
+    procedure LogValues(ALogLevel: TLogLevel); override;
+    function AllowDuplicate: Boolean; override;
   end;
 
   { TFppkgCommandLineOptionSection }
@@ -180,6 +211,8 @@ Type
 
     procedure BindToCompilerOptions(ACompilerOptions: TCompilerOptions);
     procedure AddRepositoriesForCompilerSettings(ACompilerOptions: TCompilerOptions);
+    function AddRepositoryOptionSection(ASectionClass: TFppkgRepositoryOptionSectionClass): TFppkgRepositoryOptionSection;
+    function AddIncludeFilesOptionSection(AFileMask: string): TFppkgIncludeFilesOptionSection;
 
     property SectionList: TFppkgOptionSectionList read GetSectionList;
     property GlobalSection: TFppkgGLobalOptionSection read GetGlobalSection;
@@ -237,12 +270,12 @@ Type
 Implementation
 
 uses
-  pkgUninstalledSourcesRepository,
+  pkgUninstalledSrcsRepo,
   pkgPackagesStructure,
   pkgmessages;
 
 Const
-  DefaultMirrorsURL  = 'http://www.freepascal.org/repository/'+MirrorsFileName;
+  DefaultMirrorsURL  = 'https://www.freepascal.org/repository/'+MirrorsFileName;
 {$ifdef localrepository}
   DefaultRemoteRepository = 'file://'+{$I %HOME%}+'/repository/';
 {$else}
@@ -259,7 +292,7 @@ Const
   KeyDeprGlobalSection     = 'Defaults';
   KeyGlobalSection         = 'Global';
   KeyRepositorySection     = 'Repository';
-  KeySrcRepositorySection  = 'UninstalledSourceRepository';
+  KeyIncludeFilesSection   = 'IncludeFiles';
   KeyRemoteMirrorsURL      = 'RemoteMirrors';
   KeyRemoteRepository      = 'RemoteRepository';
   KeyLocalRepository       = 'LocalRepository';
@@ -276,6 +309,10 @@ Const
   KeyRepositoryDescription = 'Description';
   KeyRepositoryPath        = 'Path';
   KeyRepositoryPrefix      = 'Prefix';
+  KeyInstallRepositoryName = 'InstallRepository';
+
+  KeyIncludeFile           = 'File';
+  KeyIncludeFileMask       = 'FileMask';
 
   // Compiler dependent config
   KeyGlobalPrefix          = 'GlobalPrefix';
@@ -286,6 +323,103 @@ Const
   KeyCompilerOS            = 'OS';
   KeyCompilerCPU           = 'CPU';
   KeyCompilerVersion       = 'Version';
+
+{ TFppkgIncludeFilesOptionSection }
+
+procedure TFppkgIncludeFilesOptionSection.IncludeFile(AFileName: string);
+begin
+  AFileName := FOptionParser.ParseString(AFileName);
+  if FileExists(AFileName) then
+    begin
+      FOptions.LoadFromFile(AFileName);
+    end
+  else
+    log(llWarning, SLogIncludeFileDoesNotExist, [AFileName]);
+end;
+
+procedure TFppkgIncludeFilesOptionSection.IncludeFileMask(AFileNameMask: string);
+var
+  FileDir: string;
+  SR: TSearchRec;
+begin
+  AFileNameMask := FOptionParser.ParseString(AFileNameMask);
+  FileDir := IncludeTrailingPathDelimiter(ExtractFileDir(AFileNameMask));
+
+  if IsRelativePath(AFileNameMask) then
+    FileDir := ConcatPaths([FCurrentDir, FileDir]);
+
+  if DirectoryExists(FileDir) then
+    begin
+      if IsRelativePath(AFileNameMask) then
+        AFileNameMask := ConcatPaths([FCurrentDir, AFileNameMask]);
+
+      if FindFirst(AFileNameMask, faAnyFile-faDirectory, SR)=0 then
+        begin
+          repeat
+            IncludeFile(FileDir+SR.Name);
+          until FindNext(SR)<>0;
+        end;
+      FindClose(SR);
+    end
+  else
+    log(llWarning, SLogIncludeFileMaskDoesNotExist, [FileDir, AFileNameMask]);
+end;
+
+class function TFppkgIncludeFilesOptionSection.GetKey: string;
+begin
+  Result := KeyIncludeFilesSection;
+end;
+
+procedure TFppkgIncludeFilesOptionSection.SaveToStrings(AStrings: TStrings);
+begin
+  AStrings.Add('['+KeyIncludeFilesSection+']');
+  AddKeyValueToStrings(AStrings, KeyIncludeFileMask, FCurrentDir);
+end;
+
+constructor TFppkgIncludeFilesOptionSection.Create(AnOptionParser: TTemplateParser;
+  AnOptions: TFppkgOptions; ACurrentDir: string);
+begin
+  inherited Create(AnOptionParser);
+  FOptions := AnOptions;
+  FCurrentDir := ACurrentDir;
+  FOptionCache := TStringList.Create;
+end;
+
+destructor TFppkgIncludeFilesOptionSection.Destroy;
+begin
+  FOptionCache.Free;
+  inherited Destroy;
+end;
+
+procedure TFppkgIncludeFilesOptionSection.AddKeyValue(const AKey, AValue: string);
+begin
+  if SameText(AKey,KeyIncludeFile) then
+    begin
+      FOptionCache.Append(SLogIncludeFile + '=' + AValue);
+      IncludeFile(AValue);
+    end
+  else if SameText(AKey,KeyIncludeFileMask) then
+    begin
+      FOptionCache.Append(SLogIncludeFileMask + '=' + AValue);
+      IncludeFileMask(AValue);
+    end;
+end;
+
+procedure TFppkgIncludeFilesOptionSection.LogValues(ALogLevel: TLogLevel);
+var
+  i: Integer;
+begin
+  inherited LogValues(ALogLevel);
+  for i := 0 to FOptionCache.Count -1 do
+    begin
+      log(ALogLevel, FOptionCache.Names[i], [FOptionCache.ValueFromIndex[i], FOptionParser.ParseString(FOptionCache.ValueFromIndex[i])]);
+    end;
+end;
+
+function TFppkgIncludeFilesOptionSection.AllowDuplicate: Boolean;
+begin
+  Result := inherited AllowDuplicate;
+end;
 
 { TFppkgRepositoryOptionSection }
 
@@ -323,6 +457,21 @@ begin
   FPath := fpmkunit.FixPath(AValue, True);
 end;
 
+procedure TFppkgRepositoryOptionSection.SaveToStrings(AStrings: TStrings);
+begin
+  inherited SaveToStrings(AStrings);
+  AddKeyValueToStrings(AStrings, KeyRepositoryName, RepositoryName);
+  AddKeyValueToStrings(AStrings, KeyRepositoryDescription, Description);
+  AddKeyValueToStrings(AStrings, KeyRepositoryPath, FPath);
+  AddKeyValueToStrings(AStrings, KeyRepositoryPrefix, FPrefix);
+  AddKeyValueToStrings(AStrings, KeyInstallRepositoryName, InstallRepositoryName);
+end;
+
+class function TFppkgRepositoryOptionSection.GetKey: string;
+begin
+  Result := KeyRepositorySection;
+end;
+
 procedure TFppkgRepositoryOptionSection.AddKeyValue(const AKey, AValue: string);
 begin
   if SameText(AKey,KeyRepositoryName) then
@@ -333,6 +482,8 @@ begin
     Path := AValue
   else if SameText(AKey,KeyRepositoryPrefix) then
     Prefix := AValue
+  else if SameText(AKey,KeyInstallRepositoryName) then
+    InstallRepositoryName := AValue
 end;
 
 procedure TFppkgRepositoryOptionSection.LogValues(ALogLevel: TLogLevel);
@@ -342,6 +493,7 @@ begin
   log(ALogLevel,SLogRepositoryDescription,[FDescription]);
   log(ALogLevel,SLogRepositoryPath,[FPath,Path]);
   log(ALogLevel,SLogRepositoryPrefix,[FPrefix,Prefix]);
+  log(ALogLevel,SLogInstallRepository,[FInstallRepositoryName]);
 end;
 
 function TFppkgRepositoryOptionSection.AllowDuplicate: Boolean;
@@ -352,23 +504,6 @@ end;
 function TFppkgRepositoryOptionSection.GetRepositoryType: TFPRepositoryType;
 begin
   result := fprtInstalled;
-end;
-
-function TFppkgRepositoryOptionSection.InitRepository(AParent: TComponent;
-  ACompilerOptions: TCompilerOptions): TFPRepository;
-var
-  InstPackages: TFPInstalledPackagesStructure;
-begin
-  if Path <> '' then
-    begin
-      Result := TFPRepository.Create(AParent);
-      Result.RepositoryType := GetRepositoryType;
-      Result.RepositoryName := RepositoryName;
-      Result.Description := Description;
-      InstPackages := TFPInstalledPackagesStructure.Create(AParent, Path, ACompilerOptions);
-      Result.DefaultPackagesStructure := InstPackages;
-      InstPackages.Prefix:=Prefix;
-    end;
 end;
 
 { TFppkgCommandLineOptionSection }
@@ -383,6 +518,23 @@ end;
 
 { TFppkgOptionSection }
 
+class function TFppkgOptionSection.GetKey: string;
+begin
+  Result := '';
+end;
+
+procedure TFppkgOptionSection.AddKeyValueToStrings(AStrings: TStrings; AKey, AValue: string);
+begin
+  if AValue<>'' then
+    AStrings.Add(AKey+'='+AValue);
+end;
+
+procedure TFppkgOptionSection.AddKeyValueToStrings(AStrings: TStrings; AKey: string; AValue: Integer);
+begin
+  if AValue<>-1 then
+    AStrings.Add(AKey+'='+IntToStr(AValue));
+end;
+
 constructor TFppkgOptionSection.Create(AnOptionParser: TTemplateParser);
 begin
   FOptionParser:=AnOptionParser;
@@ -395,7 +547,7 @@ end;
 
 procedure TFppkgOptionSection.SaveToStrings(AStrings: TStrings);
 begin
-  // Do nothing
+  AStrings.Add('['+GetKey+']');
 end;
 
 procedure TFppkgOptionSection.LogValues(ALogLevel: TLogLevel);
@@ -515,7 +667,7 @@ begin
     LocalRepository:='{UserDir}.fppkg/';
 {$else}
   if IsSuperUser then
-    LocalRepository:=IncludeTrailingPathDelimiter(GetAppConfigDir(true))
+    LocalRepository:=IncludeTrailingPathDelimiter(GetFppkgConfigDir(true))
   else
     LocalRepository:='{AppConfigDir}';
 {$endif}
@@ -530,8 +682,8 @@ begin
   BuildDir:='{LocalRepository}build'+PathDelim;
   ArchivesDir:='{LocalRepository}archives'+PathDelim;
   CompilerConfigDir:='{LocalRepository}config'+PathDelim;
-{$if defined(unix) or defined(windows)}
-  Downloader:='lnet';
+{$if (defined(unix) and not defined(android)) or defined(windows)}
+  Downloader:='FPC';
 {$else}
   Downloader:='base';
 {$endif}
@@ -581,16 +733,17 @@ end;
 procedure TFppkgGlobalOptionSection.SaveToStrings(AStrings: TStrings);
 begin
   AStrings.Add('['+KeyGlobalSection+']');
-  AStrings.Add(KeyConfigVersion+'='+IntToStr(CurrentConfigVersion));
-  AStrings.Add(KeyBuildDir+'='+BuildDir);
-  AStrings.Add(KeyDownloader+'='+Downloader);
-  AStrings.Add(KeyCompilerConfig+'='+CompilerConfig);
-  AStrings.Add(KeyFPMakeCompilerConfig+'='+FPMakeCompilerConfig);
-  AStrings.Add(KeyCompilerConfigDir+'='+CompilerConfigDir);
-  AStrings.Add(KeyRemoteMirrorsURL+'='+RemoteMirrorsURL);
-  AStrings.Add(KeyRemoteRepository+'='+RemoteRepository);
-  AStrings.Add(KeyLocalRepository+'='+LocalRepository);
-  AStrings.Add(KeyArchivesDir+'='+ArchivesDir);
+  AddKeyValueToStrings(AStrings, KeyConfigVersion, CurrentConfigVersion);
+  AddKeyValueToStrings(AStrings, KeyBuildDir, BuildDir);
+  AddKeyValueToStrings(AStrings, KeyDownloader, Downloader);
+  AddKeyValueToStrings(AStrings, KeyCompilerConfig, CompilerConfig);
+  AddKeyValueToStrings(AStrings, KeyFPMakeCompilerConfig, FPMakeCompilerConfig);
+  AddKeyValueToStrings(AStrings, KeyCompilerConfigDir, CompilerConfigDir);
+  AddKeyValueToStrings(AStrings, KeyRemoteMirrorsURL, RemoteMirrorsURL);
+  AddKeyValueToStrings(AStrings, KeyRemoteRepository, RemoteRepository);
+  AddKeyValueToStrings(AStrings, KeyLocalRepository, LocalRepository);
+  AddKeyValueToStrings(AStrings, KeyArchivesDir, ArchivesDir);
+  AddKeyValueToStrings(AStrings, KeyCustomFPMakeOptions, CustomFPMakeOptions);
 end;
 
 procedure TFppkgGlobalOptionSection.LogValues(ALogLevel: TLogLevel);
@@ -629,7 +782,7 @@ end;
 function TFppkgOptions.GetGlobalSection: TFppkgGLobalOptionSection;
 begin
   Result := GetSectionByName(KeyGlobalSection) as TFppkgGlobalOptionSection;
-  // Below version 5 the glolbal-section was called 'Defaults'
+  // Below version 5 the global-section was called 'Defaults'
   if not Assigned(Result) then
     Result := GetSectionByName(KeyDeprGlobalSection) as TFppkgGlobalOptionSection;
 
@@ -655,7 +808,7 @@ end;
 constructor TFppkgOptions.Create;
 begin
   FOptionParser := TTemplateParser.Create;
-  FOptionParser.Values['AppConfigDir'] := GetAppConfigDir(false);
+  FOptionParser.Values['AppConfigDir'] := GetFppkgConfigDir(false);
   FOptionParser.Values['UserDir'] := GetUserDir;
 
   FSectionList := TFppkgOptionSectionList.Create;
@@ -692,15 +845,22 @@ begin
             if not Assigned(CurrentSection) or CurrentSection.AllowDuplicate then
               begin
                 if SameText(s, KeyGlobalSection) or SameText(s, KeyDeprGlobalSection) then
-                  CurrentSection := TFppkgGlobalOptionSection.Create(FOptionParser)
-                else if SameText(s, KeyRepositorySection) then
-                  CurrentSection := TFppkgRepositoryOptionSection.Create(FOptionParser)
-                else if SameText(s, KeySrcRepositorySection) then
-                  CurrentSection := TFppkgUninstalledSourceRepositoryOptionSection.Create(FOptionParser)
+                  CurrentSection := GetGlobalSection
                 else
-                  CurrentSection := TFppkgCustomOptionSection.Create(FOptionParser);
-                FSectionList.Add(CurrentSection);
-                CurrentSection.Name := s;
+                  begin
+                    if SameText(s, TFppkgRepositoryOptionSection.GetKey) then
+                      CurrentSection := TFppkgRepositoryOptionSection.Create(FOptionParser)
+                    else if SameText(s, TFppkgUninstalledSourceRepositoryOptionSection.GetKey) then
+                      CurrentSection := TFppkgUninstalledSourceRepositoryOptionSection.Create(FOptionParser)
+                    else if SameText(s, TFppkgIncludeFilesOptionSection.GetKey) then
+                      CurrentSection := TFppkgIncludeFilesOptionSection.Create(FOptionParser, Self, ExtractFileDir(AFileName))
+                    else if SameText(s, TFppkgUninstalledRepositoryOptionSection.GetKey) then
+                      CurrentSection := TFppkgUninstalledRepositoryOptionSection.Create(FOptionParser)
+                    else
+                      CurrentSection := TFppkgCustomOptionSection.Create(FOptionParser);
+                    FSectionList.Add(CurrentSection);
+                    CurrentSection.Name := s;
+                  end;
               end
           end
         else if copy(s,1,1)<>';' then // comment
@@ -720,12 +880,24 @@ procedure TFppkgOptions.SaveToFile(const AFileName: string);
 var
   IniFile: TStringList;
   CurrentSection: TFppkgOptionSection;
+  GSection: TFppkgGlobalOptionSection;
+  i: Integer;
 begin
   IniFile:=TStringList.Create;
   try
-    // Only the Global-section is being written, with some default values
-    CurrentSection := GlobalSection;
-    CurrentSection.SaveToStrings(IniFile);
+    GSection := GlobalSection;
+    GSection.SaveToStrings(IniFile);
+
+    for i := 0 to SectionList.Count-1 do
+      begin
+        CurrentSection := SectionList[i];
+        if CurrentSection<>GSection then
+          begin
+            IniFile.Add('');
+            CurrentSection.SaveToStrings(IniFile);
+          end;
+      end;
+
     Inifile.SaveToFile(AFileName);
   finally
     Inifile.Free;
@@ -772,12 +944,14 @@ begin
   CurrentSection.RepositoryName:='global';
   CurrentSection.Description:='global';
   CurrentSection.Path:=ACompilerOptions.GlobalInstallDir;
+  CurrentSection.Prefix:=ACompilerOptions.GlobalPrefix;
   FSectionList.Add(CurrentSection);
 
   CurrentSection := TFppkgRepositoryOptionSection.Create(FOptionParser);
   CurrentSection.RepositoryName:='local';
   CurrentSection.Description:='local';
   CurrentSection.Path:=ACompilerOptions.LocalInstallDir;
+  CurrentSection.Prefix:=ACompilerOptions.LocalPrefix;
   FSectionList.Add(CurrentSection);
 
   if CommandLineSection.InstallRepository='' then
@@ -789,6 +963,18 @@ begin
     end;
 end;
 
+function TFppkgOptions.AddRepositoryOptionSection(ASectionClass: TFppkgRepositoryOptionSectionClass): TFppkgRepositoryOptionSection;
+begin
+  Result := ASectionClass.Create(FOptionParser);
+  FSectionList.Add(Result);
+end;
+
+function TFppkgOptions.AddIncludeFilesOptionSection(AFileMask: string): TFppkgIncludeFilesOptionSection;
+begin
+  Result := TFppkgIncludeFilesOptionSection.Create(FOptionParser, Self, AFileMask);
+  FSectionList.Add(Result);
+end;
+
 {*****************************************************************************
                            TCompilerOptions
 *****************************************************************************}
@@ -796,7 +982,7 @@ end;
 constructor TCompilerOptions.Create;
 begin
   FOptionParser := TTemplateParser.Create;
-  FOptionParser.Values['AppConfigDir'] := GetAppConfigDir(false);
+  FOptionParser.Values['AppConfigDir'] := GetFppkgConfigDir(false);
   FOptionParser.Values['UserDir'] := GetUserDir;
   {$ifdef unix}
   FLocalInstallDir:='{LocalPrefix}'+'lib'+PathDelim+'fpc'+PathDelim+'{CompilerVersion}'+PathDelim;

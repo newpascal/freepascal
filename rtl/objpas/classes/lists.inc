@@ -45,20 +45,26 @@ Const
 
 procedure TFPList.RaiseIndexError(Index : Integer);
 begin
+  // We should be able to remove this, but unfortunately it is marked protected.
   Error(SListIndexError, Index);
+end;
+
+Procedure TFPList.CheckIndex(AIndex : Integer);
+
+begin
+  If (AIndex < 0) or (AIndex >= FCount) then
+    Error(SListIndexError, AIndex); // Don't use RaiseIndexError, exception address will be better if we use error.
 end;
 
 function TFPList.Get(Index: Integer): Pointer;
 begin
-  If (Index < 0) or (Index >= FCount) then
-    RaiseIndexError(Index);
+  CheckIndex(Index);
   Result:=FList^[Index];
 end;
 
 procedure TFPList.Put(Index: Integer; Item: Pointer);
 begin
-  if (Index < 0) or (Index >= FCount) then
-    RaiseIndexError(Index);
+  CheckIndex(Index);
   Flist^[Index] := Item;
 end;
 
@@ -140,11 +146,12 @@ end;
 
 procedure TFPList.Delete(Index: Integer);
 begin
-  If (Index<0) or (Index>=FCount) then
-    Error (SListIndexError, Index);
+  CheckIndex(Index);
   FCount := FCount-1;
   System.Move (FList^[Index+1], FList^[Index], (FCount - Index) * SizeOf(Pointer));
-  // Shrink the list if appropriate
+  // Shrink the list if appropriate:
+  // If capacity>256 and the list is less than a quarter filled,  shrink to 1/2 the size.
+  // Shr is used because it is faster than div.
   if (FCapacity > 256) and (FCount < FCapacity shr 2) then
   begin
     FCapacity := FCapacity shr 1;
@@ -161,10 +168,8 @@ procedure TFPList.Exchange(Index1, Index2: Integer);
 var
   Temp : Pointer;
 begin
-  If ((Index1 >= FCount) or (Index1 < 0)) then
-    Error(SListIndexError, Index1);
-  If ((Index2 >= FCount) or (Index2 < 0)) then
-    Error(SListIndexError, Index2);
+  CheckIndex(Index1);
+  CheckIndex(Index2);
   Temp := FList^[Index1];
   FList^[Index1] := FList^[Index2];
   FList^[Index2] := Temp;
@@ -175,11 +180,17 @@ var
   IncSize : Longint;
 begin
   if FCount < FCapacity then exit(self);
+  {
+    For really big lists, (128Mb elements), increase with fixed amount: 16Mb elements (=1/8th of 128Mb).
+    For big lists (8mb elements), increase with 1/8th of the size
+    For moderate lists (128 or more, increase with 1/4th the size
+    For smaller sizes, increase with 16 or 4
+  }
   if FCapacity > 128*1024*1024 then IncSize := 16*1024*1024
   else if FCapacity > 8*1024*1024 then IncSize := FCapacity shr 3
   else if FCapacity > 128 then IncSize := FCapacity shr 2
   else if FCapacity > 8 then IncSize := 16
-  else IncSize := 4; 
+  else IncSize := 4;
   SetCapacity(FCapacity + IncSize);
   Result := Self;
 end;
@@ -221,7 +232,7 @@ begin
     Result:=Count-1;
     while (Result >=0) and (Flist^[Result]<>Item) do
       Result:=Result - 1;
-    end;      
+    end;
 end;
 
 procedure TFPList.Insert(Index: Integer; Item: Pointer);
@@ -248,10 +259,8 @@ procedure TFPList.Move(CurIndex, NewIndex: Integer);
 var
   Temp : Pointer;
 begin
-  if ((CurIndex < 0) or (CurIndex > Count - 1)) then
-    Error(SListIndexError, CurIndex);
-  if ((NewIndex < 0) or (NewIndex > Count -1)) then
-    Error(SlistIndexError, NewIndex);
+  CheckIndex(CurIndex);
+  CheckIndex(NewIndex);
   Temp := FList^[CurIndex];
   if NewIndex > CurIndex then
     System.Move(FList^[CurIndex+1], FList^[CurIndex], (NewIndex - CurIndex) * SizeOf(Pointer))
@@ -401,7 +410,7 @@ procedure TFPList.DoDestUnique(ListA, ListB : TFPList);
       if dest.indexof(src[r]) < 0 then
         self.Add (src[r]);
   end;
-  
+
 var dest : TFPList;
 begin
   if assigned (ListB) then
@@ -836,7 +845,7 @@ procedure TList.DoDestUnique(ListA, ListB : TList);
       if dest.indexof(src[r]) < 0 then
         self.Add (src[r]);
   end;
-  
+
 var dest : TList;
 begin
   if assigned (ListB) then
@@ -956,7 +965,9 @@ constructor TThreadList.Create;
   begin
     inherited Create;
     FDuplicates:=dupIgnore;
+{$ifdef FPC_HAS_FEATURE_THREADING}
     InitCriticalSection(FLock);
+{$endif}
     FList:=TList.Create;
   end;
 
@@ -969,7 +980,9 @@ destructor TThreadList.Destroy;
       inherited Destroy;
     finally
       UnlockList;
+{$ifdef FPC_HAS_FEATURE_THREADING}
       DoneCriticalSection(FLock);
+{$endif}
     end;
   end;
 
@@ -1004,7 +1017,9 @@ procedure TThreadList.Clear;
 function TThreadList.LockList: TList;
   begin
     Result:=FList;
+{$ifdef FPC_HAS_FEATURE_THREADING}
     System.EnterCriticalSection(FLock);
+{$endif}
   end;
 
 
@@ -1021,5 +1036,7 @@ procedure TThreadList.Remove(Item: Pointer);
 
 procedure TThreadList.UnlockList;
   begin
+{$ifdef FPC_HAS_FEATURE_THREADING}
     System.LeaveCriticalSection(FLock);
+{$endif}
   end;

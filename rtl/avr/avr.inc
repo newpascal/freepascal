@@ -25,7 +25,6 @@ procedure fpc_cpuinit;{$ifdef SYSTEMINLINE}inline;{$endif}
 {$define FPC_SYSTEM_HAS_MOVE}
 procedure Move(const source;var dest;count:SizeInt);[public, alias: 'FPC_MOVE'];
 var
-  aligncount : sizeint;
   pdest,psrc,pend : pbyte;
 begin
   if (@dest=@source) or (count<=0) then
@@ -192,6 +191,117 @@ function InterlockedCompareExchange(var Target: longint; NewValue: longint; Comp
 
 
 function InterLockedExchangeAdd (var Target: longint;Source : longint) : longint;
+  var
+    temp_sreg : byte;
+  begin
+    { block interrupts }
+    asm
+      in r0,0x3f
+      std temp_sreg,r0
+      cli
+    end;
+
+    Result:=Target;
+    inc(Target,Source);
+
+    { release interrupts }
+    asm
+      ldd r0,temp_sreg
+      out 0x3f,r0
+    end;
+  end;
+
+
+function InterLockedDecrement (var Target: smallint) : smallint;
+  var
+    temp_sreg : byte;
+  begin
+    { block interrupts }
+    asm
+      in r0,0x3f
+      std temp_sreg,r0
+      cli
+    end;
+
+    dec(Target);
+    Result:=Target;
+
+    { release interrupts }
+    asm
+      ldd r0,temp_sreg
+      out 0x3f,r0
+    end;
+  end;
+
+
+function InterLockedIncrement (var Target: smallint) : smallint;
+  var
+    temp_sreg : byte;
+  begin
+    { block interrupts }
+    asm
+      in r0,0x3f
+      std temp_sreg,r0
+      cli
+    end;
+
+    inc(Target);
+    Result:=Target;
+
+    { release interrupts }
+    asm
+      ldd r0,temp_sreg
+      out 0x3f,r0
+    end;
+  end;
+
+
+function InterLockedExchange (var Target: smallint;Source : smallint) : smallint;
+  var
+    temp_sreg : byte;
+  begin
+    { block interrupts }
+    asm
+      in r0,0x3f
+      std temp_sreg,r0
+      cli
+    end;
+
+    Result:=Target;
+    Target:=Source;
+
+    { release interrupts }
+    asm
+      ldd r0,temp_sreg
+      out 0x3f,r0
+    end;
+  end;
+
+
+function InterlockedCompareExchange(var Target: smallint; NewValue: smallint; Comperand: smallint): smallint;
+  var
+    temp_sreg : byte;
+  begin
+    { block interrupts }
+    asm
+      in r0,0x3f
+      std temp_sreg,r0
+      cli
+    end;
+
+    Result:=Target;
+    if Target=Comperand then
+      Target:=NewValue;
+
+    { release interrupts }
+    asm
+      ldd r0,temp_sreg
+      out 0x3f,r0
+    end;
+  end;
+
+
+function InterLockedExchangeAdd (var Target: smallint;Source : smallint) : smallint;
   var
     temp_sreg : byte;
   begin

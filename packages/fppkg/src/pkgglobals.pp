@@ -10,8 +10,7 @@ uses
 {$endif}
   SysUtils,
   Classes,
-  fpmkunit,
-  fprepos;
+  fpmkunit;
 
 Const
 {$ifdef unix}
@@ -24,11 +23,12 @@ Const
 
 Type
   TFPMKUnitDep=record
-    package  : string[12];
-    reqver   : string[8];
-    undef    : string[32];
-    def      : string[32];
-    available: boolean;
+    package    : string[64];
+    reqver     : string[8];
+    undef      : string[32];
+    def        : string[32];
+    PluginUnit : string[64];
+    available  : boolean;
   end;
 
 Const
@@ -57,13 +57,13 @@ Const
   );
 
 Type
-  TLogLevel = (llError,llWarning,llInfo,llCommands,llDebug,llProgres);
+  TLogLevel = (llError,llWarning,llInfo,llCommands,llDebug,llProgress);
   TLogLevels = Set of TLogLevel;
   TLogProc = procedure(Level:TLogLevel;Const Msg: String);
 
 const
-  DefaultLogLevels = [llError,llWarning, llProgres];
-  AllLogLevels = [llError,llWarning,llCommands,llInfo,llProgres];
+  DefaultLogLevels = [llError,llWarning, llProgress];
+  AllLogLevels = [llError,llWarning,llCommands,llInfo,llProgress];
 
 type
   EPackagerError = class(Exception);
@@ -95,6 +95,10 @@ var
   FPMKUnitDeps : array of TFPMKUnitDep;
   LogHandler: TLogProc;
   ErrorHandler: TPkgErrorProc;
+
+function GetFppkgConfigFile(Global : Boolean; SubDir : Boolean): string;
+function GetFppkgConfigDir(Global : Boolean): string;
+
 
 Implementation
 
@@ -377,13 +381,17 @@ var
   infosl: TStringList;
 begin
   infosl:=TStringList.Create;
-  infosl.Delimiter:=' ';
-  infosl.DelimitedText:=GetCompilerInfo(ACompiler,AOptions);
-  if infosl.Count<>3 then
-    Raise EPackagerError.Create(SErrInvalidFPCInfo);
-  AVersion:=infosl[0];
-  ACPU:=StringToCPU(infosl[1]);
-  AOS:=StringToOS(infosl[2]);
+  try
+    infosl.Delimiter:=' ';
+    infosl.DelimitedText:=GetCompilerInfo(ACompiler,AOptions);
+    if infosl.Count<>3 then
+      Raise EPackagerError.Create(SErrInvalidFPCInfo);
+    AVersion:=infosl[0];
+    ACPU:=StringToCPU(infosl[1]);
+    AOS:=StringToOS(infosl[2]);
+  finally
+    infosl.Free;
+  end;
 end;
 
 function IsSuperUser:boolean;
@@ -420,11 +428,42 @@ begin
   end;
 end;
 
+function GetFppkgConfigFile(Global : Boolean; SubDir : Boolean): string;
+var
+  StoredOnGetApplicationName: TGetAppNameEvent;
+  StoredOnGetVendorName: TGetVendorNameEvent;
+begin
+  StoredOnGetApplicationName := OnGetApplicationName;
+  StoredOnGetVendorName := OnGetVendorName;
+  try
+    OnGetApplicationName := @FPPkgGetApplicationName;
+    OnGetVendorName := @FPPkgGetVendorName;
+    result := GetAppConfigFile(Global, SubDir);
+  finally
+    OnGetApplicationName := StoredOnGetApplicationName;
+    OnGetVendorName := StoredOnGetVendorName;
+  end;
+end;
+
+function GetFppkgConfigDir(Global : Boolean): string;
+var
+  StoredOnGetApplicationName: TGetAppNameEvent;
+  StoredOnGetVendorName: TGetVendorNameEvent;
+begin
+  StoredOnGetApplicationName := OnGetApplicationName;
+  StoredOnGetVendorName := OnGetVendorName;
+  try
+    OnGetApplicationName := @FPPkgGetApplicationName;
+    OnGetVendorName := @FPPkgGetVendorName;
+    result := GetAppConfigDir(Global);
+  finally
+    OnGetApplicationName := StoredOnGetApplicationName;
+    OnGetVendorName := StoredOnGetVendorName;
+  end;
+end;
+
 
 initialization
-  OnGetVendorName:=@FPPkgGetVendorName;
-  OnGetApplicationName:=@FPPkgGetApplicationName;
   LogHandler := @LogCmd;
   ErrorHandler := @ErrorCmd;
-
 end.

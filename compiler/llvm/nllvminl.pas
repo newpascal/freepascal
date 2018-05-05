@@ -32,26 +32,55 @@ interface
     type
       tllvminlinenode = class(tcginlinenode)
        protected
+        procedure maybe_remove_round_trunc_typeconv;
+
         function first_get_frame: tnode; override;
         function first_abs_real: tnode; override;
         function first_sqr_real: tnode; override;
+        function first_trunc_real: tnode; override;
        public
         procedure second_length; override;
         procedure second_sqr_real; override;
+        procedure second_trunc_real; override;
       end;
 
 
 implementation
 
      uses
-       verbose,globtype,constexp,
+       verbose,globals,globtype,constexp,
        aasmbase, aasmdata,
-       symtype,symdef,defutil,
-       nutils,nadd,nbas,ncal,ncon,nflw,ninl,nld,nmat,
+       symconst,symtype,symdef,defutil,
+       nutils,nadd,nbas,ncal,ncnv,ncon,nflw,ninl,nld,nmat,
        pass_2,
        cgbase,cgutils,tgobj,hlcgobj,
        cpubase,
        llvmbase,aasmllvm;
+
+     procedure tllvminlinenode.maybe_remove_round_trunc_typeconv;
+       var
+         temp: tnode;
+       begin
+         { the prototype of trunc()/round() in the system unit is declared
+           with valreal as parameter type, so the argument will always be
+           extended -> remove the typeconversion to extended if any; not done
+           in ninl, because there are other code generators that assume that
+           the parameter to trunc has been converted to valreal (e.g. PowerPC).
+
+           (copy from code in nx64inl, should be refactored)
+         }
+         if (left.nodetype=typeconvn) and
+            not(nf_explicit in left.flags) and
+            (ttypeconvnode(left).left.resultdef.typ=floatdef) then
+           begin
+             { get rid of the type conversion, so the use_vectorfpu will be
+               applied to the original type }
+             temp:=ttypeconvnode(left).left;
+             ttypeconvnode(left).left:=nil;
+             left.free;
+             left:=temp;
+           end;
+       end;
 
 
      function tllvminlinenode.first_get_frame: tnode;
@@ -127,6 +156,21 @@ implementation
       end;
 
 
+    function tllvminlinenode.first_trunc_real: tnode;
+      begin
+        { fptosi is undefined if the value is out of range -> only generate
+          in cast of fastmath }
+        if cs_opt_fastmath in current_settings.optimizerswitches then
+          begin
+            maybe_remove_round_trunc_typeconv;
+            expectloc:=LOC_REGISTER;
+            result:=nil;
+          end
+        else
+          result:=inherited;
+      end;
+
+
     procedure tllvminlinenode.second_length;
       var
         lengthlab, nillab: tasmlabel;
@@ -140,10 +184,10 @@ implementation
             if not(left.location.loc in [LOC_REFERENCE,LOC_CREFERENCE]) then
               internalerror(2014080806);
            { typecast the shortstring reference into a length byte reference }
-           location_reset_ref(location,left.location.loc,def_cgsize(resultdef),left.location.reference.alignment);
+           location_reset_ref(location,left.location.loc,def_cgsize(resultdef),left.location.reference.alignment,left.location.reference.volatility);
            hregister:=hlcg.getaddressregister(current_asmdata.CurrAsmList,cpointerdef.getreusable(resultdef));
            hlcg.a_loadaddr_ref_reg(current_asmdata.CurrAsmList,left.resultdef,cpointerdef.getreusable(resultdef),left.location.reference,hregister);
-           hlcg.reference_reset_base(location.reference,cpointerdef.getreusable(resultdef),hregister,0,left.location.reference.alignment);
+           hlcg.reference_reset_base(location.reference,cpointerdef.getreusable(resultdef),hregister,0,left.location.reference.temppos,left.location.reference.alignment,left.location.reference.volatility);
          end
         else
          begin
@@ -159,7 +203,9 @@ implementation
            current_asmdata.getjumplabel(nillab);
            current_asmdata.getjumplabel(lengthlab);
            hlcg.a_cmp_const_reg_label(current_asmdata.CurrAsmList,cpointerdef.getreusable(lendef),OC_EQ,0,left.location.register,nillab);
-           hlcg.reference_reset_base(href,cpointerdef.getreusable(lendef),left.location.register,-lendef.size,lendef.alignment);
+           { volatility of the ansistring/widestring refers to the volatility of the
+             string pointer, not of the string data }
+           hlcg.reference_reset_base(href,cpointerdef.getreusable(lendef),left.location.register,-lendef.size,ctempposinvalid,lendef.alignment,[]);
            hregister:=hlcg.getintregister(current_asmdata.CurrAsmList,resultdef);
            hlcg.a_load_ref_reg(current_asmdata.CurrAsmList,lendef,resultdef,href,hregister);
            if is_widestring(left.resultdef) then
@@ -203,6 +249,21 @@ implementation
             location.register,resultdef,
             left.location.register,left.location.register
           )
+        );
+      end;
+
+
+    procedure tllvminlinenode.second_trunc_real;
+      begin
+        secondpass(left);
+        if use_vectorfpu(left.resultdef) then
+          hlcg.location_force_mmregscalar(current_asmdata.CurrAsmList,left.location,left.resultdef,true)
+        else
+          hlcg.location_force_fpureg(current_asmdata.CurrAsmList,left.location,left.resultdef,true);
+        location_reset(location,LOC_REGISTER,def_cgsize(resultdef));
+        location.register:=hlcg.getregisterfordef(current_asmdata.CurrAsmList,resultdef);
+        current_asmdata.CurrAsmList.concat(
+          taillvm.op_reg_size_reg_size(la_fptosi,location.register,left.resultdef,left.location.register,resultdef)
         );
       end;
 

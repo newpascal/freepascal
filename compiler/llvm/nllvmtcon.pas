@@ -67,6 +67,7 @@ interface
        class constructor classcreate;
      protected
       foverriding_def: tdef;
+      fappendingdef: boolean;
 
       fqueued_tai,
       flast_added_tai: tai;
@@ -115,13 +116,15 @@ interface
       function emit_placeholder(def: tdef): ttypedconstplaceholder; override;
 
       class function get_string_symofs(typ: tstringtype; winlikewidestring: boolean): pint; override;
+
+      property appendingdef: boolean write fappendingdef;
     end;
 
 
 implementation
 
   uses
-    verbose,systems,
+    verbose,systems,fmodule,
     aasmdata,
     cpubase,cpuinfo,llvmbase,
     symtable,llvmdef,defutil,defcmp;
@@ -187,6 +190,8 @@ implementation
       { llvm declaration with as initialisation data all the elements from the
         original asmlist }
       decl:=taillvmdecl.createdef(sym,def,fasmlist,section,alignment);
+      if fappendingdef then
+        include(decl.flags,ldf_appending);
       if section=sec_user then
         decl.setsecname(secname);
       if tcalo_is_lab in options then
@@ -197,7 +202,18 @@ implementation
         include(decl.flags,ldf_vectorized);
       if tcalo_weak in options then
         include(decl.flags,ldf_weak);
-      { TODO: tcalo_no_dead_strip: add to @llvm.user meta-variable }
+      if tcalo_no_dead_strip in options then
+        { Objective-C section declarations already contain "no_dead_strip"
+          attributes if none of their symbols need to be stripped -> only
+          add the symbols to llvm.compiler.used (only affects compiler
+          optimisations) and not to llvm.used (also affects linker -- which in
+          this case is already taken care of by the section attribute; not sure
+          why it's done like this, but this is how Clang does it) }
+        if (target_info.system in systems_darwin) and
+           (section in [low(TObjCAsmSectionType)..high(TObjCAsmSectionType)]) then
+          current_module.llvmcompilerusedsyms.add(decl)
+        else
+          current_module.llvmusedsyms.add(decl);
       newasmlist.concat(decl);
       fasmlist:=newasmlist;
     end;
@@ -301,13 +317,14 @@ implementation
             use a custom recorddef to emit this data }
           if not(info.anonrecord) and
              (info.def.typ<>procvardef) and
-             (aggregate_kind(info.def)=tck_record) then
+             (aggregate_kind(info.def)=tck_record) and
+             not info.doesnotmatchllvmdef then
             begin
-              if not info.doesnotmatchllvmdef and
-                 (info.llvmnextfieldindex<tabstractrecordsymtable(tabstractrecorddef(info.def).symtable).llvmst.symdeflist.count) and
+              if (info.llvmnextfieldindex>=tabstractrecordsymtable(tabstractrecorddef(info.def).symtable).llvmst.symdeflist.count) or
                  not equal_defs(def,tabstractrecordsymtable(tabstractrecorddef(info.def).symtable).llvmst.entries_by_llvm_index[info.llvmnextfieldindex].def) then
-                info.doesnotmatchllvmdef:=true;
-              info.llvmnextfieldindex:=info.llvmnextfieldindex+1;
+                info.doesnotmatchllvmdef:=true
+              else
+                info.llvmnextfieldindex:=info.llvmnextfieldindex+1;
             end;
           info.aggai.addvalue(stc);
         end
@@ -485,16 +502,19 @@ implementation
       inherited;
       info:=tllvmaggregateinformation(curagginfo);
       if assigned(info) and
-         was_aggregate then
+         was_aggregate and
+         not info.doesnotmatchllvmdef then
         begin
           { are we emitting data that does not match the equivalent data in
             the llvm structure? If so, record this so that we know we have to
             use a custom recorddef to emit this data }
           if not info.anonrecord and
              (aggregate_kind(info.def)=tck_record) and
-             not equal_defs(def,tabstractrecordsymtable(tabstractrecorddef(info.def).symtable).llvmst.entries_by_llvm_index[info.llvmnextfieldindex].def) then
-            info.doesnotmatchllvmdef:=true;
-          info.llvmnextfieldindex:=info.llvmnextfieldindex+1;
+             ((info.llvmnextfieldindex>=tabstractrecordsymtable(tabstractrecorddef(info.def).symtable).llvmst.symdeflist.count) or
+              not equal_defs(def,tabstractrecordsymtable(tabstractrecorddef(info.def).symtable).llvmst.entries_by_llvm_index[info.llvmnextfieldindex].def)) then
+            info.doesnotmatchllvmdef:=true
+          else
+            info.llvmnextfieldindex:=info.llvmnextfieldindex+1;
         end;
     end;
 
@@ -737,10 +757,21 @@ implementation
 
 
   procedure tllvmtai_typedconstbuilder.queue_emit_ordconst(value: int64; def: tdef);
+    var
+      valuedef: tdef;
     begin
       { no offset into an ordinal constant }
       if fqueue_offset<>0 then
         internalerror(2015030702);
+      if not is_ordinal(def) then
+        begin
+          { insert an ordinal -> non-ordinal (e.g. pointer) conversion, as you
+            cannot have integer constants as pointer values in LLVM }
+          int_to_type(value,valuedef);
+          queue_typeconvn(valuedef,def);
+          { and now emit the constant as an ordinal }
+          def:=valuedef;
+        end;
       inherited;
     end;
 

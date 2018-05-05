@@ -28,22 +28,22 @@ unit agx86att;
 interface
 
     uses
-      cclasses,cpubase,systems,
-      globals,globtype,cgutils,
-      aasmbase,aasmtai,aasmdata,assemble,aggas;
+      cpubase,systems,
+      globtype,cgutils,
+      aasmtai,assemble,aggas;
 
     type
       Tx86ATTAssembler=class(TGNUassembler)
-        constructor create(info: pasminfo; smart: boolean); override;
+        constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean); override;
         function MakeCmdLine: TCmdStr; override;
       end;
 
       Tx86AppleGNUAssembler=class(TAppleGNUassembler)
-        constructor create(info: pasminfo; smart: boolean); override;
+        constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean); override;
       end;
 
       Tx86AoutGNUAssembler=class(TAoutGNUassembler)
-        constructor create(info: pasminfo; smart: boolean); override;
+        constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean); override;
       end;
 
 
@@ -76,7 +76,7 @@ interface
                             Tx86ATTAssembler
  ****************************************************************************}
 
-    constructor Tx86ATTAssembler.create(info: pasminfo; smart: boolean);
+    constructor Tx86ATTAssembler.CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean);
       begin
         inherited;
         InstrWriter := Tx86InstrWriter.create(self);
@@ -126,7 +126,7 @@ interface
                           Tx86AppleGNUAssembler
  ****************************************************************************}
 
-    constructor Tx86AppleGNUAssembler.create(info: pasminfo; smart: boolean);
+    constructor Tx86AppleGNUAssembler.CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean);
       begin
         inherited;
         InstrWriter := Tx86InstrWriter.create(self);
@@ -140,7 +140,7 @@ interface
                           Tx86AoutGNUAssembler
  ****************************************************************************}
 
-    constructor Tx86AoutGNUAssembler.create(info: pasminfo; smart: boolean);
+    constructor Tx86AoutGNUAssembler.CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean);
       begin
         inherited;
         InstrWriter := Tx86InstrWriter.create(self);
@@ -192,20 +192,10 @@ interface
              owner.writer.AsmWrite('0');
            if (index<>NR_NO) and (base=NR_NO) then
             begin
-              if scalefactor in [0,1] then
-                { Switching index to base position gives shorter
-                  assembler instructions }
-                begin
-                  owner.writer.AsmWrite('('+gas_regname(index)+')');
-                end
-              else
-                begin
-                  owner.writer.AsmWrite('(,'+gas_regname(index));
-                  if scalefactor<>0 then
-                   owner.writer.AsmWrite(','+tostr(scalefactor)+')')
-                  else
-                   owner.writer.AsmWrite(')');
-                end;
+              owner.writer.AsmWrite('(,'+gas_regname(index));
+              if scalefactor<>0 then
+                owner.writer.AsmWrite(','+tostr(scalefactor));
+              owner.writer.AsmWrite(')');
             end
            else
             if (index=NR_NO) and (base<>NR_NO) then
@@ -293,7 +283,6 @@ interface
        op       : tasmop;
        calljmp  : boolean;
        i        : integer;
-       sreg     : string;
       begin
         if hp.typ <> ait_instruction then
           exit;
@@ -301,27 +290,6 @@ interface
         op:=taicpu(hp).opcode;
         calljmp:=is_calljmp(op);
 
-        // BUGFIX GAS-assembler
-        // Intel "Intel 64 and IA-32 Architectures Software Developers manual 12/2011"
-        // Intel:       VCVTDQ2PD  YMMREG, YMMREG/mem128 ((intel syntax))
-        // GAS:         VCVTDQ2PD  YMMREG, XMMREG/mem128 ((intel syntax))
-        if (op = A_VCVTDQ2PD) and
-           (taicpu(hp).ops = 2) and
-           (taicpu(hp).oper[0]^.typ = top_reg) and
-           (taicpu(hp).oper[1]^.typ = top_reg) then
-        begin
-          if ((taicpu(hp).oper[0]^.ot and OT_YMMREG) = OT_YMMREG) and
-             ((taicpu(hp).oper[1]^.ot and OT_YMMREG) = OT_YMMREG) then
-          begin
-            // change registertype in oper[0] from OT_YMMREG to OT_XMMREG
-            taicpu(hp).oper[0]^.ot := taicpu(hp).oper[0]^.ot and not(OT_YMMREG) or OT_XMMREG;
-
-            sreg := gas_regname(taicpu(hp).oper[0]^.reg);
-            if (copy(sreg, 1, 2) = '%y') or
-               (copy(sreg, 1, 2) = '%Y') then
-              taicpu(hp).oper[0]^.reg := gas_regnum_search('%x' + copy(sreg, 3, length(sreg) - 2));
-          end;
-        end;
         { see fNoInterUnitMovQ declaration comment }
         if fNoInterUnitMovQ then
           begin
@@ -344,6 +312,9 @@ interface
           are (xmm) arguments }
         if (op=A_MOVSD) and (taicpu(hp).ops>0) then
           owner.writer.AsmWrite('movsd')
+        { the same applies to cmpsd as well }
+        else if (op=A_CMPSD) and (taicpu(hp).ops>0) then
+          owner.writer.AsmWrite('cmpsd')
         else
           owner.writer.AsmWrite(gas_op2str[op]);
         owner.writer.AsmWrite(cond2str[taicpu(hp).condition]);
@@ -369,39 +340,7 @@ interface
                (getregtype(taicpu(hp).oper[0]^.reg)=R_FPUREGISTER)
               ) then
         begin
-          if (gas_needsuffix[op] = AttSufMM)then
-          begin
-            for i:=0 to taicpu(hp).ops-1 do
-            begin
-
-              if (taicpu(hp).oper[i]^.typ = top_ref) then
-              begin
-                case taicpu(hp).oper[i]^.ot and OT_SIZE_MASK of
-                   OT_BITS32: begin
-                                owner.writer.AsmWrite(gas_opsize2str[S_L]);
-                                break;
-                              end;
-                   OT_BITS64: begin
-                                owner.writer.AsmWrite(gas_opsize2str[S_Q]);
-                                break;
-                              end;
-                  OT_BITS128: begin
-                                owner.writer.AsmWrite(gas_opsize2str[S_XMM]);
-                                break;
-                              end;
-                  OT_BITS256: begin
-                                owner.writer.AsmWrite(gas_opsize2str[S_YMM]);
-                                break;
-                              end;
-                           0: begin
-                                owner.writer.AsmWrite(gas_opsize2str[taicpu(hp).opsize]);
-                                break;
-                              end;
-                end;
-              end;
-            end;
-          end
-          else owner.writer.AsmWrite(gas_opsize2str[taicpu(hp).opsize]);
+          owner.writer.AsmWrite(gas_opsize2str[taicpu(hp).opsize]);
         end;
 
         { process operands }
@@ -439,7 +378,7 @@ interface
             id     : as_gas;
             idtxt  : 'AS';
             asmbin : 'as';
-            asmcmd : '--64 -o $OBJ $EXTRAOPT $ASM';
+            asmcmd : '--64 -o $OBJ $BIGOBJ $EXTRAOPT $ASM';
             supported_targets : [system_x86_64_linux,system_x86_64_freebsd,
                                  system_x86_64_win64,system_x86_64_embedded,
                                  system_x86_64_openbsd,system_x86_64_netbsd,
@@ -512,7 +451,7 @@ interface
             asmbin : 'clang';
             asmcmd : '-c -o $OBJ $EXTRAOPT -arch x86_64 $DARWINVERSION -x assembler $ASM';
             supported_targets : [system_x86_64_darwin,system_x86_64_iphonesim];
-            flags : [af_needar,af_smartlink_sections,af_supports_dwarf];
+            flags : [af_needar,af_smartlink_sections,af_supports_dwarf,af_no_stabs];
             labelprefix : 'L';
             comment : '# ';
             dollarsign: '$';
@@ -524,9 +463,9 @@ interface
             id     : as_gas;
             idtxt  : 'AS';
             asmbin : 'as';
-            asmcmd : '--32 -o $OBJ $EXTRAOPT $ASM';
+            asmcmd : '--32 -o $OBJ $BIGOBJ $EXTRAOPT $ASM';
             supported_targets : [system_i386_GO32V2,system_i386_linux,system_i386_Win32,system_i386_freebsd,system_i386_solaris,system_i386_beos,
-                                system_i386_netbsd,system_i386_Netware,system_i386_qnx,system_i386_wdosx,system_i386_openbsd,
+                                system_i386_netbsd,system_i386_Netware,system_i386_wdosx,system_i386_openbsd,
                                 system_i386_netwlibc,system_i386_wince,system_i386_embedded,system_i386_symbian,system_i386_haiku,system_x86_6432_linux,
                                 system_i386_nativent,system_i386_android,system_i386_aros];
             flags : [af_needar,af_smartlink_sections,af_supports_dwarf];
@@ -542,7 +481,7 @@ interface
             asmbin : 'yasm';
             asmcmd : '-a x86 -p gas -f $FORMAT -o $OBJ $EXTRAOPT $ASM';
             supported_targets : [system_i386_GO32V2,system_i386_linux,system_i386_Win32,system_i386_freebsd,system_i386_solaris,system_i386_beos,
-                                system_i386_netbsd,system_i386_Netware,system_i386_qnx,system_i386_wdosx,system_i386_openbsd,
+                                system_i386_netbsd,system_i386_Netware,system_i386_wdosx,system_i386_openbsd,
                                 system_i386_netwlibc,system_i386_wince,system_i386_embedded,system_i386_symbian,system_i386_haiku,system_x86_6432_linux,
                                 system_i386_nativent];
             flags : [af_needar,af_smartlink_sections,af_supports_dwarf];
@@ -586,7 +525,7 @@ interface
             asmbin : 'clang';
             asmcmd : '-c -o $OBJ $EXTRAOPT -arch i386 $DARWINVERSION -x assembler $ASM';
             supported_targets : [system_i386_darwin,system_i386_iphonesim];
-            flags : [af_needar,af_smartlink_sections,af_supports_dwarf];
+            flags : [af_needar,af_smartlink_sections,af_supports_dwarf,af_no_stabs];
             labelprefix : 'L';
             comment : '# ';
             dollarsign: '$';
@@ -599,7 +538,7 @@ interface
             asmbin : 'gas';
             asmcmd : '--32 -o $OBJ $EXTRAOPT $ASM';
             supported_targets : [system_i386_GO32V2,system_i386_linux,system_i386_Win32,system_i386_freebsd,system_i386_solaris,system_i386_beos,
-                                system_i386_netbsd,system_i386_Netware,system_i386_qnx,system_i386_wdosx,system_i386_openbsd,
+                                system_i386_netbsd,system_i386_Netware,system_i386_wdosx,system_i386_openbsd,
                                 system_i386_netwlibc,system_i386_wince,system_i386_embedded,system_i386_symbian,system_i386_haiku,
                                 system_x86_6432_linux,system_i386_android];
             flags : [af_needar,af_smartlink_sections,af_supports_dwarf];

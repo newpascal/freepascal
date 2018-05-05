@@ -82,6 +82,7 @@ unit cpubase;
          a_fsflmul,a_ftst,
          a_ftrapeq,a_ftrapne,a_ftrapgt,a_ftrapngt,a_ftrapge,a_ftrapnge,
          a_ftraplt,a_ftrapnlt,a_ftraple,a_ftrapgl,a_ftrapngl,a_ftrapgle,a_ftrapngle,
+         a_fint,a_fintrz,
          { fpu instructions - indirectly supported }
          a_fsin,a_fcos,
          { protected instructions }
@@ -267,7 +268,8 @@ unit cpubase;
       NR_STACK_POINTER_REG = NR_SP;
       RS_STACK_POINTER_REG = RS_SP;
       {# Frame pointer register }
-{ Frame pointer register (initialized in tm68kprocinfo.init_framepointer) }
+
+      { Frame pointer register (initialized in tcpuprocinfo.init_framepointer) }
       RS_FRAME_POINTER_REG: tsuperregister = RS_NO;
       NR_FRAME_POINTER_REG: tregister = NR_NO;
 
@@ -275,11 +277,12 @@ unit cpubase;
          such as in PIC code. The exact meaning is ABI specific. For
          further information look at GCC source : PIC_OFFSET_TABLE_REGNUM
       }
-{ TODO: FIX ME!!! pic offset reg conflicts with frame pointer?}
-      NR_PIC_OFFSET_REG = NR_A5;
+      RS_PIC_OFFSET_REG: tsuperregister = RS_NO;
+      NR_PIC_OFFSET_REG: tregister = NR_NO;
+
       { Return address for DWARF }
-{ TODO: just a guess!}
       NR_RETURN_ADDRESS_REG = NR_A0;
+      RS_RETURN_ADDRESS_REG = RS_A0;
       { Results are returned in this register (32-bit values) }
       NR_FUNCTION_RETURN_REG = NR_D0;
       RS_FUNCTION_RETURN_REG = RS_D0;
@@ -302,26 +305,20 @@ unit cpubase;
       {# Floating point results will be placed into this register }
       NR_FPU_RESULT_REG = NR_FP0;
 
+      {# This is m68k C ABI specific. Some ABIs expect the address of the
+         return struct result value in this register. Note that it could be
+         either A0 or A1, so later it must be decided on target/ABI specific
+         basis. We start with A1 now, because that's what Linux/m68k does
+         currently. (KB) }
+      RS_M68K_STRUCT_RESULT_REG: tsuperregister = RS_A1;
+      NR_M68K_STRUCT_RESULT_REG: tregister = NR_A1;
+
       NR_DEFAULTFLAGS = NR_SR;
       RS_DEFAULTFLAGS = RS_SR;
 
 {*****************************************************************************
                        GCC /ABI linking information
 *****************************************************************************}
-
-      {# Registers which must be saved when calling a routine declared as
-         cppdecl, cdecl, stdcall, safecall, palmossyscall. The registers
-         saved should be the ones as defined in the target ABI and / or GCC.
-
-         This value can be deduced from CALLED_USED_REGISTERS array in the
-         GCC source.
-      }
-      saved_standard_registers : array[0..5] of tsuperregister = (RS_D2,RS_D3,RS_D4,RS_D5,RS_D6,RS_D7);
-      saved_address_registers : array[0..4] of tsuperregister = (RS_A2,RS_A3,RS_A4,RS_A5,RS_A6);
-      saved_fpu_registers : array[0..5] of tsuperregister = (RS_FP2,RS_FP3,RS_FP4,RS_FP5,RS_FP6,RS_FP7);
-
-      { this is only for the generic code which is not used for this architecture }
-      saved_mm_registers : array[0..0] of tsuperregister = (RS_INVALID);
 
       {# Required parameter alignment when calling a routine declared as
          stdcall and cdecl. The alignment value should be the one defined
@@ -347,7 +344,9 @@ unit cpubase;
         (S_NO,S_B,S_W,S_L,S_L,S_NO,S_B,S_W,S_L,S_L,S_NO,
          S_FS,S_FD,S_FX,S_NO,S_NO,
          S_NO,S_NO,S_NO,S_NO,S_NO,S_NO,
-         S_NO,S_NO,S_NO,S_NO,S_NO,S_NO);
+         S_NO,S_NO,S_NO,S_NO,S_NO,S_NO,
+         S_NO,S_NO,S_NO,S_NO,S_NO,
+         S_NO,S_NO,S_NO,S_NO,S_NO);
 
     function  is_calljmp(o:tasmop):boolean;
 

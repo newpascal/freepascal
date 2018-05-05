@@ -15,7 +15,7 @@
 
  **********************************************************************}
 
-unit dateutils;
+unit DateUtils;
 
 interface
 
@@ -253,8 +253,8 @@ Function WithinPastMilliSeconds(const ANow, AThen: TDateTime; const AMilliSecond
     Period functions.
   ---------------------------------------------------------------------}
 
-Function YearsBetween(const ANow, AThen: TDateTime): Integer;
-Function MonthsBetween(const ANow, AThen: TDateTime): Integer;
+Function YearsBetween(const ANow, AThen: TDateTime; AExact : Boolean = False): Integer;
+Function MonthsBetween(const ANow, AThen: TDateTime; AExact : Boolean = False): Integer;
 Function WeeksBetween(const ANow, AThen: TDateTime): Integer;
 Function DaysBetween(const ANow, AThen: TDateTime): Integer;
 Function HoursBetween(const ANow, AThen: TDateTime): Int64;
@@ -364,6 +364,10 @@ Function CompareTime(const A, B: TDateTime): TValueRelationship;
 Function SameDateTime(const A, B: TDateTime): Boolean;
 Function SameDate(const A, B: TDateTime): Boolean;
 Function SameTime(const A, B: TDateTime): Boolean;
+function DateTimeInRange(ADateTime: TDateTime; AStartDateTime, AEndDateTime: TDateTime; aInclusive: Boolean = True): Boolean;
+function TimeInRange(ATime: TTime; AStartTime, AEndTime: TTime; AInclusive: Boolean = True): Boolean;
+function DateInRange(ADate: TDate; AStartDate, AEndDate: TDate; AInclusive: Boolean = True): Boolean;
+
 
 { For a given date these Functions tell you the which day of the week of the
   month (or year).  If its a Thursday, they will tell you if its the first,
@@ -1259,6 +1263,50 @@ begin
 end;
 
 
+ 
+function DateTimeInRange(ADateTime: TDateTime; AStartDateTime, AEndDateTime: TDateTime; aInclusive: Boolean = True): Boolean;
+
+begin
+  if aInclusive then
+    Result:=(AStartDateTime<=ADateTime) and (ADateTime<=AEndDateTime)
+  else
+    Result:=(AStartDateTime<ADateTime) and (ADateTime<AEndDateTime);
+end;
+
+
+function TimeInRange(ATime: TTime; AStartTime, AEndTime: TTime; AInclusive: Boolean = True): Boolean;
+
+var
+ LTime, LStartTime, LEndTime: TTime;
+ 
+begin
+  LTime:=TimeOf(ATime);
+  LStartTime:=TimeOf(AStartTime);
+  LEndTime:=TimeOf(AEndTime);
+  if LEndTime<LStartTime then
+    if AInclusive then
+      Result:=(LStartTime<=LTime) or (LTime<=LEndTime)
+    else
+      Result:=(LStartTime<LTime) or (LTime<LEndTime)
+  else
+    if AInclusive then
+      Result:=(LStartTime<=LTime) and (LTime<=LEndTime)
+    else
+      Result:=(LStartTime<LTime) and (LTime<LEndTime);
+end;
+
+
+function DateInRange(ADate: TDate; AStartDate, AEndDate: TDate; AInclusive: Boolean = True): Boolean;
+
+begin
+  if AInclusive then
+    Result:=(DateOf(AStartDate)<=DateOf(ADate)) and (DateOf(ADate)<=DateOf(AEndDate))
+  else
+    Result:=(DateOf(AStartDate)<DateOf(ADate)) and (DateOf(ADate)<DateOf(AEndDate));
+end;
+
+
+
 { ---------------------------------------------------------------------
     Period functions.
   ---------------------------------------------------------------------}
@@ -1281,15 +1329,37 @@ begin
 end;
 
 
-Function YearsBetween(const ANow, AThen: TDateTime): Integer;
+Function YearsBetween(const ANow, AThen: TDateTime; AExact : Boolean = False): Integer;
+
+var
+  yy, mm, dd: Word;
+  
 begin
-  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+HalfMilliSecond)/ApproxDaysPerYear);
+  if AExact and (ANow >= -DateDelta) and (AThen >= -DateDelta) and
+     (ANow <= MaxDateTime) and (AThen <= MaxDateTime) then
+    begin
+    PeriodBetween(ANow, AThen, yy , mm, dd);
+    Result := yy;
+    end
+  else
+    Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+HalfMilliSecond)/ApproxDaysPerYear);
 end;
 
 
-Function MonthsBetween(const ANow, AThen: TDateTime): Integer;
+Function MonthsBetween(const ANow, AThen: TDateTime; AExact : Boolean = False): Integer;
+
+var
+  y, m, d: Word;
+
 begin
-  Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+HalfMilliSecond)/ApproxDaysPerMonth);
+  if AExact and (ANow >= -DateDelta) and (AThen >= -DateDelta) and
+     (ANow <= MaxDateTime) and (AThen <= MaxDateTime) then
+    begin
+    PeriodBetween(ANow, AThen, y, m, d);
+    Result := y*12 + m;
+    end
+  else
+    Result:=Trunc((Abs(DateTimeDiff(ANow,AThen))+HalfMilliSecond)/ApproxDaysPerMonth);
 end;
 
 
@@ -1915,10 +1985,20 @@ Function CompareDateTime(const A, B: TDateTime): TValueRelationship;
 begin
   If SameDateTime(A,B) then
     Result:=EqualsValue
-  else If A>B then
-    Result:=GreaterThanValue
-  else
-    Result:=LessThanValue
+  else if trunc(a)=trunc(b) then
+    begin
+    if abs(frac(a))>abs(frac(b)) then 
+      result:=GreaterThanValue
+    else 
+      result:=LessThanValue;
+    end 
+  else 
+    begin
+    if a>b then 
+      result:=GreaterThanValue
+    else 
+      result:=LessThanValue;
+    end;
 end;
 
 
@@ -2121,7 +2201,8 @@ begin
   year := (100*b) + d - 4800 + ( m div 10 );
   result := TryEncodeDate ( Year, Month, Day, ADateTime );
   if Result then
-    ADateTime:=IncMilliSecond(IncHour(ADateTime,-12),MillisecondOfTheDay(Abs(Frac(aValue))));
+//    ADateTime:=IncMilliSecond(IncHour(ADateTime,-12),MillisecondOfTheDay(Abs(Frac(aValue))));
+    ADateTime:=ADateTime+frac(AValue-0.5);
 end;
 
 Function DateTimeToModifiedJulianDate(const AValue: TDateTime): Double;
@@ -2148,8 +2229,9 @@ end;
   ---------------------------------------------------------------------}
 
 Function DateTimeToUnix(const AValue: TDateTime): Int64;
+
 begin
-  Result:=Round(DateTimeDiff(AValue,UnixEpoch)*SecsPerDay);
+  Result:=Round(DateTimeDiff(RecodeMillisecond(AValue,0),UnixEpoch)*SecsPerDay);
 end;
 
 

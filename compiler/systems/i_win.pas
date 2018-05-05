@@ -78,8 +78,8 @@ unit i_win;
             alignment    :
               (
                 procalign       : 16;
-                loopalign       : 4;
-                jumpalign       : 0;
+                loopalign       : 8;
+                jumpalign       : 4;
                 constalignmin   : 0;
                 constalignmax   : 16;
                 varalignmin     : 0;
@@ -147,12 +147,12 @@ unit i_win;
               (
                 procalign       : 16;
                 loopalign       : 8;
-                jumpalign       : 0;
+                jumpalign       : 4;
                 constalignmin   : 0;
                 constalignmax   : 16;
                 varalignmin     : 0;
                 varalignmax     : 16;
-                localalignmin   : 8;
+                localalignmin   : 4;
                 localalignmax   : 16;
                 recordalignmin  : 0;
                 recordalignmax  : 8;

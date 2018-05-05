@@ -16,25 +16,27 @@
  **********************************************************************}
 unit System;
 
-{--------------------------------------------------------------------}
-{ LEFT TO DO:                                                        }
-{--------------------------------------------------------------------}
-{ o SBrk                                                             }
-{ o Implement truncate                                               }
-{ o Implement paramstr(0)                                            }
-{--------------------------------------------------------------------}
+interface
 
+{$define FPC_STDOUT_TRUE_ALIAS}
+{$define FPC_ANSI_TEXTFILEREC}
+{$define FPC_ATARI_USE_TINYHEAP}
 
-  interface
+{$ifdef FPC_ATARI_USE_TINYHEAP}
+{$define HAS_MEMORYMANAGER}
+{$endif FPC_ATARI_USE_TINYHEAP}
 
-    {$I systemh.inc}
+{$i systemh.inc}
+{$ifdef FPC_ATARI_USE_TINYHEAP}
+{$i tnyheaph.inc}
+{$endif FPC_ATARI_USE_TINYHEAP}
 
 {Platform specific information}
 const
     LineEnding = #13#10;
     LFNSupport = false;
     CtrlZMarksEOF: boolean = false; (* #26 not considered as end of file *)
-    DirectorySeparator = '/';
+    DirectorySeparator = '\';
     DriveSeparator = ':';
     ExtensionSeparator = '.';
     PathSeparator = ';';
@@ -44,7 +46,7 @@ const
     FileNameCasePreserving = false;
     maxExitCode = 255;
     MaxPathLen = 255;
-    AllFilesMask = '*';
+    AllFilesMask = '*.*';
 
     sLineBreak = LineEnding;
     DefaultTextLineBreakStyle : TTextLineBreakStyle = tlbsCRLF;
@@ -56,7 +58,7 @@ const
     StdErrorHandle  = $ffff;
 
 var
-    args: Pointer; external name '__ARGS'; { Defined in the startup code }
+    args: PChar;
     argc: LongInt;
     argv: PPChar;
     envp: PPChar;
@@ -76,6 +78,8 @@ var
     {$if defined(FPUSOFT)}
 
     {$define fpc_softfpu_implementation}
+    {$define softfpu_compiler_mul32to64}
+    {$define softfpu_inline}
     {$i softfpu.pp}
     {$undef fpc_softfpu_implementation}
 
@@ -93,131 +97,28 @@ var
 
     {$endif defined(FPUSOFT)}
 
-    {$I system.inc}
+    {$i system.inc}
+    {$ifdef FPC_ATARI_USE_TINYHEAP}
+    {$i tinyheap.inc}
+    {$endif FPC_ATARI_USE_TINYHEAP}
+    {$i syspara.inc}
 
-function GetProcessID:SizeUInt;
-begin
-  {$WARNING To be checked by platform maintainer}
-   GetProcessID := 1;
-end;
-
-
-
-{$S-}
-(*    procedure Stack_Check; assembler;
-    { Check for local variable allocation }
-    { On Entry -> d0 : size of local stack we are trying to allocate }
-         asm
-          XDEF STACKCHECK
-           move.l  sp,d1            { get value of stack pointer            }
-           sub.l   d0,d1            {  sp - stack_size                      }
-           sub.l   #2048,d1
-           cmp.l   __BREAK,d1
-           bgt     @st1nosweat
-           move.l  #202,d0
-           jsr     HALT_ERROR
-         @st1nosweat:
-         end;*)
+  var
+    basepage: PPD; external name '__base';
 
 
-   Function GetParamCount(const p: pchar): longint;
-   var
-    i: word;
-    count: word;
-   Begin
-    i:=0;
-    count:=0;
-    while p[count] <> #0 do
-     Begin
-       if (p[count] <> ' ') and (p[count] <> #9) and (p[count] <> #0) then
-       Begin
-          i:=i+1;
-          while (p[count] <> ' ') and (p[count] <> #9) and (p[count] <> #0) do
-           count:=count+1;
-       end;
-       if p[count] = #0 then break;
-       count:=count+1;
-     end;
-     GetParamCount:=longint(i);
-   end;
+  function GetProcessID:SizeUInt;
+  begin
+    {$WARNING To be checked by platform maintainer}
+    GetProcessID := 1;
+  end;
 
 
-   Function GetParam(index: word; const p : pchar): string;
-   { On Entry: index = string index to correct parameter  }
-   { On exit:  = correct character index into pchar array }
-   { Returns correct index to command line argument }
-   var
-    count: word;
-    localindex: word;
-    l: byte;
-    temp: string;
-   Begin
-     temp:='';
-     count := 0;
-     { first index is one }
-     localindex := 1;
-     l:=0;
-     While p[count] <> #0 do
-       Begin
-         if (p[count] <> ' ') and (p[count] <> #9) then
-           Begin
-             if localindex = index then
-              Begin
-               while (p[count] <> #0) and (p[count] <> ' ') and (p[count] <> #9) and (l < 256) do
-                Begin
-                  temp:=temp+p[count];
-                  l:=l+1;
-                  count:=count+1;
-                end;
-                temp[0]:=char(l);
-                GetParam:=temp;
-                exit;
-              end;
-             { Point to next argument in list }
-             while (p[count] <> #0) and (p[count] <> ' ') and (p[count] <> #9) do
-               Begin
-                 count:=count+1;
-               end;
-             localindex:=localindex+1;
-           end;
-         if p[count] = #0 then break;
-         count:=count+1;
-       end;
-     GetParam:=temp;
-   end;
-
-
-    function paramstr(l : longint) : string;
-      var
-       p : pchar;
-       s1 : string;
-      begin
-         if l = 0 then
-         Begin
-           s1 := '';
-         end
-         else
-         if (l>0) and (l<=paramcount) then
-           begin
-             p:=args;
-             paramstr:=GetParam(word(l),p);
-           end
-         else paramstr:='';
-      end;
-
-      function paramcount : longint;
-      Begin
-        paramcount := argc;
-      end;
-
-
-  { This routine is used to grow the heap.  }
-  { But here we do a trick, we say that the }
-  { heap cannot be regrown!                 }
-  function sbrk( size: longint): pointer;
-  { on exit nil = if fails.               }
-  Begin
-   sbrk:=nil;
+  procedure SysInitParamsAndEnv;
+  begin
+    // [0] index contains the args length...
+    args:=@basepage^.p_cmdlin[1];
+    GenerateArgs;
   end;
 
 
@@ -243,10 +144,11 @@ procedure SysInitStdIO;
 begin
   OpenStdIO(Input,fmInput,StdInputHandle);
   OpenStdIO(Output,fmOutput,StdOutputHandle);
-  OpenStdIO(StdOut,fmOutput,StdOutputHandle);
-
-  OpenStdIO(StdErr,fmOutput,StdErrorHandle);
   OpenStdIO(ErrOutput,fmOutput,StdErrorHandle);
+{$ifndef FPC_STDOUT_TRUE_ALIAS}
+  OpenStdIO(StdOut,fmOutput,StdOutputHandle);
+  OpenStdIO(StdErr,fmOutput,StdErrorHandle);
+{$endif FPC_STDOUT_TRUE_ALIAS}
 end;
 
 function CheckInitialStkLen (StkLen: SizeUInt): SizeUInt;
@@ -259,17 +161,21 @@ begin
   StackLength := CheckInitialStkLen (InitialStkLen);
 { Initialize ExitProc }
   ExitProc:=Nil;
+{$ifndef FPC_ATARI_USE_TINYHEAP}
 { Setup heap }
   InitHeap;
+{$endif FPC_ATARI_USE_TINYHEAP}
   SysInitExceptions;
+{$ifdef FPC_HAS_FEATURE_UNICODESTRINGS}
   InitUnicodeStringManager;
+{$endif FPC_HAS_FEATURE_UNICODESTRINGS}
 { Setup stdin, stdout and stderr }
   SysInitStdIO;
 { Reset IO Error }
   InOutRes:=0;
-(* This should be changed to a real value during *)
-(* thread driver initialization if appropriate.  *)
-  ThreadID := 1;
 { Setup command line arguments }
-//  argc:=GetParamCount(args);
+  SysInitParamsAndEnv;
+{$ifdef FPC_HAS_FEATURE_THREADING}
+  InitSystemThreads;
+{$endif FPC_HAS_FEATURE_THREADING}
 end.

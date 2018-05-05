@@ -1315,7 +1315,7 @@ begin
   else
     begin
     if StringCodePage(AValue) <> FCodePage then
-      SetCodePage(AValue, FCodePage, True);
+      SetCodePage(AValue, FCodePage, FCodePage<>CP_NONE);
     if DataSize <= dsMaxStringSize then
       begin
       if FTransliterate then
@@ -1631,12 +1631,13 @@ var L : Longint;
     P : PLongint;
 
 begin
+  L:=0;
   P:=@L;
   Result:=GetData(P);
   If Result then
-    Case Datatype of
-      ftInteger,ftAutoinc  : AValue:=Plongint(P)^;
-      ftWord               : AValue:=Pword(P)^;
+    Case DataType of
+      ftInteger,ftAutoInc  : AValue:=PLongint(P)^;
+      ftWord               : AValue:=PWord(P)^;
       ftSmallint           : AValue:=PSmallint(P)^;
     end;
 end;
@@ -2070,11 +2071,10 @@ begin
   If (AValue='') then
     Clear
   else  
-    try
-      f := StrToFloat(AValue);
-      SetAsFloat(f);
-    except
+    begin
+    If not TryStrToFloat(AValue,F) then
       DatabaseErrorFmt(SNotAFloat, [AValue]);
+    SetAsFloat(f);
     end;
 end;
 
@@ -3216,7 +3216,7 @@ procedure TMemoField.SetAsAnsiString(const AValue: AnsiString);
 var s: RawByteString;
 begin
   s := AValue;
-  SetCodePage(s, FCodePage, True);
+  SetCodePage(s, FCodePage, FCodePage<>CP_NONE);
   inherited SetAsAnsiString(s);
 end;
 
@@ -3231,10 +3231,12 @@ begin
 end;
 
 function TMemoField.GetAsUTF8String: UTF8String;
+var s: RawByteString;
 begin
-  Result := inherited GetAsAnsiString;
-  SetCodePage(RawByteString(Result), FCodePage, False);
-  SetCodePage(RawByteString(Result), CP_UTF8, True);
+  s := inherited GetAsAnsiString;
+  SetCodePage(s, FCodePage, False);
+  SetCodePage(s, CP_UTF8, True);
+  Result := s;
 end;
 
 procedure TMemoField.SetAsUTF8String(const AValue: UTF8String);
@@ -3481,7 +3483,8 @@ end;
 procedure TFields.Changed;
 
 begin
-  if (FDataSet <> nil) and not (csDestroying in FDataSet.ComponentState) and FDataset.Active then
+  // Removed FDataSet.Active check, needed for Persistent fields (see bug ID 30954)
+  if (FDataSet <> nil) and not (csDestroying in FDataSet.ComponentState) then
     FDataSet.DataEvent(deFieldListChange, 0);
   If Assigned(FOnChange) then
     FOnChange(Self);

@@ -79,7 +79,7 @@ interface
     procedure parse_record_proc_directives(pd:tabstractprocdef);
     function  parse_proc_head(astruct:tabstractrecorddef;potype:tproctypeoption;isgeneric:boolean;genericdef:tdef;generictypelist:tfphashobjectlist;out pd:tprocdef):boolean;
     function  parse_proc_dec(isclassmethod:boolean;astruct:tabstractrecorddef;isgeneric:boolean):tprocdef;
-    procedure parse_proc_dec_finish(pd:tprocdef;isclassmethod:boolean);
+    procedure parse_proc_dec_finish(pd:tprocdef;isclassmethod:boolean;astruct:tabstractrecorddef);
 
     { parse a record method declaration (not a (class) constructor/destructor) }
     function parse_record_method_dec(astruct: tabstractrecorddef; is_classdef: boolean;hadgeneric:boolean): tprocdef;
@@ -111,7 +111,7 @@ implementation
        { parameter handling }
        paramgr,cpupara,
        { pass 1 }
-       fmodule,node,htypechk,ncon,ppu,nld,
+       fmodule,node,htypechk,ncon,nld,
        objcutil,
        { parser }
        scanner,
@@ -410,7 +410,7 @@ implementation
                 consume(_ARRAY);
                 consume(_OF);
                 { define range and type of range }
-                hdef:=carraydef.create(0,-1,sizesinttype);
+                hdef:=carraydef.create_openarray;
                 { array of const ? }
                 if (token=_CONST) and (m_objpas in current_settings.modeswitches) then
                  begin
@@ -528,7 +528,7 @@ implementation
                         Message(parser_e_paraloc_all_paras);
                       explicit_paraloc:=true;
                       include(vs.varoptions,vo_has_explicit_paraloc);
-                      if not(paramanager.parseparaloc(vs,upper(locationstr))) then
+                      if not(paramanager.parseparaloc(vs,locationstr)) then
                         message(parser_e_illegal_explicit_paraloc);
                     end
                   else
@@ -598,7 +598,7 @@ implementation
                     _DEC:optoken:=_OP_DEC;
                     _INITIALIZE:optoken:=_OP_INITIALIZE;
                     _FINALIZE:optoken:=_OP_FINALIZE;
-                    _CLONE:optoken:=_OP_CLONE;
+                    _ADDREF:optoken:=_OP_ADDREF;
                     _COPY:optoken:=_OP_COPY;
                     else
                     if (m_delphi in current_settings.modeswitches) then
@@ -775,11 +775,12 @@ implementation
             error : boolean;
             genname,
             ugenname : tidstring;
+            module : tmodule;
           begin
             result:=false;
             if not assigned(genericparams) then
               exit;
-            specializename:='';
+            specializename:='$';
             prettyname:='';
             error:=false;
             for i:=0 to genericparams.count-1 do
@@ -798,7 +799,10 @@ implementation
                     error:=true;
                     continue;
                   end;
-                specializename:=specializename+'$'+ttypesym(typesrsym).typedef.fulltypename;
+                module:=find_module_from_symtable(ttypesym(typesrsym).typedef.owner);
+                if not assigned(module) then
+                  internalerror(2016112803);
+                specializename:=specializename+'_$'+hexstr(module.moduleid,8)+'$$'+ttypesym(typesrsym).typedef.unique_id_str;
                 if i>0 then
                   prettyname:=prettyname+',';
                 prettyname:=prettyname+ttypesym(typesrsym).prettyname;
@@ -882,7 +886,14 @@ implementation
                   (ttypesym(srsym).typedef.typ=objectdef) then
                  ImplIntf:=find_implemented_interface(tobjectdef(astruct),tobjectdef(ttypesym(srsym).typedef));
                if ImplIntf=nil then
-                 Message(parser_e_interface_id_expected)
+                 begin
+                   Message(parser_e_interface_id_expected);
+                   { error recovery }
+                   consume(_ID);
+                   if try_to_consume(_EQ) then
+                     consume(_ID);
+                   exit;
+                 end
                else
                  { in case of a generic or specialized interface we need to use the
                    name of the def instead of the symbol, so that always the correct
@@ -903,6 +914,9 @@ implementation
                result:=true;
                exit;
              end;
+
+            if assigned(genericparams) and assigned(current_genericdef) then
+              Message(parser_f_no_generic_inside_generic);
 
             { method  ? }
             srsym:=nil;
@@ -1240,7 +1254,7 @@ implementation
       end;
 
 
-    procedure parse_proc_dec_finish(pd:tprocdef;isclassmethod:boolean);
+    procedure parse_proc_dec_finish(pd:tprocdef;isclassmethod:boolean;astruct:tabstractrecorddef);
       var
         locationstr: string;
         i: integer;
@@ -1411,11 +1425,11 @@ implementation
               if pd.parast.symtablelevel>normal_function_level then
                 Message(parser_e_no_local_operator);
               if isclassmethod then
-              begin
-                include(pd.procoptions,po_classmethod);
-                { any class operator is also static }
-                include(pd.procoptions,po_staticmethod);
-              end;
+                begin
+                  include(pd.procoptions,po_classmethod);
+                  { any class operator is also static }
+                  include(pd.procoptions,po_staticmethod);
+                end;
               if token<>_ID then
                 begin
                    if not(m_result in current_settings.modeswitches) then
@@ -1426,22 +1440,21 @@ implementation
                   pd.resultname:=stringdup(orgpattern);
                   consume(_ID);
                 end;
-
-              { operators without result }
-              if optoken in [_OP_INITIALIZE, _OP_FINALIZE, _OP_COPY, _OP_CLONE] then
+              { operators without result (management operators) }
+              if optoken in [_OP_INITIALIZE, _OP_FINALIZE, _OP_ADDREF, _OP_COPY] then
                 begin
                   { single var parameter to point the record }
-                  if (optoken in [_OP_INITIALIZE, _OP_FINALIZE, _OP_COPY]) and
+                  if (optoken in [_OP_INITIALIZE, _OP_FINALIZE, _OP_ADDREF]) and
                      (
-                      (pd.parast.SymList.Count <> 1) or
+                      (pd.parast.SymList.Count<>1) or
                       (tparavarsym(pd.parast.SymList[0]).vardef<>pd.struct) or
                       (tparavarsym(pd.parast.SymList[0]).varspez<>vs_var)
                      ) then
                     Message(parser_e_overload_impossible)
                   { constref (source) and var (dest) parameter to point the records }
-                  else if (optoken = _OP_CLONE) and
+                  else if (optoken=_OP_COPY) and
                      (
-                      (pd.parast.SymList.Count <> 2) or
+                      (pd.parast.SymList.Count<>2) or
                       (tparavarsym(pd.parast.SymList[0]).vardef<>pd.struct) or
                       (tparavarsym(pd.parast.SymList[0]).varspez<>vs_constref) or
                       (tparavarsym(pd.parast.SymList[1]).vardef<>pd.struct) or
@@ -1481,12 +1494,15 @@ implementation
                          else
                            MessagePos(pd.fileinfo,type_e_type_id_expected);
                      end;
-                   if (optoken in [_ASSIGNMENT,_OP_EXPLICIT]) and
-                      equal_defs_assignment_op_dec(pd.returndef,tparavarsym(pd.parast.SymList[0]).vardef) and
-                      (pd.returndef.typ<>undefineddef) and (tparavarsym(pd.parast.SymList[0]).vardef.typ<>undefineddef) then
-                     message(parser_e_no_such_assignment)
-                   else if not isoperatoracceptable(pd,optoken) then
-                     Message(parser_e_overload_impossible);
+                   if not assigned(pd.struct) or assigned(astruct) then
+                     begin
+                       if (optoken in [_ASSIGNMENT,_OP_EXPLICIT]) and
+                          equal_defs(pd.returndef,tparavarsym(pd.parast.SymList[0]).vardef) and
+                          (pd.returndef.typ<>undefineddef) and (tparavarsym(pd.parast.SymList[0]).vardef.typ<>undefineddef) then
+                         message(parser_e_no_such_assignment)
+                       else if not isoperatoracceptable(pd,optoken) then
+                         Message(parser_e_overload_impossible);
+                     end;
                  end;
             end;
           else
@@ -1543,7 +1559,7 @@ implementation
                 begin
                   { pd=nil when it is a interface mapping }
                   if assigned(pd) then
-                    parse_proc_dec_finish(pd,isclassmethod)
+                    parse_proc_dec_finish(pd,isclassmethod,astruct)
                   else
                     finish_intf_mapping;
                 end
@@ -1563,7 +1579,7 @@ implementation
                 begin
                   { pd=nil when it is an interface mapping }
                   if assigned(pd) then
-                    parse_proc_dec_finish(pd,isclassmethod)
+                    parse_proc_dec_finish(pd,isclassmethod,astruct)
                   else
                     finish_intf_mapping;
                 end
@@ -1579,7 +1595,7 @@ implementation
               else
                 recover:=not parse_proc_head(astruct,potype_constructor,false,nil,nil,pd);
               if not recover then
-                parse_proc_dec_finish(pd,isclassmethod);
+                parse_proc_dec_finish(pd,isclassmethod,astruct);
             end;
 
           _DESTRUCTOR :
@@ -1590,7 +1606,7 @@ implementation
               else
                 recover:=not parse_proc_head(astruct,potype_destructor,false,nil,nil,pd);
               if not recover then
-                parse_proc_dec_finish(pd,isclassmethod);
+                parse_proc_dec_finish(pd,isclassmethod,astruct);
             end;
         else
           if (token=_OPERATOR) or
@@ -1605,7 +1621,7 @@ implementation
               parse_proc_head(astruct,potype_operator,false,nil,nil,pd);
               block_type:=old_block_type;
               if assigned(pd) then
-                parse_proc_dec_finish(pd,isclassmethod)
+                parse_proc_dec_finish(pd,isclassmethod,astruct)
               else
                 begin
                   { recover }
@@ -2087,11 +2103,14 @@ procedure pd_syscall(pd:tabstractprocdef);
         syscall: psyscallinfo;
       begin
         case target_info.system of
+          system_arm_palmos,
+          system_m68k_palmos,
           system_m68k_atari,
           system_m68k_amiga,
           system_powerpc_amiga:
               include(pd.procoptions,get_default_syscall);
           system_powerpc_morphos,
+          system_arm_aros,
           system_i386_aros,
           system_x86_64_aros:
               begin
@@ -2113,34 +2132,37 @@ procedure pd_syscall(pd:tabstractprocdef);
       function po_syscall_to_varoptions: tvaroptions;
         begin
           result:=[vo_is_syscall_lib,vo_is_hidden_para];
-          if ([po_syscall_legacy,po_syscall_r12base,po_syscall_sysv,po_syscall_eaxbase] * tprocdef(pd).procoptions) <> [] then
+          if ([po_syscall_legacy,po_syscall_basereg,po_syscall_basenone] * tprocdef(pd).procoptions) <> [] then
             include(result,vo_has_explicit_paraloc);
         end;
 
       function po_syscall_to_regname: string;
         begin
           if po_syscall_legacy in tprocdef(pd).procoptions then
-            result:='A6'
-          else if po_syscall_r12base in tprocdef(pd).procoptions then
-            result:='R12'
-          { let sysv store the libbase in r12 as well, because we will
-            need the libbase anyway during the call generation }
-          else if po_syscall_sysv in tprocdef(pd).procoptions then
-            result:='R12'
-          else if po_syscall_eaxbase in tprocdef(pd).procoptions then
+            result:='a6'
+          { let nobase on MorphOS store the libbase in r12 as well, because
+            we will need the libbase anyway during the call generation }
+          else if (po_syscall_basenone in tprocdef(pd).procoptions) and
+                  (target_info.system = system_powerpc_morphos) then
+                 result:='r12'
+          else if po_syscall_basereg in tprocdef(pd).procoptions then
             begin
-              if target_info.system = system_i386_aros then
-                result:='EAX'
-              else if target_info.system = system_x86_64_aros then
-                result:='RAX'
-              else
-                internalerror(2016090201);
+              case target_info.system of
+                system_i386_aros:
+                    result:='eax';
+                system_x86_64_aros:
+                    result:='rax';
+                system_powerpc_morphos:
+                    result:='r12';
+                else
+                  internalerror(2016090201);
+              end;
             end
           else
             internalerror(2016090101);
         end;
 
-{$if defined(powerpc) or defined(m68k) or defined(i386) or defined(x86_64)}
+{$if defined(powerpc) or defined(m68k) or defined(i386) or defined(x86_64) or defined(arm)}
 const
   syscall_paranr: array[boolean] of aint =
       ( paranr_syscall_lib_last, paranr_syscall_lib_first );
@@ -2151,13 +2173,31 @@ var
   v: Tconstexprint;
   vo: tvaroptions;
   paranr: aint;
-{$endif defined(powerpc) or defined(m68k) or defined(i386) or defined(x86_64)}
+{$endif defined(powerpc) or defined(m68k) or defined(i386) or defined(x86_64) or defined(arm)}
 begin
   if (pd.typ<>procdef) and (target_info.system <> system_powerpc_amiga) then
     internalerror(2003042614);
   tprocdef(pd).forwarddef:=false;
-{$if defined(powerpc) or defined(m68k) or defined(i386) or defined(x86_64)}
+{$if defined(powerpc) or defined(m68k) or defined(i386) or defined(x86_64) or defined(arm)}
   include_po_syscall;
+
+  if target_info.system in [system_arm_palmos, system_m68k_palmos] then
+    begin
+      v:=get_intconst;
+      tprocdef(pd).extnumber:=longint(v.svalue);
+      if ((v<0) or (v>high(word))) then
+        message(parser_e_range_check_error);
+
+      if try_to_consume(_COMMA) then
+        begin
+          v:=get_intconst;
+          if ((v<0) or (v>high(word))) then
+            message(parser_e_range_check_error);
+          tprocdef(pd).import_nr:=longint(v.svalue);
+          include(pd.procoptions,po_syscall_has_importnr);
+        end;
+      exit;
+    end;
 
   if target_info.system = system_m68k_atari then
     begin
@@ -2171,7 +2211,7 @@ begin
       if ((v<0) or (v>high(smallint))) then
         message(parser_e_range_check_error)
       else
-          tprocdef(pd).import_nr:=longint(v.svalue);
+        tprocdef(pd).import_nr:=longint(v.svalue);
 
       exit;
     end;
@@ -2185,10 +2225,11 @@ begin
         tcpuprocdef(pd).libsym:=sym;
 
         vo:=po_syscall_to_varoptions;
-        paranr:=syscall_paranr[po_syscall_basesysv in tprocdef(pd).procoptions];
+        paranr:=syscall_paranr[po_syscall_basefirst in tprocdef(pd).procoptions];
         vs:=cparavarsym.create('$syscalllib',paranr,vs_value,tabstractvarsym(sym).vardef,vo);
         if vo_has_explicit_paraloc in vo then
-          paramanager.parseparaloc(vs,po_syscall_to_regname);
+          if not paramanager.parseparaloc(vs,po_syscall_to_regname) then
+            internalerror(2016120301);
         pd.parast.insert(vs);
       end
     else
@@ -2201,11 +2242,11 @@ begin
   if (v<low(Tprocdef(pd).extnumber)) or (v>high(Tprocdef(pd).extnumber)) then
     message3(type_e_range_check_error_bounds,tostr(v),tostr(low(Tprocdef(pd).extnumber)),tostr(high(Tprocdef(pd).extnumber)))
   else
-    if target_info.system in [system_i386_aros,system_x86_64_aros] then
+    if target_info.system in [system_arm_aros,system_i386_aros,system_x86_64_aros] then
       Tprocdef(pd).extnumber:=v.uvalue * sizeof(pint)
     else
       Tprocdef(pd).extnumber:=v.uvalue;
-{$endif defined(powerpc) or defined(m68k) or defined(i386) or defined(x86_64)}
+{$endif defined(powerpc) or defined(m68k) or defined(i386) or defined(x86_64) or defined(arm)}
 end;
 
 
@@ -2341,7 +2382,7 @@ type
    end;
 const
   {Should contain the number of procedure directives we support.}
-  num_proc_directives=46;
+  num_proc_directives=51;
   proc_direcdata:array[1..num_proc_directives] of proc_dir_rec=
    (
     (
@@ -2514,7 +2555,7 @@ const
       pocall   : pocall_oldfpccall;
       pooption : [po_interrupt];
       mutexclpocall : [pocall_internproc,pocall_cdecl,pocall_cppdecl,pocall_stdcall,pocall_mwpascal,
-                       pocall_pascal,pocall_far16,pocall_oldfpccall];
+                       pocall_pascal,pocall_far16,pocall_oldfpccall,pocall_sysv_abi_cdecl,pocall_ms_abi_cdecl];
       mutexclpotype : [potype_constructor,potype_destructor,potype_operator,potype_class_constructor,potype_class_destructor];
       mutexclpo     : [po_external,po_inline,po_exports]
     ),(
@@ -2662,7 +2703,7 @@ const
       pooption : [po_staticmethod];
       mutexclpocall : [pocall_internproc];
       mutexclpotype : [potype_constructor,potype_destructor,potype_class_constructor,potype_class_destructor];
-      mutexclpo     : [po_interrupt,po_exports]
+      mutexclpo     : [po_interrupt,po_exports,po_virtualmethod]
     ),(
       idtok:_STDCALL;
       pd_flags : [pd_interface,pd_implemen,pd_body,pd_procvar];
@@ -2692,7 +2733,7 @@ const
       pooption : [po_virtualmethod];
       mutexclpocall : [pocall_internproc];
       mutexclpotype : [potype_class_constructor,potype_class_destructor];
-      mutexclpo     : [po_interrupt,po_exports,po_overridingmethod,po_inline]
+      mutexclpo     : [po_interrupt,po_exports,po_overridingmethod,po_inline,po_staticmethod]
     ),(
       idtok:_CPPDECL;
       pd_flags : [pd_interface,pd_implemen,pd_body,pd_procvar];
@@ -2740,7 +2781,7 @@ const
       handler  : @pd_winapi;
       pocall   : pocall_none;
       pooption : [];
-      mutexclpocall : [pocall_stdcall,pocall_cdecl];
+      mutexclpocall : [pocall_stdcall,pocall_cdecl,pocall_mwpascal,pocall_sysv_abi_cdecl,pocall_ms_abi_cdecl];
       mutexclpotype : [potype_constructor,potype_destructor,potype_class_constructor,potype_class_destructor];
       mutexclpo     : [po_external]
     ),(
@@ -2772,6 +2813,51 @@ const
       { it's available with po_external because the libgcc floating point routines on the arm
         uses this calling convention }
       mutexclpo     : []
+    ),(
+      idtok:_SYSV_ABI_DEFAULT;
+      pd_flags : [pd_interface,pd_implemen,pd_body,pd_procvar];
+      handler  : nil;
+      pocall   : pocall_sysv_abi_default;
+      pooption : [];
+      mutexclpocall : [];
+      mutexclpotype : [potype_constructor,potype_destructor,potype_class_constructor,potype_class_destructor];
+      mutexclpo     : [po_interrupt]
+    ),(
+      idtok:_SYSV_ABI_CDECL;
+      pd_flags : [pd_interface,pd_implemen,pd_body,pd_procvar];
+      handler  : nil;
+      pocall   : pocall_sysv_abi_cdecl;
+      pooption : [];
+      mutexclpocall : [];
+      mutexclpotype : [potype_constructor,potype_destructor,potype_class_constructor,potype_class_destructor];
+      mutexclpo     : [po_interrupt]
+    ),(
+      idtok:_MS_ABI_DEFAULT;
+      pd_flags : [pd_interface,pd_implemen,pd_body,pd_procvar];
+      handler  : nil;
+      pocall   : pocall_ms_abi_default;
+      pooption : [];
+      mutexclpocall : [];
+      mutexclpotype : [potype_constructor,potype_destructor,potype_class_constructor,potype_class_destructor];
+      mutexclpo     : [po_interrupt]
+    ),(
+      idtok:_MS_ABI_CDECL;
+      pd_flags : [pd_interface,pd_implemen,pd_body,pd_procvar];
+      handler  : nil;
+      pocall   : pocall_ms_abi_cdecl;
+      pooption : [];
+      mutexclpocall : [];
+      mutexclpotype : [potype_constructor,potype_destructor,potype_class_constructor,potype_class_destructor];
+      mutexclpo     : [po_interrupt]
+    ),(
+      idtok:_VECTORCALL;
+      pd_flags : [pd_interface,pd_implemen,pd_body,pd_procvar];
+      handler  : nil;
+      pocall   : pocall_vectorcall;
+      pooption : [];
+      mutexclpocall : [];
+      mutexclpotype : [potype_constructor,potype_destructor,potype_class_constructor,potype_class_destructor];
+      mutexclpo     : [po_interrupt]
     )
    );
 
@@ -2794,18 +2880,26 @@ const
       end;
 
 
+    function find_proc_directive_index(tok: ttoken): longint; inline;
+      begin
+        result:=-1;
+        for result:=1 to num_proc_directives do
+          if proc_direcdata[result].idtok=tok then
+            exit;
+        result:=-1;
+      end;
+
+
     function parse_proc_direc(pd:tabstractprocdef;var pdflags:tpdflags):boolean;
       {
         Parse the procedure directive, returns true if a correct directive is found
       }
       var
         p     : longint;
-        found : boolean;
         name  : TIDString;
       begin
         parse_proc_direc:=false;
         name:=tokeninfo^[idtoken].str;
-        found:=false;
 
       { Hint directive? Then exit immediatly }
         if (m_hintdirective in current_settings.modeswitches) then
@@ -2836,15 +2930,10 @@ const
           exit;
 
       { retrieve data for directive if found }
-        for p:=1 to num_proc_directives do
-         if proc_direcdata[p].idtok=idtoken then
-          begin
-            found:=true;
-            break;
-          end;
+      p:=find_proc_directive_index(idtoken);
 
       { Check if the procedure directive is known }
-        if not found then
+        if p=-1 then
          begin
             { parsing a procvar type the name can be any
               next variable !! }
@@ -3008,7 +3097,9 @@ const
           begin
             { Default names when importing variables }
             case pd.proccalloption of
-              pocall_cdecl :
+              pocall_cdecl,
+              pocall_sysv_abi_cdecl,
+              pocall_ms_abi_cdecl:
                 begin
                   if assigned(pd.struct) then
                     result:=target_info.Cprefix+pd.struct.objrealname^+'_'+pd.procsym.realname
@@ -3081,7 +3172,9 @@ const
            not(po_has_public_name in pd.procoptions) then
           begin
             case pd.proccalloption of
-              pocall_cdecl :
+              pocall_cdecl,
+              pocall_sysv_abi_cdecl,
+              pocall_ms_abi_cdecl:
                 begin
                   if assigned(pd.struct) then
                    pd.aliasnames.insert(target_info.Cprefix+pd.struct.objrealname^+'_'+pd.procsym.realname)
@@ -3134,7 +3227,9 @@ const
             { handle proccall specific settings }
             case pd.proccalloption of
               pocall_cdecl,
-              pocall_cppdecl :
+              pocall_cppdecl,
+              pocall_sysv_abi_cdecl,
+              pocall_ms_abi_cdecl:
                 begin
                   { check C cdecl para types }
                   check_c_para(pd);
@@ -3174,7 +3269,7 @@ const
                          { for objcclasses this is checked later, because the entire
                            class may be external.  }
                          is_objc_class_or_protocol(tprocdef(pd).struct)) and
-                     not(pd.proccalloption in (cdecl_pocalls + [pocall_mwpascal,pocall_stdcall])) then
+                     not(pd.proccalloption in (cdecl_pocalls + [pocall_stdcall])) then
                     Message(parser_e_varargs_need_cdecl_and_external);
                 end
                else
@@ -3182,7 +3277,7 @@ const
                   { both must be defined now }
                   if not((po_external in pd.procoptions) or
                          (pd.typ=procvardef)) or
-                     not(pd.proccalloption in (cdecl_pocalls + [pocall_mwpascal,pocall_stdcall])) then
+                     not(pd.proccalloption in (cdecl_pocalls + [pocall_stdcall])) then
                     Message(parser_e_varargs_need_cdecl_and_external);
                 end;
              end;
@@ -3384,8 +3479,7 @@ const
             - proc declared in interface of unit (or in class/record/object)
               and defined in implementation; here the fwpd might contain
               constraints while currpd must only contain undefineddefs
-            - forward declaration in implementation; this case is not supported
-              right now }
+            - forward declaration in implementation }
           foundretdef:=false;
           for i:=0 to fwpd.genericparas.count-1 do
             begin
@@ -3408,7 +3502,7 @@ const
             exit;
           if not foundretdef then
             begin
-              if tstoreddef(fwpd.returndef).is_specialization and tstoreddef(currpd.returndef).is_specialization then
+              if (df_specialization in tstoreddef(fwpd.returndef).defoptions) and (df_specialization in tstoreddef(currpd.returndef).defoptions) then
                 { for specializations we're happy with equal defs instead of exactly the same defs }
                 result:=equal_defs(fwpd.returndef,currpd.returndef)
               else
@@ -3431,6 +3525,7 @@ const
         fwparacnt,
         curridx,
         fwidx,
+        virtualdirinfo,
         i       : longint;
         po_comp : tprocoptions;
         paracompopt: tcompare_paras_options;
@@ -3438,6 +3533,7 @@ const
         symentry: TSymEntry;
         item : tlinkedlistitem;
       begin
+        virtualdirinfo:=-1;
         forwardfound:=false;
 
         { check overloaded functions if the same function already exists }
@@ -3615,7 +3711,21 @@ const
                    if (po_external in fwpd.procoptions) then
                      MessagePos(currpd.fileinfo,parser_e_proc_already_external);
 
-                   { Check parameters }
+                   { check for conflicts with "virtual" if this is a virtual
+                     method, as "virtual" cannot be repeated in the
+                     implementation and hence does not get checked against }
+                   if (po_virtualmethod in fwpd.procoptions) then
+                     begin
+                       if virtualdirinfo=-1 then
+                         begin
+                           virtualdirinfo:=find_proc_directive_index(_VIRTUAL);
+                           if virtualdirinfo=-1 then
+                             internalerror(2018010101);
+                         end;
+                       if (proc_direcdata[virtualdirinfo].mutexclpo * currpd.procoptions)<>[] then
+                         MessagePos1(currpd.fileinfo,parser_e_proc_dir_conflict,tokeninfo^[_VIRTUAL].str);
+                     end;
+                    { Check parameters }
                    if (m_repeat_forward in current_settings.modeswitches) or
                       (currpd.minparacount>0) then
                     begin

@@ -32,6 +32,9 @@
   -gl
   -Crtoi
   #WRITE Compiling Debug Version
+#ELSE
+  # Strip debuginfo from the executable if not in debug mode
+  -Xs
 #ENDIF
 
 # assembling
@@ -145,16 +148,18 @@
 -FM%sharepath%/unicode/
 #endif
 
-# searchpath for units and other system dependent things
--Fu%basepath%/units/$fpctarget
--Fu%basepath%/units/$fpctarget/*
--Fu%basepath%/units/$fpctarget/rtl
-
+# Search for $fpctarget/$fpcsubarch-$fpcmemorymodel/ subdirectory first
+# for i8086 CPU
 #ifdef cpui8086
 -Fu%basepath%/units/$fpctarget/$fpcsubarch-$fpcmemorymodel
 -Fu%basepath%/units/$fpctarget/$fpcsubarch-$fpcmemorymodel/*
 -Fu%basepath%/units/$fpctarget/$fpcsubarch-$fpcmemorymodel/rtl
 #endif
+
+# searchpath for units and other system dependent things
+-Fu%basepath%/units/$fpctarget
+-Fu%basepath%/units/$fpctarget/*
+-Fu%basepath%/units/$fpctarget/rtl
 
 #IFDEF FPCAPACHE_1_3
 -Fu%basepath%/units/$fpctarget/httpd13/
@@ -232,9 +237,6 @@
 
 # always pass an option to the linker
 #-k-s
-
-# Always strip debuginfo from the executable
--Xs
 
 # Always use smartlinking on i8086, because the system unit exceeds the 64kb
 # code limit

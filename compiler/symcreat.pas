@@ -29,7 +29,8 @@ interface
   uses
     finput,tokens,scanner,globtype,
     aasmdata,
-    symconst,symbase,symtype,symdef,symsym;
+    symconst,symbase,symtype,symdef,symsym,
+    node;
 
 
   type
@@ -62,7 +63,7 @@ interface
         * save the scanner state before calling this routine, and restore when done.
         * the code *must* be written in objfpc style
   }
-  function str_parse_method_impl(str: ansistring; usefwpd: tprocdef; is_classdef: boolean):boolean;
+  function str_parse_method_impl(const str: ansistring; usefwpd: tprocdef; is_classdef: boolean):boolean;
 
   { parses a typed constant assignment to ssym
 
@@ -84,7 +85,16 @@ interface
     added earlier }
   procedure add_synthetic_method_implementations(st: tsymtable);
 
+  { create an alias for a procdef with Pascal name "newrealname",
+    mangledname "newmangledname", in symtable newparentst, part of the
+    record/class/.. "newstruct" (nil if none), and with synthetickind "sk" and
+    synthetic kind para "skpara" to create the implementation (tsk_none and nil
+    in case not necessary). Returns the new procdef; finish_copied_procdef() is
+    not required/must not be called for the result. }
+  function create_procdef_alias(pd: tprocdef; const newrealname: string; const newmangledname: TSymStr; newparentst: tsymtable; newstruct: tabstractrecorddef; sk: tsynthetickind; skpara: pointer): tprocdef;
 
+  { finalize a procdef that has been copied with
+    tprocdef.getcopyas(procdef,pc_bareproc) }
   procedure finish_copied_procdef(var pd: tprocdef; const realname: string; newparentst: tsymtable; newstruct: tabstractrecorddef);
 
   { create "parent frame pointer" record skeleton for procdef, in which local
@@ -119,17 +129,18 @@ interface
     to this new procedure }
   procedure call_through_new_name(orgpd: tprocdef; const newname: TSymStr);
 
+  function generate_pkg_stub(pd:tprocdef):tnode;
 
 implementation
 
   uses
-    cutils,cclasses,globals,verbose,systems,comphook,fmodule,
+    cutils,cclasses,globals,verbose,systems,comphook,fmodule,constexp,
     symtable,defutil,
     pbase,pdecobj,pdecsub,psub,ptconst,pparautl,
 {$ifdef jvm}
     pjvm,jvmdef,
 {$endif jvm}
-    node,nbas,nld,nmem,ngenutil,
+    nbas,nld,nmem,ncon,
     defcmp,
     paramgr;
 
@@ -221,7 +232,7 @@ implementation
     end;
 
 
-  function str_parse_method_impl(str: ansistring; usefwpd: tprocdef; is_classdef: boolean):boolean;
+  function str_parse_method_impl_with_fileinfo(str: ansistring; usefwpd: tprocdef; fileno, lineno: longint; is_classdef: boolean):boolean;
      var
        oldparse_only: boolean;
        tmpstr: ansistring;
@@ -242,9 +253,10 @@ implementation
       oldparse_only:=parse_only;
       parse_only:=false;
       result:=false;
-      { inject the string in the scanner }
+      { "const" starts a new kind of block and hence makes the scanner return }
       str:=str+'const;';
-      current_scanner.substitutemacro('meth_impl_macro',@str[1],length(str),current_scanner.line_no,current_scanner.inputfile.ref_index);
+      { inject the string in the scanner }
+      current_scanner.substitutemacro('meth_impl_macro',@str[1],length(str),lineno,fileno);
       current_scanner.readtoken(false);
       { and parse it... }
       read_proc(is_classdef,usefwpd,false);
@@ -255,6 +267,12 @@ implementation
       current_scanner.tempopeninputfile;
       result:=true;
      end;
+
+
+  function str_parse_method_impl(const str: ansistring; usefwpd: tprocdef; is_classdef: boolean):boolean;
+    begin
+      result:=str_parse_method_impl_with_fileinfo(str, usefwpd, current_scanner.inputfile.ref_index, current_scanner.line_no, is_classdef);
+    end;
 
 
   procedure str_parse_typedconst(list: TAsmList; str: ansistring; ssym: tstaticvarsym);
@@ -957,6 +975,7 @@ implementation
       wrapperinfo: pskpara_interface_wrapper;
       callthroughpd: tprocdef;
       str: ansistring;
+      fileinfo: tfileposinfo;
     begin
       wrapperinfo:=pskpara_interface_wrapper(pd.skpara);
       if not assigned(wrapperinfo) then
@@ -972,7 +991,17 @@ implementation
       str:=str+callthroughpd.procsym.realname+'(';
       addvisibibleparameters(str,callthroughpd);
       str:=str+') end;';
-      str_parse_method_impl(str,pd,false);
+      { add dummy file info so we can step in/through it }
+      if pd.owner.iscurrentunit then
+        fileinfo:=pd.fileinfo
+      else
+        begin
+          fileinfo.moduleindex:=current_module.moduleid;
+          fileinfo.fileindex:=1;
+          fileinfo.line:=1;
+          fileinfo.column:=1;
+        end;
+      str_parse_method_impl_with_fileinfo(str,pd,fileinfo.fileindex,fileinfo.line,false);
       dispose(wrapperinfo);
       pd.skpara:=nil;
     end;
@@ -1112,6 +1141,27 @@ implementation
            end;
         end;
       restore_scanner(sstate);
+    end;
+
+
+  function create_procdef_alias(pd: tprocdef; const newrealname: string; const newmangledname: TSymStr; newparentst: tsymtable; newstruct: tabstractrecorddef;
+      sk: tsynthetickind; skpara: pointer): tprocdef;
+    begin
+      { bare copy so we don't copy the aliasnames }
+      result:=tprocdef(pd.getcopyas(procdef,pc_bareproc));
+      { set the mangled name to the wrapper name }
+      result.setmangledname(newmangledname);
+      { finish creating the copy }
+      finish_copied_procdef(result,newrealname,newparentst,newstruct);
+      { now insert self/vmt }
+      insert_self_and_vmt_para(result);
+      { and the function result }
+      insert_funcret_para(result);
+      { recalculate the parameters now that we've added the missing ones }
+      result.calcparas;
+      { set the info required to generate the implementation }
+      result.synthetickind:=sk;
+      result.skpara:=skpara;
     end;
 
 
@@ -1278,7 +1328,7 @@ implementation
               if addrparam then
                 begin
                   initcode:=caddrnode.create_internal(initcode);
-                  include(initcode.flags,nf_typedaddr);
+                  include(taddrnode(initcode).addrnodeflags,anf_typedaddr);
                 end;
               initcode:=cassignmentnode.create(
                 csubscriptnode.create(result,cloadnode.create(pd.parentfpstruct,pd.parentfpstruct.owner)),
@@ -1448,6 +1498,22 @@ implementation
       orgpd.procoptions:=orgpd.procoptions-[po_external,po_has_importname,po_has_importdll];
       orgpd.forwarddef:=true;
     end;
+
+
+  function generate_pkg_stub(pd:tprocdef):tnode;
+    begin
+      if target_info.system in systems_all_windows+systems_nativent then
+        begin
+          insert_funcret_local(pd);
+          result:=cassignmentnode.create(
+                      cloadnode.create(pd.funcretsym,pd.localst),
+                      cordconstnode.create(1,bool32type,false)
+                    );
+        end
+      else
+        result:=cnothingnode.create;
+    end;
+
 
 end.
 

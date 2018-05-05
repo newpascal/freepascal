@@ -68,6 +68,7 @@ interface
         function LinePrefix: AnsiString;
         function LinePostfix: AnsiString;
         function LineFilter(const s: AnsiString): AnsiString;
+        function LineEnding(const deflineending: ShortString): ShortString;
       end;
 
       TExternalAssemblerOutputFile=class
@@ -156,6 +157,8 @@ interface
         function double2str(d : double) : string; virtual;
         function extended2str(e : extended) : string; virtual;
         Function DoPipe:boolean;
+
+        function CreateNewAsmWriter: TExternalAssemblerOutputFile; virtual;
       public
 
         {# Returns the complete path and executable name of the assembler
@@ -185,8 +188,8 @@ interface
         {# Constructs the command line for calling the assembler }
         function MakeCmdLine: TCmdStr; virtual;
       public
-        Constructor Create(info: pasminfo; smart: boolean);override;
-        Constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean);
+        Constructor Create(info: pasminfo; smart: boolean); override; final;
+        Constructor CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter, smart: boolean); virtual;
         procedure MakeObject;override;
         destructor Destroy; override;
 
@@ -247,11 +250,15 @@ Implementation
 {$ifdef memdebug}
       cclasses,
 {$endif memdebug}
-      script,fmodule,verbose,
+{$if defined(cpuextended) and defined(FPC_HAS_TYPE_EXTENDED)}
+{$else}
+{$ifdef FPC_SOFT_FPUX80}
+      sfpux80,
+{$endif FPC_SOFT_FPUX80}
+{$endif}
+      cscript,fmodule,verbose,
       cpuinfo,
-      aasmcpu,
-      owar,owomflib
-      ;
+      aasmcpu;
 
     var
       CAssembler : array[tasm] of TAssemblerClass;
@@ -565,34 +572,30 @@ Implementation
 
 
     Procedure TExternalAssemblerOutputFile.AsmLn;
+      var
+        newline: pshortstring;
+        newlineres: shortstring;
+        index: longint;
       begin
         MaybeAddLinePostfix;
-        if OutCnt>=AsmOutSize-2 then
-         AsmFlush;
         if (cs_link_on_target in current_settings.globalswitches) then
-          begin
-            OutBuf[OutCnt]:=target_info.newline[1];
-            inc(OutCnt);
-            inc(AsmSize);
-            if length(target_info.newline)>1 then
-             begin
-               OutBuf[OutCnt]:=target_info.newline[2];
-               inc(OutCnt);
-               inc(AsmSize);
-             end;
-          end
+          newline:=@target_info.newline
         else
+          newline:=@source_info.newline;
+        if assigned(decorator) then
           begin
-            OutBuf[OutCnt]:=source_info.newline[1];
-            inc(OutCnt);
-            inc(AsmSize);
-            if length(source_info.newline)>1 then
-             begin
-               OutBuf[OutCnt]:=source_info.newline[2];
-               inc(OutCnt);
-               inc(AsmSize);
-             end;
+            newlineres:=decorator.LineEnding(newline^);
+            newline:=@newlineres;
           end;
+        if OutCnt>=AsmOutSize-length(newline^) then
+         AsmFlush;
+        index:=1;
+        repeat
+          OutBuf[OutCnt]:=newline^[index];
+          inc(OutCnt);
+          inc(AsmSize);
+          inc(index);
+        until index>length(newline^);
       end;
 
 
@@ -737,27 +740,28 @@ Implementation
       end;
 
 
+    function TExternalAssembler.CreateNewAsmWriter: TExternalAssemblerOutputFile;
+      begin
+        result:=TExternalAssemblerOutputFile.Create(self);
+      end;
+
+
     Constructor TExternalAssembler.Create(info: pasminfo; smart: boolean);
       begin
-        inherited;
-        if not assigned(fwriter) then
-          begin
-            fwriter:=TExternalAssemblerOutputFile.Create(self);
-            ffreewriter:=true;
-          end;
-        if SmartAsm then
-          begin
-            path:=FixPath(ChangeFileExt(AsmFileName,target_info.smartext),false);
-            CreateSmartLinkPath(path);
-          end;
+        CreateWithWriter(info,CreateNewAsmWriter,true,smart);
       end;
 
 
     constructor TExternalAssembler.CreateWithWriter(info: pasminfo; wr: TExternalAssemblerOutputFile; freewriter,smart: boolean);
       begin
+        inherited Create(info,smart);
         fwriter:=wr;
         ffreewriter:=freewriter;
-        Create(info,smart);
+        if SmartAsm then
+          begin
+            path:=FixPath(ChangeFileExt(AsmFileName,target_info.smartext),false);
+            CreateSmartLinkPath(path);
+          end;
       end;
 
 
@@ -894,6 +898,19 @@ Implementation
 
 
     function TExternalAssembler.MakeCmdLine: TCmdStr;
+
+      function section_high_bound:longint;
+        var
+          alt : tasmlisttype;
+        begin
+          result:=0;
+          for alt:=low(tasmlisttype) to high(tasmlisttype) do
+            result:=result+current_asmdata.asmlists[alt].section_count;
+        end;
+
+      const
+        min_big_obj_section_count = $7fff;
+
       begin
         result:=asminfo^.asmcmd;
         { for Xcode 7.x and later }
@@ -940,6 +957,15 @@ Implementation
            Replace(result,'$ENDIAN','-mlittle')
          else
            Replace(result,'$ENDIAN','-mbig');
+
+         { as we don't keep track of the amount of sections we created we simply
+           enable Big Obj COFF files always for targets that need them }
+         if (cs_asm_pre_binutils_2_25 in current_settings.globalswitches) or
+            not (target_info.system in systems_all_windows+systems_nativent-[system_i8086_win16]) or
+            (section_high_bound<min_big_obj_section_count) then
+           Replace(result,'$BIGOBJ','')
+         else
+           Replace(result,'$BIGOBJ','-mbig-obj');
 
          Replace(result,'$EXTRAOPT',asmextraopt);
       end;
@@ -1025,6 +1051,10 @@ Implementation
         ccomp: comp;
 {$if defined(cpuextended) and defined(FPC_HAS_TYPE_EXTENDED)}
         eextended: extended;
+{$else}
+{$ifdef FPC_SOFT_FPUX80}
+	eextended: floatx80;
+{$endif}
 {$endif cpuextended}
       begin
         if do_line then
@@ -1038,6 +1068,20 @@ Implementation
               { can't write full 80 bit floating point constants yet on non-x86 }
               aitrealconst_s80bit:
                 writer.AsmWriteLn(asminfo^.comment+'value: '+extended2str(tai_realconst(hp).value.s80val));
+{$else}
+{$ifdef FPC_SOFT_FPUX80}
+{$push}{$warn 6018 off} { Unreachable code due to compile time evaluation }
+             aitrealconst_s80bit:
+               begin
+     	         if sizeof(tai_realconst(hp).value.s80val) = sizeof(double) then
+                   writer.AsmWriteLn(asminfo^.comment+'value: '+double2str(tai_realconst(hp).value.s80val))
+     	         else if sizeof(tai_realconst(hp).value.s80val) = sizeof(single) then
+                   writer.AsmWriteLn(asminfo^.comment+'value: '+single2str(tai_realconst(hp).value.s80val))
+                else
+     	         internalerror(2017091901);
+       	      end;
+{$pop}
+{$endif}
 {$endif cpuextended}
               aitrealconst_s64comp:
                 writer.AsmWriteLn(asminfo^.comment+'value: '+extended2str(tai_realconst(hp).value.s64compval));
@@ -1067,6 +1111,21 @@ Implementation
               eextended:=extended(tai_realconst(hp).value.s80val);
               pdata:=@eextended;
             end;
+{$else}
+{$ifdef FPC_SOFT_FPUX80}
+{$push}{$warn 6018 off} { Unreachable code due to compile time evaluation }
+          aitrealconst_s80bit:
+            begin
+	      if sizeof(tai_realconst(hp).value.s80val) = sizeof(double) then
+                eextended:=float64_to_floatx80(float64(double(tai_realconst(hp).value.s80val)))
+	      else if sizeof(tai_realconst(hp).value.s80val) = sizeof(single) then
+	        eextended:=float32_to_floatx80(float32(single(tai_realconst(hp).value.s80val)))
+	      else
+	        internalerror(2017091901);
+              pdata:=@eextended;
+            end;
+{$pop}
+{$endif}
 {$endif cpuextended}
           aitrealconst_s64comp:
             begin
@@ -1760,6 +1819,10 @@ Implementation
         ddouble : double;
         {$if defined(cpuextended) and defined(FPC_HAS_TYPE_EXTENDED)}
         eextended : extended;
+	{$else}
+        {$ifdef FPC_SOFT_FPUX80}
+	eextended : floatx80;
+        {$endif}
         {$endif}
         ccomp : comp;
         tmp    : word;
@@ -1830,6 +1893,21 @@ Implementation
                        eextended:=extended(tai_realconst(hp).value.s80val);
                        pdata:=@eextended;
                      end;
+         {$else}
+         {$ifdef FPC_SOFT_FPUX80}
+           {$push}{$warn 6018 off} { Unreachable code due to compile time evaluation }
+                   aitrealconst_s80bit:
+                     begin
+		       if sizeof(tai_realconst(hp).value.s80val) = sizeof(double) then
+                         eextended:=float64_to_floatx80(float64(double(tai_realconst(hp).value.s80val)))
+		       else if sizeof(tai_realconst(hp).value.s80val) = sizeof(single) then
+			 eextended:=float32_to_floatx80(float32(single(tai_realconst(hp).value.s80val)))
+		       else
+			 internalerror(2017091901);
+                       pdata:=@eextended;
+                     end;
+           {$pop}
+	 {$endif}
          {$endif cpuextended}
                    aitrealconst_s64comp:
                      begin
@@ -2027,7 +2105,7 @@ Implementation
            MaybeNextList(hp);
          end;
         ObjData.afteralloc;
-        { leave if errors have occured }
+        { leave if errors have occurred }
         if errorcount>0 then
          goto doexit;
 
@@ -2048,7 +2126,7 @@ Implementation
         ObjData.createsection(sec_code);
         ObjData.afteralloc;
 
-        { leave if errors have occured }
+        { leave if errors have occurred }
         if errorcount>0 then
          goto doexit;
 
@@ -2069,7 +2147,7 @@ Implementation
         ObjData.createsection(sec_code);
         ObjData.afterwrite;
 
-        { don't write the .o file if errors have occured }
+        { don't write the .o file if errors have occurred }
         if errorcount=0 then
          begin
            { write objectfile }
@@ -2122,7 +2200,7 @@ Implementation
              ObjData.CreateSection(startsectype,startsecname,startsecorder);
            TreePass0(hp);
            ObjData.afteralloc;
-           { leave if errors have occured }
+           { leave if errors have occurred }
            if errorcount>0 then
              break;
 
@@ -2135,7 +2213,7 @@ Implementation
            TreePass1(hp);
            ObjData.afteralloc;
 
-           { leave if errors have occured }
+           { leave if errors have occurred }
            if errorcount>0 then
              break;
 
@@ -2149,7 +2227,7 @@ Implementation
            hp:=TreePass2(hp);
            ObjData.afterwrite;
 
-           { leave if errors have occured }
+           { leave if errors have occurred }
            if errorcount>0 then
              break;
 

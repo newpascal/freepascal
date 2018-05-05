@@ -15,12 +15,12 @@
 
 unit objcbase;
 
+interface
+
 {$ifdef FPC_HAS_FEATURE_OBJECTIVEC1}
 
 {$modeswitch objectivec1}
 {$packrecords c}
-
-interface
 
 uses
   ctypes;
@@ -253,16 +253,8 @@ type
     function isContentDiscarded: Boolean; message 'isContentDiscarded';
   end;
 
-implementation
-
-{$else }
-
-interface
+{$endif FPC_HAS_FEATURE_OBJECTIVEC1}
 
 implementation
-
-{$endif}
 
 end.
-
-

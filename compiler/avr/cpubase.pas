@@ -53,7 +53,7 @@ unit cpubase;
         A_LSL,A_LSR,A_ROL,A_ROR,A_ASR,A_SWAP,A_BSET,A_BCLR,A_SBI,A_CBI,
         A_SEC,A_SEH,A_SEI,A_SEN,A_SER,A_SES,A_SET,A_SEV,A_SEZ,
         A_CLC,A_CLH,A_CLI,A_CLN,A_CLR,A_CLS,A_CLT,A_CLV,A_CLZ,
-        A_BST,A_BLD,A_BREAK,A_NOP,A_SLEEP,A_WDR);
+        A_BST,A_BLD,A_BREAK,A_NOP,A_SLEEP,A_WDR,A_XCH);
 
 
       { This should define the array of instructions as string }
@@ -158,7 +158,7 @@ unit cpubase;
 
     type
       TResFlags = (F_NotPossible,F_CC,F_CS,F_EQ,F_GE,F_LO,F_LT,
-        F_NE,F_SH,F_VC,F_VS);
+        F_NE,F_SH,F_VC,F_VS,F_PL,F_MI);
 
 {*****************************************************************************
                                 Operands
@@ -278,17 +278,6 @@ unit cpubase;
 *****************************************************************************}
 
     const
-      { Registers which must be saved when calling a routine declared as
-        cppdecl, cdecl, stdcall, safecall, palmossyscall. The registers
-        saved should be the ones as defined in the target ABI and / or GCC.
-
-        This value can be deduced from the CALLED_USED_REGISTERS array in the
-        GCC source.
-      }
-      { on avr, gen_entry/gen_exit code saves/restores registers, so
-        we don't need this array }
-      saved_standard_registers : array[0..0] of tsuperregister =
-        (RS_INVALID);
       { Required parameter alignment when calling a routine declared as
         stdcall and cdecl. The alignment value should be the one defined
         by GCC or the target ABI.
@@ -297,9 +286,6 @@ unit cpubase;
         PARM_BOUNDARY / BITS_PER_UNIT in the GCC source.
       }
       std_param_align = 4;
-
-      saved_address_registers : array[0..0] of tsuperregister = (RS_INVALID);
-      saved_mm_registers : array[0..0] of tsuperregister = (RS_INVALID);
 
 {*****************************************************************************
                                   Helpers
@@ -318,18 +304,6 @@ unit cpubase;
     function conditions_equal(const c1, c2: TAsmCond): boolean; {$ifdef USEINLINE}inline;{$endif USEINLINE}
 
     function dwarf_reg(r:tregister):byte;
-    function GetHigh(const r : TRegister) : TRegister;
-
-    { returns the next virtual register }
-    function GetNextReg(const r : TRegister) : TRegister;
-
-    { returns the last virtual register }
-    function GetLastReg(const r : TRegister) : TRegister;
-
-    { returns the register with the offset of ofs of a continuous set of register starting with r }
-    function GetOffsetReg(const r : TRegister;ofs : shortint) : TRegister;
-    { returns the register with the offset of ofs of a continuous set of register starting with r and being continued with rhi }
-    function GetOffsetReg64(const r,rhi: TRegister;ofs : shortint): TRegister;
 
     function is_calljmp(o:tasmop):boolean;{$ifdef USEINLINE}inline;{$endif USEINLINE}
 
@@ -376,7 +350,7 @@ unit cpubase;
       const
         inv_flags: array[TResFlags] of TResFlags =
           (F_NotPossible,F_CS,F_CC,F_NE,F_LT,F_SH,F_GE,
-           F_NE,F_LO,F_VS,F_VC);
+           F_NE,F_LO,F_VS,F_VC,F_MI,F_PL);
       begin
         f:=inv_flags[f];
       end;
@@ -384,9 +358,9 @@ unit cpubase;
 
     function flags_to_cond(const f: TResFlags) : TAsmCond;
       const
-        flag_2_cond: array[F_CC..F_VS] of TAsmCond =
+        flag_2_cond: array[F_CC..F_MI] of TAsmCond =
           (C_CC,C_CS,C_EQ,C_GE,C_LO,C_LT,
-           C_NE,C_SH,C_VC,C_VS);
+           C_NE,C_SH,C_VC,C_VS,C_PL,C_MI);
       begin
         if f=F_NotPossible then
           internalerror(2011022101);
@@ -450,39 +424,6 @@ unit cpubase;
         if reg=-1 then
           internalerror(200603251);
         result:=reg;
-      end;
-
-
-    function GetHigh(const r : TRegister) : TRegister;
-      begin
-        result:=TRegister(longint(r)+1)
-      end;
-
-
-    function GetNextReg(const r: TRegister): TRegister;
-      begin
-        result:=TRegister(longint(r)+1);
-      end;
-
-
-    function GetLastReg(const r: TRegister): TRegister;
-      begin
-        result:=TRegister(longint(r)-1);
-      end;
-
-
-    function GetOffsetReg(const r: TRegister;ofs : shortint): TRegister;
-      begin
-        result:=TRegister(longint(r)+ofs);
-      end;
-
-
-    function GetOffsetReg64(const r,rhi: TRegister;ofs : shortint): TRegister;
-      begin
-        if ofs>3 then
-          result:=TRegister(longint(rhi)+ofs-4)
-        else
-          result:=TRegister(longint(r)+ofs);
       end;
 
 

@@ -43,6 +43,7 @@ type
     public
       constructor Create; override;
       procedure SetDefaultInfo; override;
+      procedure InitSysInitUnitName; override;
       function  MakeExecutable: boolean; override;
   end;
 
@@ -51,8 +52,8 @@ implementation
 
     uses
        SysUtils,
-       cutils,cfileutl,cclasses,
-       globtype,globals,systems,verbose,script,fmodule,i_amiga;
+       cutils,cfileutl,cclasses,aasmbase,
+       globtype,globals,systems,verbose,cscript,fmodule,i_amiga;
 
 
 
@@ -81,7 +82,7 @@ begin
      end
     else
      begin
-      ExeCmd[1]:='vlink -b amigahunk $OPT $STRIP -o $EXE -T $RES';
+      ExeCmd[1]:='vlink -b amigahunk $GCSECTIONS $OPT $STRIP -o $EXE -T $RES';
      end;
    end;
 end;
@@ -96,7 +97,7 @@ begin
      end
     else
      begin
-      ExeCmd[1]:='vlink -q -n -b elf32amigaos -P_start -P__amigaos4__ -nostdlib $OPT $STRIP -o $EXE -T $RES';
+      ExeCmd[1]:='vlink -q -n -b elf32amigaos -P_start -P__amigaos4__ -nostdlib $GCSECTIONS $OPT $STRIP -o $EXE -T $RES';
      end;
   end;
 end;
@@ -107,6 +108,12 @@ begin
     system_m68k_amiga:      SetAmiga68kInfo;
     system_powerpc_amiga:   SetAmigaPPCInfo;
   end;
+end;
+
+
+Procedure TLinkerAmiga.InitSysInitUnitName;
+begin
+  sysinitunit:='si_prc';
 end;
 
 
@@ -144,8 +151,11 @@ begin
 
   LinkRes.Add('INPUT (');
   { add objectfiles, start with prt0 always }
-  s:=FindObjectFile('prt0','',false);
-  LinkRes.AddFileName(s);
+  if not (target_info.system in systems_internal_sysinit) then
+    begin
+      s:=FindObjectFile('prt0','',false);
+      LinkRes.AddFileName(Unix2AmigaPath(maybequoted(s)));
+    end;
   while not ObjectFiles.Empty do
    begin
     s:=ObjectFiles.GetFirst;
@@ -235,7 +245,7 @@ begin
       Add('  .rela.dyn       : { *(.rela.dyn) }');
       Add('  .rela.plt       : { *(.rela.plt) }');
       Add('  .init           : { *(.init) }');
-      Add('  .text           : { *(.text .gnu.linkonce.t.*) }');
+      Add('  .text           : { *(.text .text.* .gnu.linkonce.t.*) }');
       Add('  .fini           : { *(.fini) }');
       Add('  .code68k        : { *(CODE text code) }');
       Add('');
@@ -336,9 +346,21 @@ var
   CmdStr  : TCmdStr;
   StripStr: string[40];
   DynLinkStr : string;
+  GCSectionsStr : string;
 begin
   StripStr:='';
-  if (cs_link_strip in current_settings.globalswitches) then StripStr:='-s';
+  GCSectionsStr:='';
+  DynLinkStr:='';
+
+  if (cs_link_strip in current_settings.globalswitches) then
+    StripStr:='-s';
+  if rlinkpath<>'' Then
+    DynLinkStr:='--rpath-link '+rlinkpath;
+  if UseVLink then
+    begin
+      if create_smartlink_sections then
+        GCSectionsStr:='-gc-all -sc -sd';
+    end;
 
   { Call linker }
   SplitBinCmd(Info.ExeCmd[1],BinStr,CmdStr);
@@ -347,11 +369,9 @@ begin
   Replace(cmdstr,'$EXE',Unix2AmigaPath(maybequoted(ScriptFixFileName(current_module.exefilename))));
   Replace(cmdstr,'$RES',Unix2AmigaPath(maybequoted(ScriptFixFileName(outputexedir+Info.ResName))));
   Replace(cmdstr,'$STRIP',StripStr);
-  if rlinkpath<>'' Then
-    DynLinkStr:='--rpath-link '+rlinkpath
-  else
-    DynLinkStr:='';
+  Replace(cmdstr,'$GCSECTIONS',GCSectionsStr);
   Replace(cmdstr,'$DYNLINK',DynLinkStr);
+
   MakeAmiga68kExe:=DoExec(BinStr,CmdStr,true,false);
 end;
 
@@ -362,9 +382,21 @@ var
   CmdStr  : TCmdStr;
   StripStr: string[40];
   DynLinkStr : string;
+  GCSectionsStr : string;
 begin
   StripStr:='';
-  if (cs_link_strip in current_settings.globalswitches) then StripStr:='-s';
+  GCSectionsStr:='';
+  DynLinkStr:='';
+
+  if (cs_link_strip in current_settings.globalswitches) then
+    StripStr:='-s';
+  if rlinkpath<>'' Then
+    DynLinkStr:='--rpath-link '+rlinkpath;
+  if UseVLink then
+    begin
+      if create_smartlink_sections then
+        GCSectionsStr:='-gc-all -sc -sd';
+    end;
 
   { Call linker }
   SplitBinCmd(Info.ExeCmd[1],BinStr,CmdStr);
@@ -373,11 +405,9 @@ begin
   Replace(cmdstr,'$EXE',Unix2AmigaPath(maybequoted(ScriptFixFileName(current_module.exefilename))));
   Replace(cmdstr,'$RES',Unix2AmigaPath(maybequoted(ScriptFixFileName(outputexedir+Info.ResName))));
   Replace(cmdstr,'$STRIP',StripStr);
-  if rlinkpath<>'' Then
-    DynLinkStr:='--rpath-link '+rlinkpath
-  else
-    DynLinkStr:='';
+  Replace(cmdstr,'$GCSECTIONS',GCSectionsStr);
   Replace(cmdstr,'$DYNLINK',DynLinkStr);
+
   MakeAmigaPPCExe:=DoExec(BinStr,CmdStr,true,false);
 end;
 

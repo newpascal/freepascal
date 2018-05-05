@@ -30,7 +30,7 @@ and all three 32-bit systems returned completely identical types too
 introduction)
 }
 
-{$if defined(CPUMIPS) or defined(cpuaarch64)}
+{$if defined(CPUMIPS) or defined(cpuaarch64) or defined(cpusparc64)}
 {$define USE_PTHREAD_SIZEOF}
 {$if defined(cpuaarch64)}
 const
@@ -155,8 +155,11 @@ Type
     TGid     = gid_t;
     pGid     = ^gid_t;
 
+{$ifdef cpusparc64}
+    TIOCtlRequest = culong;
+{$else cpusparc64}
     TIOCtlRequest = cInt;
-
+{$endif cpusparc64}
 
     socklen_t= cuint32;
     TSockLen = socklen_t;
@@ -164,7 +167,11 @@ Type
 
   timeval     = record
                  tv_sec:time_t;
+{$ifdef CPUSPARC64}
+                 tv_usec:cint;
+{$else CPUSPARC64}
                  tv_usec:clong;
+{$endif CPUSPARC64}
                 end;
   ptimeval    = ^timeval;
   TTimeVal    = timeval;

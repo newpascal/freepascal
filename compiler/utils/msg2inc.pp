@@ -14,8 +14,6 @@
 
  **********************************************************************}
 program msg2inc;
-uses
-  strings;
 
 {$ifdef unix}
   {$define EOL_ONE_CHAR}
@@ -55,6 +53,7 @@ var
 
   msgidxmax  : array[1..msgparts] of longint;
   msgs       : array[0..msgparts,0..999] of boolean;
+  msgcodepage: TSystemCodePage;
 
 procedure LoadMsgFile(const fn:string);
 var
@@ -77,6 +76,7 @@ var
 
 begin
   Writeln('Loading messagefile ',fn);
+  msgcodepage:=CP_ACP;
 {Read the message file}
   assign(f,fn);
   {$push} {$I-}
@@ -102,7 +102,7 @@ begin
       begin
         if s=']' then
          multiline:=false
-        else
+        else if (s='') or (s[1] <> '#') then
          inc(msgsize,length(s)+1); { +1 for linebreak }
       end
      else
@@ -128,6 +128,8 @@ begin
               numpart:=num div 1000;
               if numpart=0 then
                err('number should be > 1000');
+              if code<>0 then
+               err('illegal number: '+s);
               numidx:=num mod 1000;
               { duplicate ? }
               if msgs[numpart,numidx] then
@@ -150,6 +152,12 @@ begin
             end
            else
             err('no = found');
+         end
+        else if (Length(s)>11) and (Copy(s,1,11)='# CodePage ') then
+         begin
+           val(Copy(s,12,Length(s)-11),msgcodepage,code);
+           if code<>0 then
+             err('illegal code page number: '+s);
          end;
       end;
    end;
@@ -183,7 +191,7 @@ begin
            ptxt^:=#0;
            inc(ptxt);
          end
-        else
+        else if (s='') or (s[1] <> '#') then
          begin
            move(s[1],ptxt^,length(s));
            inc(ptxt,length(s));
@@ -240,7 +248,7 @@ end;
                                WriteEnumFile
 *****************************************************************************}
 
-procedure WriteEnumFile(const fn,typename:string);
+procedure WriteEnumFile(const fn:string);
 var
   t : text;
   i : longint;
@@ -329,6 +337,7 @@ begin
 {Open textfile}
   assign(t,fn);
   rewrite(t);
+  writeln(t,'const '+constname+'_codepage=',msgcodepage:5,';');
   writeln(t,'{$ifdef Delphi}');
   writeln(t,'const '+constname+' : array[0..000000] of string[',maxslen,']=(');
   writeln(t,'{$else Delphi}');
@@ -405,9 +414,9 @@ begin
   s:=l0(msgsize div maxslen); { we start with 0 }
   assign(f,fn);
   reset(f,1);
-  seek(f,34+eollen+length(constname));
+  seek(f,22+34+2*eollen+2*length(constname));
   blockwrite(f,s[1],5);
-  seek(f,90+3*eollen+2*length(constname));
+  seek(f,22+90+4*eollen+3*length(constname));
   blockwrite(f,s[1],5);
   close(f);
 end;
@@ -628,7 +637,7 @@ begin
         hs:=hs+'$\backslash$'
     else
       hs := hs + S[i];
-    end;  
+    end;
   EscapeString:=hs;
 end;
 
@@ -744,9 +753,8 @@ var
   end;
 
 begin
-  Mode:=M_String;
-  FIles:=0;
-  for i:=1to paramcount do
+  Files:=0;
+  for i:=1 to paramcount do
    begin
      para:=paramstr(i);
      if (para[1]='-') then
@@ -789,13 +797,17 @@ begin
         M_Tex : if Files<2 then
                  Helpscreen;
   else
-   if FIles<3 then
+   if Files<3 then
     HelpScreen;
   end;
 end;
 
 
 begin
+  Mode:=M_String;
+  OutFile:='';
+  InFile:='';
+  OutName:='';
   GetPara;
   case Mode of
    M_Renumber : begin
@@ -806,17 +818,17 @@ begin
                 end;
       M_Intel : begin
                   Loadmsgfile(InFile);
-                  WriteEnumFile(OutFile+'idx.inc',OutName+'const');
+                  WriteEnumFile(OutFile+'idx.inc');
                   WriteIntelFile(OutFile+'txt.inc',OutName+'txt');
                 end;
      M_String : begin
                   Loadmsgfile(InFile);
-                  WriteEnumFile(OutFile+'idx.inc',OutName+'const');
+                  WriteEnumFile(OutFile+'idx.inc');
                   WriteStringFile(OutFile+'txt.inc',OutName+'txt');
                 end;
        M_Char : begin
                   Loadmsgfile(InFile);
-                  WriteEnumFile(OutFile+'idx.inc',OutName+'const');
+                  WriteEnumFile(OutFile+'idx.inc');
                   WriteCharFile(OutFile+'txt.inc',OutName+'txt');
                 end;
   end;

@@ -38,8 +38,8 @@ interface
 
     uses
       globtype,globals,verbose,
-      aasmbase,aasmtai,aasmdata,
-      symdef,defutil,
+      aasmbase,aasmdata,
+      defutil,
       cgbase,cgutils,cga,cgobj,hlcgobj,cgx86,
       tgobj;
 
@@ -76,7 +76,7 @@ interface
         cgsize:TCgSize;
         opsize:topsize;
       begin
-        reference_reset(ref,0);
+        reference_reset(ref,0,[]);
         reg:=NR_NO;
 
         cgsize:=def_cgsize(resultdef);

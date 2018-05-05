@@ -160,14 +160,13 @@ function copy_parasize(var n: tnode; arg: pointer): foreachnoderesult;
 constructor ti386tryfinallynode.create(l, r: TNode);
   begin
     inherited create(l,r);
-    if (target_info.system<>system_i386_win32) or (
+    if (target_info.system<>system_i386_win32) or
       { Don't create child procedures for generic methods, their nested-like
         behavior causes compilation errors because real nested procedures
         aren't allowed for generics. Not creating them doesn't harm because
         generic node tree is discarded without generating code. }
-        assigned(current_procinfo.procdef.struct) and
-        (df_generic in current_procinfo.procdef.struct.defoptions)
-      ) then
+      (df_generic in current_procinfo.procdef.defoptions)
+      then
       exit;
     finalizepi:=tcgprocinfo(cprocinfo.create(current_procinfo));
     finalizepi.force_nested;
@@ -194,8 +193,7 @@ constructor ti386tryfinallynode.create_implicit(l, r, _t1: TNode);
     if implicitframe and (current_procinfo.procdef.proccalloption=pocall_safecall) then
       exit;
 
-    if assigned(current_procinfo.procdef.struct) and
-      (df_generic in current_procinfo.procdef.struct.defoptions) then
+    if df_generic in current_procinfo.procdef.defoptions then
       InternalError(2013012501);
 
     finalizepi:=tcgprocinfo(cprocinfo.create(current_procinfo));
@@ -262,7 +260,7 @@ procedure emit_scope_start(handler,data: TAsmSymbol);
     hreg: tregister;
   begin
     hreg:=cg.getintregister(current_asmdata.CurrAsmList,OS_ADDR);
-    reference_reset_base(href,hreg,0,sizeof(pint));
+    reference_reset_base(href,hreg,0,ctempposinvalid,sizeof(pint),[]);
     href.segment:=NR_FS;
     emit_reg_reg(A_XOR,S_L,hreg,hreg);
     emit_sym(A_PUSH,S_L,data);
@@ -279,7 +277,7 @@ procedure emit_scope_end;
   begin
     hreg:=cg.getintregister(current_asmdata.CurrAsmList,OS_ADDR);
     hreg2:=cg.getintregister(current_asmdata.CurrAsmList,OS_ADDR);
-    reference_reset_base(href,hreg,0,sizeof(pint));
+    reference_reset_base(href,hreg,0,ctempposinvalid,sizeof(pint),[]);
     href.segment:=NR_FS;
     emit_reg_reg(A_XOR,S_L,hreg,hreg);
     emit_reg(A_POP,S_L,hreg2);

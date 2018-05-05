@@ -102,6 +102,9 @@ interface
       end;
 
       tcgshlshrnode = class(tshlshrnode)
+{$ifdef SUPPORT_MMX}
+         procedure second_mmx;virtual;abstract;
+{$endif SUPPORT_MMX}
 {$ifndef cpu64bitalu}
          procedure second_64bit;virtual;
 {$endif not cpu64bitalu}
@@ -130,15 +133,11 @@ implementation
     uses
       globtype,systems,
       cutils,verbose,globals,
-      symtable,symconst,symdef,aasmbase,aasmtai,aasmdata,aasmcpu,defutil,
+      symtable,symconst,symdef,aasmbase,aasmdata,aasmcpu,defutil,
       parabase,
       pass_2,
       ncon,
-      tgobj,ncgutil,cgobj,cgutils,paramgr,hlcgobj,procinfo
-{$ifndef cpu64bitalu}
-      ,cg64f32
-{$endif not cpu64bitalu}
-      ;
+      tgobj,cgobj,cgutils,paramgr,hlcgobj;
 
 {*****************************************************************************
                           TCGUNARYMINUSNODE
@@ -488,7 +487,7 @@ implementation
     procedure tcgshlshrnode.second_integer;
       var
          op : topcg;
-         opdef: tdef;
+         opdef,shiftcountdef: tdef;
          hcountreg : tregister;
          opsize : tcgsize;
          shiftval : longint;
@@ -503,6 +502,7 @@ implementation
 {$ifdef cpunodefaultint}
         opsize:=left.location.size;
         opdef:=left.resultdef;
+        shiftcountdef:=opdef;
 {$else cpunodefaultint}
         if left.resultdef.size<=4 then
           begin
@@ -517,8 +517,13 @@ implementation
                 else
                   begin
                     opdef:=s32inttype;
-                    opsize:=OS_S32
-                  end
+                    opsize:=OS_S32;
+                  end;
+{$ifdef cpu16bitalu}
+                shiftcountdef:=s16inttype;
+{$else cpu16bitalu}
+                shiftcountdef:=opdef;
+{$endif cpu16bitalu}
               end
             else
               begin
@@ -532,7 +537,12 @@ implementation
                   begin
                     opdef:=u32inttype;
                     opsize:=OS_32;
-                  end
+                  end;
+{$ifdef cpu16bitalu}
+                shiftcountdef:=u16inttype;
+{$else cpu16bitalu}
+                shiftcountdef:=opdef;
+{$endif cpu16bitalu}
               end
           end
         else
@@ -547,6 +557,7 @@ implementation
                 opdef:=u64inttype;
                 opsize:=OS_64;
               end;
+            shiftcountdef:=opdef;
           end;
 {$endif cpunodefaultint}
 
@@ -576,7 +587,7 @@ implementation
                 is done since most target cpu which will use this
                 node do not support a shift count in a mem. location (cec)
               }
-              hlcg.location_force_reg(current_asmdata.CurrAsmList,right.location,right.resultdef,opdef,true);
+              hlcg.location_force_reg(current_asmdata.CurrAsmList,right.location,right.resultdef,shiftcountdef,true);
               hlcg.a_op_reg_reg_reg(current_asmdata.CurrAsmList,op,opdef,right.location.register,left.location.register,location.register);
            end;
          { shl/shr nodes return the same type as left, which can be different
@@ -594,6 +605,11 @@ implementation
       begin
          secondpass(left);
          secondpass(right);
+{$ifdef SUPPORT_MMX}
+           if (cs_mmx in current_settings.localswitches) and is_mmx_able_array(left.resultdef) then
+             second_mmx
+         else
+{$endif SUPPORT_MMX}
 {$ifndef cpu64bitalu}
          if is_64bit(left.resultdef) then
            second_64bit

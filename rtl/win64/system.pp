@@ -27,6 +27,7 @@ interface
 {$define HAS_WIDESTRINGMANAGER}
 {$define DISABLE_NO_DYNLIBS_MANAGER}
 {$define FPC_SYSTEM_HAS_SYSDLH}
+{$define FPC_HAS_SETCTRLBREAKHANDLER}
 
 {$ifdef FPC_USE_WIN64_SEH}
   {$define FPC_SYSTEM_HAS_RAISEEXCEPTION}
@@ -145,7 +146,9 @@ end;
 {$ifndef FPC_USE_WIN64_SEH}
 procedure install_exception_handlers;forward;
 {$endif FPC_USE_WIN64_SEH}
+{$ifdef VER3_0}
 procedure PascalMain;external name 'PASCALMAIN';
+{$endif VER3_0}
 
 { include code common with win32 }
 {$I syswin.inc}

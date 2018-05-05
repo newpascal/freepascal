@@ -302,6 +302,8 @@ BEGIN
   (*$ENDIF *) (*$WARNINGS ON *)
   (*$IFDEF Unix *)
      IF SearchRec.Attr AND faDirectory = 0 THEN BEGIN
+       FillChar(TimeVal, SizeOf(TimeVal), #0);
+       FillChar(TimeZone, SizeOf(TimeZone), #0);      
        Result := FileDateToDateTime (SearchRec.Time);
        {$IFDEF Kylix}
        GetTimeOfDay (TimeVal, TimeZone);
@@ -976,6 +978,13 @@ VAR
   Rec : ARRAY [0..RECORDSIZE-1] OF CHAR;
 BEGIN
   FillChar (Rec, SizeOf (Rec), 0);
+  FStream.Write (Rec, RECORDSIZE);
+  {
+    Avoid warning: 'tar: A lone zero block at *'
+    The reason for this message is that GNU tar format has been changed
+    to require TWO zero blocks marking the end of the archive.
+    Thus write a second zero block.
+  }
   FStream.Write (Rec, RECORDSIZE);
   FFinalized := TRUE;
 END;

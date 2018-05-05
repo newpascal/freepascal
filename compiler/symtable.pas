@@ -42,6 +42,8 @@ interface
           procedure _needs_init_final(sym:TObject;arg:pointer);
           procedure check_forward(sym:TObject;arg:pointer);
           procedure check_block_valid(def: TObject;arg:pointer);
+          procedure register_defs(def:tobject;arg:pointer);
+          procedure register_syms(sym:tobject;arg:pointer);
           procedure labeldefined(sym:TObject;arg:pointer);
           procedure varsymbolused(sym:TObject;arg:pointer);
           procedure TestPrivate(sym:TObject;arg:pointer);
@@ -51,6 +53,7 @@ interface
           procedure writedefs(ppufile:tcompilerppufile);
           procedure writesyms(ppufile:tcompilerppufile);
        public
+          constructor create(const s:string);
           procedure insert(sym:TSymEntry;checkdup:boolean=true);override;
           procedure delete(sym:TSymEntry);override;
           { load/write }
@@ -67,8 +70,9 @@ interface
           procedure allprivatesused;
           procedure check_forwards;
           procedure checklabels;
-          function  needs_init_final : boolean;
+          function  needs_init_final : boolean; virtual;
           procedure testfordefaultproperty(sym:TObject;arg:pointer);
+          procedure register_children;
        end;
 
 {$ifdef llvm}
@@ -144,7 +148,7 @@ interface
           strictdefaultfield: boolean;
 
           constructor create(const n:string;usealign,recordminalign,recordmaxCalign:shortint);
-          procedure insertunionst(unionst : trecordsymtable;offset : longint);
+          procedure insertunionst(unionst : trecordsymtable;offset : asizeint);
           procedure includemanagementoperator(mop:tmanagementoperator);
        end;
 
@@ -225,7 +229,9 @@ interface
           function checkduplicate(var hashedid:THashedIDString;sym:TSymEntry):boolean;override;
           function findnamespace(const n:string):TSymEntry;virtual;
           function iscurrentunit:boolean;override;
+          function needs_init_final: boolean; override;
           procedure insertunit(sym:TSymEntry);
+          function has_class_condestructors: boolean;
        end;
 
        tglobalsymtable = class(tabstractuniTSymtable)
@@ -434,9 +440,9 @@ interface
     { _OP_EXPLICIT   }  'explicit',
     { _OP_ENUMERATOR }  'enumerator',
     { _OP_INITIALIZE }  'initialize',
-    { _OP_FINALIZE   }  'finalize',    
+    { _OP_FINALIZE   }  'finalize',
+    { _OP_ADDREF     }  'addref',
     { _OP_COPY       }  'copy',
-    { _OP_CLONE      }  'clone',
     { _OP_INC        }  'inc',
     { _OP_DEC        }  'dec');
 
@@ -444,9 +450,10 @@ interface
     { mop_none       }  NOTOKEN,
     { mop_initialize }  _OP_INITIALIZE,
     { mop_finalize   }  _OP_FINALIZE,
-    { mop_copy       }  _OP_COPY,
-    { mop_clone      }  _OP_CLONE
+    { mop_addref     }  _OP_ADDREF,
+    { mop_copy       }  _OP_COPY
     );
+
 
 
 implementation
@@ -461,7 +468,9 @@ implementation
       { codegen }
       procinfo,
       { ppu }
-      entfile
+      entfile,
+      { parser }
+      scanner
       ;
 
 
@@ -471,6 +480,18 @@ implementation
 {*****************************************************************************
                              TStoredSymtable
 *****************************************************************************}
+
+
+    constructor tstoredsymtable.create(const s:string);
+      begin
+        inherited create(s);
+        { Note: this happens for the initial macro symtable, so no error here }
+        if not assigned(current_module) then
+          comment(v_debug,'Current module not available for module id')
+        else
+          moduleid:=current_module.moduleid;
+      end;
+
 
     procedure tstoredsymtable.insert(sym:TSymEntry;checkdup:boolean=true);
       begin
@@ -860,6 +881,18 @@ implementation
       end;
 
 
+    procedure tstoredsymtable.register_syms(sym:tobject;arg:pointer);
+      begin
+        tsym(sym).register_sym;
+      end;
+
+
+    procedure tstoredsymtable.register_defs(def:tobject;arg:pointer);
+      begin
+        tdef(def).register_def;
+      end;
+
+
     procedure TStoredSymtable.labeldefined(sym:TObject;arg:pointer);
       begin
         if (tsym(sym).typ=labelsym) and
@@ -999,6 +1032,13 @@ implementation
      end;
 
 
+   procedure tstoredsymtable.register_children;
+     begin
+       SymList.ForEachCall(@register_syms,nil);
+       DefList.ForEachCall(@register_defs,nil);
+     end;
+
+
 {***********************************************
            Process all entries
 ***********************************************}
@@ -1082,7 +1122,6 @@ implementation
     constructor tabstractrecordsymtable.create(const n:string;usealign,recordminalign,recordmaxCalign:shortint);
       begin
         inherited create(n);
-        moduleid:=current_module.moduleid;
         _datasize:=0;
         databitsize:=0;
         recordalignment:=1;
@@ -1644,13 +1683,13 @@ implementation
     { the offset is the location of the start of the variant
       and datasize and dataalignment corresponds to
       the complete size (see code in pdecl unit) PM }
-    procedure trecordsymtable.insertunionst(unionst : trecordsymtable;offset : longint);
+    procedure trecordsymtable.insertunionst(unionst : trecordsymtable;offset : asizeint);
       var
         sym : tsym;
         def : tdef;
         i : integer;
         varalignrecord,varalign,
-        storesize,storealign : aint;
+        storesize,storealign : asizeint;
         bitsize: tcgint;
       begin
         storesize:=_datasize;
@@ -1747,7 +1786,7 @@ implementation
       end;
 
 
-    procedure trecordsymtable.includemanagementoperator(mop: tmanagementoperator);
+    procedure trecordsymtable.includemanagementoperator(mop:tmanagementoperator);
       begin
         if mop in managementoperators then
           exit;
@@ -2387,6 +2426,23 @@ implementation
                 );
       end;
 
+
+    function tabstractuniTSymtable.needs_init_final: boolean;
+      begin
+        if not init_final_check_done then
+          begin
+            result:=inherited needs_init_final;
+            if not result then
+              begin
+                result:=has_class_condestructors;
+                if result then
+                  include(tableoptions,sto_needs_init_final);
+              end;
+          end;
+        result:=sto_needs_init_final in tableoptions;
+      end;
+
+
     procedure tabstractuniTSymtable.insertunit(sym:TSymEntry);
       var
         p:integer;
@@ -2409,6 +2465,32 @@ implementation
               insert(cnamespacesym.create(ns));
             p:=pos('.',n);
           end;
+      end;
+
+
+    procedure CheckForClassConDestructors(p:TObject;arg:pointer);
+      var
+        result: pboolean absolute arg;
+      begin
+        if result^ then
+          exit;
+        if (tdef(p).typ in [objectdef,recorddef]) and
+           not (df_generic in tdef(p).defoptions) then
+          begin
+            { first check the class... }
+            if ([oo_has_class_constructor,oo_has_class_destructor] * tabstractrecorddef(p).objectoptions <> []) then
+              result^:=true;;
+            { ... and then also check all subclasses }
+            if not result^ then
+              tabstractrecorddef(p).symtable.deflist.foreachcall(@CheckForClassConDestructors,arg);
+          end;
+      end;
+
+
+    function tabstractuniTSymtable.has_class_condestructors: boolean;
+      begin
+        result:=false;
+        deflist.foreachcall(@CheckForClassConDestructors,@result);
       end;
 
 {****************************************************************************
@@ -2786,6 +2868,12 @@ implementation
        var
          owner: tsymtable;
        begin
+         { for symbols used in preprocessor expressions, we don't want to
+           increase references count (for smaller final binaries) }
+         if not assigned(current_scanner) then
+           internalerror(2017050601);
+         if current_scanner.in_preproc_comp_expr then
+           exit;
          { symbol uses count }
          sym.IncRefCount;
          owner:=sym.owner;
@@ -2940,6 +3028,13 @@ implementation
                        (
                          isspezproc and
                          (current_procinfo.procdef.struct=current_structdef)
+                       ) or
+                       { specializations may access private symbols that their
+                         generics are allowed to access }
+                       (
+                         assigned(current_structdef) and
+                         (df_specialization in current_structdef.defoptions) and
+                         (symst.moduleid=current_structdef.genericdef.owner.moduleid)
                        )
                       );
             end;
@@ -2986,7 +3081,7 @@ implementation
                        ) or
                        (
                         assigned(contextobjdef) and
-                        (contextobjdef.owner.symtabletype in [globalsymtable,staticsymtable,ObjectSymtable]) and
+                        (contextobjdef.owner.symtabletype in [globalsymtable,staticsymtable,ObjectSymtable,recordsymtable]) and
                         (contextobjdef.owner.iscurrentunit) and
                         def_is_related(contextobjdef,symownerdef)
                        ) or
@@ -3014,6 +3109,13 @@ implementation
                        (
                          isspezproc and
                          (current_procinfo.procdef.struct=current_structdef)
+                       ) or
+                       { specializations may access private symbols that their
+                         generics are allowed to access }
+                       (
+                         assigned(current_structdef) and
+                         (df_specialization in current_structdef.defoptions) and
+                         (symst.moduleid=current_structdef.genericdef.owner.moduleid)
                        )
                       );
             end;
@@ -3104,7 +3206,12 @@ implementation
                    (
                      not(srsym.typ in [unitsym,namespacesym]) or
                      srsymtable.iscurrentunit or
-                     (assigned(current_specializedef)and(current_specializedef.genericdef.owner.moduleid=srsymtable.moduleid))
+                     (assigned(current_specializedef)and(current_specializedef.genericdef.owner.moduleid=srsymtable.moduleid)) or
+                     (
+                       assigned(current_procinfo) and
+                       (df_specialization in current_procinfo.procdef.defoptions) and
+                       (current_procinfo.procdef.genericdef.owner.moduleid=srsymtable.moduleid)
+                     )
                    ) and
                    (not (ssf_search_option in flags) or (option in srsym.symoptions))then
                   begin
@@ -3393,8 +3500,6 @@ implementation
         hashedid : THashedIDString;
         orgclass : tobjectdef;
         i        : longint;
-        hlpsrsym : tsym;
-        hlpsrsymtable : tsymtable;
       begin
         orgclass:=classh;
         { in case this is a formal class, first find the real definition }
@@ -3448,31 +3553,18 @@ implementation
           end
         else
           begin
-            hlpsrsym:=nil;
-            hlpsrsymtable:=nil;
             while assigned(classh) do
               begin
                 { search for a class helper method first if this is an Object
                   Pascal class and we haven't yet found a helper symbol }
-                if is_class(classh) and
-                    (ssf_search_helper in flags) and
-                    not assigned(hlpsrsym) then
+                if (classh.objecttype in objecttypes_with_helpers) and
+                    (ssf_search_helper in flags) then
                   begin
                     result:=search_objectpascal_helper(classh,contextclassh,s,srsym,srsymtable);
+                    { an eventual overload inside the extended type's hierarchy
+                      will be found by tcallcandidates }
                     if result then
-                      { if the procsym is overloaded we need to use the
-                        "original" symbol; the helper symbol will be found when
-                        searching for overloads }
-                      if (srsym.typ<>procsym) or
-                          not (sp_has_overloaded in tprocsym(srsym).symoptions) then
-                        exit
-                      else
-                        begin
-                          { remember the found symbol if the class hierarchy
-                            should not contain the a method with that name }
-                          hlpsrsym:=srsym;
-                          hlpsrsymtable:=srsymtable;
-                        end;
+                      exit;
                   end;
                 srsymtable:=classh.symtable;
                 srsym:=tsym(srsymtable.FindWithHash(hashedid));
@@ -3485,15 +3577,6 @@ implementation
                     exit;
                   end;
                 classh:=classh.childof;
-              end;
-            { did we find a helper symbol, but no symbol with the same name in
-              the extended object's hierarchy? }
-            if assigned(hlpsrsym) then
-              begin
-                srsym:=hlpsrsym;
-                srsymtable:=hlpsrsymtable;
-                result:=true;
-                exit;
               end;
           end;
         if is_objcclass(orgclass) then
@@ -3508,29 +3591,15 @@ implementation
     function  searchsym_in_record(recordh:tabstractrecorddef;const s : TIDString;out srsym:tsym;out srsymtable:TSymtable):boolean;
       var
         hashedid : THashedIDString;
-        hlpsrsym : tsym;
-        hlpsrsymtable : tsymtable;
       begin
         result:=false;
-        hlpsrsym:=nil;
-        hlpsrsymtable:=nil;
         hashedid.id:=s;
         { search for a record helper method first }
         result:=search_objectpascal_helper(recordh,recordh,s,srsym,srsymtable);
         if result then
-          { if the procsym is overloaded we need to use the
-            "original" symbol; the helper symbol will be found when
-            searching for overloads }
-          if (srsym.typ<>procsym) or
-              not (sp_has_overloaded in tprocsym(srsym).symoptions) then
-            exit
-          else
-            begin
-              { remember the found symbol if we should not find a symbol with
-                the same name in the extended record }
-              hlpsrsym:=srsym;
-              hlpsrsymtable:=srsymtable;
-            end;
+          { an eventual overload inside the extended type's hierarchy
+            will be found by tcallcandidates }
+          exit;
         srsymtable:=recordh.symtable;
         srsym:=tsym(srsymtable.FindWithHash(hashedid));
         if assigned(srsym) and is_visible_for_object(srsym,recordh) then
@@ -3539,9 +3608,8 @@ implementation
             result:=true;
             exit;
           end;
-        srsym:=hlpsrsym;
-        srsymtable:=hlpsrsymtable;
-        result:=assigned(srsym);
+        srsym:=nil;
+        srsymtable:=nil;
       end;
 
     function searchsym_in_class_by_msgint(classh:tobjectdef;msgid:longint;out srdef : tdef;out srsym:tsym;out srsymtable:TSymtable):boolean;
@@ -3785,7 +3853,7 @@ implementation
     end;
 
 
-    function search_management_operator(mop: tmanagementoperator; pd: Tdef): Tprocdef;
+    function search_management_operator(mop:tmanagementoperator;pd:Tdef):Tprocdef;
       var
         sym : Tprocsym;
         hashedid : THashedIDString;

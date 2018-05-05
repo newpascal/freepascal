@@ -41,7 +41,7 @@ const
     function  FPSigProcMask(how:cint;const nset : sigset;var oset : sigset):cint;cdecl; external clib name 'sigprocmask';
     Function  FpSigPending   (var nset : sigset): cInt; external clib name 'sigpending';
     Function  FpSigSuspend   (constref sigmask : TSigSet): cInt; external clib name 'sigsuspend';
-{$if not defined(darwin) and not defined(haiku)}
+{$if not defined(darwin) and not defined(haiku) and not defined(beos)}
     Function  FpSigTimedWait (Constref sigset : TSigSet; info : Psiginfo; timeout:Ptimespec): cInt; cdecl; external clib name 'sigtimedwait';
 {$endif}
     Function  FpUmask       (cmask : TMode): TMode; cdecl; external clib name 'umask';
@@ -83,7 +83,7 @@ const
     function  FpExecve  (path : pchar; argv : ppchar; envp: ppchar): cint; cdecl; external clib name 'execve';
     function  FpExecv  (path : pchar; argv : ppchar): cint; cdecl; external clib name 'execv';
     function  FpWaitpid (pid : TPid; stat_loc : pcint; options: cint): TPid; cdecl; external clib name 'waitpid';
-    Function  FpWait       (var stat_loc : cInt): TPid; cdecl; external clib name 'waitpid';
+    Function  FpWait       (var stat_loc : cInt): TPid; cdecl; external clib name 'wait';
     procedure FpExit    (status : cint); cdecl; external clib name '_exit';
     Function  FpKill       (pid : TPid; sig: cInt): cInt; cdecl; external clib name 'kill';
     function  FpUname   (var name: utsname): cint; cdecl; external clib name 'uname';
@@ -175,7 +175,7 @@ const
     function  FpReaddir (dirp : pdir) : pdirent;cdecl; external clib name 'readdir'+suffix64bit;
     function  FpClosedir (dirp : pdir): cint; cdecl; external clib name 'closedir'{$ifdef aix}+suffix64bit{$endif};
     function  FpSigaction (sig: cint;var act : sigactionrec; var oact : sigactionrec): cint; cdecl; external clib name 'sigaction';
-{$if not defined(darwin) and not defined(haiku)}
+{$if not defined(darwin) and not defined(haiku) and not defined(beos)}
     Function  FpSigTimedWait (Const sigset : TSigSet; info : Psiginfo; var timeout:Ttimespec): cInt; cdecl; external clib name 'sigtimedwait';
 {$endif}
     function  FpTime       (tloc:ptime_t): time_t; cdecl; external clib name 'time';

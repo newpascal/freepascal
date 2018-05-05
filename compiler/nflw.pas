@@ -72,6 +72,9 @@ interface
        end;
 
        twhilerepeatnode = class(tloopnode)
+          { l: condition; r: body; tab: test at begin; cn: negate condition
+            x,y,true,false: while loop
+            x,y,false,true: repeat until loop }
           constructor create(l,r:Tnode;tab,cn:boolean);virtual;reintroduce;
           function pass_typecheck:tnode;override;
           function pass_1 : tnode;override;
@@ -101,7 +104,6 @@ interface
           loopiteration : tnode;
           loopvar_notid:cardinal;
           constructor create(l,r,_t1,_t2 : tnode;back : boolean);virtual;reintroduce;
-          function wrap_to_value:tnode;
           function pass_typecheck:tnode;override;
           function pass_1 : tnode;override;
           function simplify(forinline : boolean) : tnode;override;
@@ -239,10 +241,10 @@ interface
 implementation
 
     uses
-      globtype,systems,constexp,
+      globtype,systems,constexp,compinnr,
       cutils,verbose,globals,
       symconst,symtable,paramgr,defcmp,defutil,htypechk,pass_1,
-      ncal,nadd,ncon,nmem,nld,ncnv,nbas,cgobj,nutils,ninl,nset,ngenutil,
+      ncal,nadd,ncon,nmem,nld,ncnv,nbas,nutils,ninl,nset,ngenutil,
       pdecsub,
     {$ifdef state_tracking}
       nstate,
@@ -870,6 +872,14 @@ implementation
                     hloopbody.free;
                   end;
               end
+            { "for x in [] do ..." always results in a never executed loop body }
+            else if (is_array_constructor(expr.resultdef) and
+                (tarraydef(expr.resultdef).elementdef=voidtype)) then
+              begin
+                if assigned(hloopbody) then
+                  MessagePos(hloopbody.fileinfo,cg_w_unreachable_code);
+                result:=cnothingnode.create;
+              end
             else
               begin
                 // search for operator first
@@ -915,6 +925,15 @@ implementation
                   end
                 else
                   begin
+                    { prefer set if loop var could be a set var and the loop
+                      expression can indeed be a set }
+                    if (expr.nodetype=arrayconstructorn) and
+                        (hloopvar.resultdef.typ in [enumdef,orddef]) and
+                        arrayconstructor_can_be_set(expr) then
+                      begin
+                        expr:=arrayconstructor_to_set(expr,false);
+                        typecheckpass(expr);
+                      end;
                     case expr.resultdef.typ of
                       stringdef: result:=create_string_for_in_loop(hloopvar, hloopbody, expr);
                       arraydef: result:=create_array_for_in_loop(hloopvar, hloopbody, expr);
@@ -1444,20 +1463,20 @@ implementation
     function tfornode.simplify(forinline : boolean) : tnode;
       begin
         result:=nil;
-         { Can we spare the first comparision? }
-         if (t1.nodetype=ordconstn) and
-            (right.nodetype=ordconstn) and
+        { Can we spare the first comparision? }
+        if (t1.nodetype=ordconstn) and
+           (right.nodetype=ordconstn) and
+           (
             (
-             (
-              (lnf_backward in loopflags) and
-              (Tordconstnode(right).value>=Tordconstnode(t1).value)
-             ) or
-             (
-               not(lnf_backward in loopflags) and
-               (Tordconstnode(right).value<=Tordconstnode(t1).value)
-             )
-            ) then
-           exclude(loopflags,lnf_testatbegin);
+             (lnf_backward in loopflags) and
+             (Tordconstnode(right).value>=Tordconstnode(t1).value)
+            ) or
+            (
+              not(lnf_backward in loopflags) and
+              (Tordconstnode(right).value<=Tordconstnode(t1).value)
+            )
+           ) then
+          exclude(loopflags,lnf_testatbegin);
 
         if (t1.nodetype=ordconstn) and
            (right.nodetype=ordconstn) and
@@ -1471,36 +1490,14 @@ implementation
               (tordconstnode(right).value>tordconstnode(t1).value)
             )
            ) then
-        result:=cnothingnode.create;
-      end;
-
-
-    function tfornode.wrap_to_value:tnode;
-      var
-        statements: tstatementnode;
-        temp: ttempcreatenode;
-      begin
-        result:=internalstatements(statements);
-        temp:=ctempcreatenode.create(t1.resultdef,t1.resultdef.size,tt_persistent,true);
-        addstatement(statements,temp);
-        addstatement(statements,cassignmentnode.create(
-          ctemprefnode.create(temp),
-          t1));
-        { create a new for node, it is cheaper than cloning entire loop body }
-        addstatement(statements,cfornode.create(
-          left,right,ctemprefnode.create(temp),t2,lnf_backward in loopflags));
-        addstatement(statements,ctempdeletenode.create(temp));
-        { all child nodes are reused }
-        left:=nil;
-        right:=nil;
-        t1:=nil;
-        t2:=nil;
+          result:=cnothingnode.create;
       end;
 
 
     function tfornode.pass_typecheck:tnode;
       var
         res : tnode;
+        rangedef: tdef;
       begin
          result:=nil;
          resultdef:=voidtype;
@@ -1533,35 +1530,214 @@ implementation
 
          { Make sure that the loop var and the
            from and to values are compatible types }
-         check_ranges(right.fileinfo,right,left.resultdef);
-         inserttypeconv(right,left.resultdef);
+         if not(m_iso in current_settings.modeswitches) then
+           rangedef:=left.resultdef
+         else
+           rangedef:=get_iso_range_type(left.resultdef);
 
-         check_ranges(t1.fileinfo,t1,left.resultdef);
-         inserttypeconv(t1,left.resultdef);
+         check_ranges(right.fileinfo,right,rangedef);
+         inserttypeconv(right,rangedef);
+
+         check_ranges(t1.fileinfo,t1,rangedef);
+         inserttypeconv(t1,rangedef);
 
          if assigned(t2) then
            typecheckpass(t2);
+         result:=simplify(false);
       end;
 
 
     function tfornode.pass_1 : tnode;
+      var
+        ifblock,loopblock : tblocknode;
+        ifstatements,statements,loopstatements : tstatementnode;
+        fromtemp,totemp : ttempcreatenode;
+        do_loopvar_at_end : Boolean;
+        { if the lower and/or upper bound are variable, we need a surrounding if }
+        needsifblock : Boolean;
+        cond : tnodetype;
+        fromexpr : tnode;
+        toexpr : tnode;
+        { if the upper bound is not constant, it must be store in a temp initially }
+        usetotemp : boolean;
+        { if the lower bound is not constant, it must be store in a temp before calculating the upper bound }
+        usefromtemp : boolean;
+
+      procedure iterate_counter(var s : tstatementnode;fw : boolean);
+        begin
+          if fw then
+            addstatement(s,
+              cassignmentnode.create_internal(left.getcopy,cinlinenode.createintern(in_succ_x,false,left.getcopy)))
+          else
+            addstatement(s,
+              cassignmentnode.create_internal(left.getcopy,cinlinenode.createintern(in_pred_x,false,left.getcopy)));
+        end;
+
+      function iterate_counter_func(arg : tnode;fw : boolean) : tnode;
+        begin
+          if fw then
+            result:=cinlinenode.createintern(in_succ_x,false,arg)
+          else
+            result:=cinlinenode.createintern(in_pred_x,false,arg);
+        end;
+
       begin
-         result:=nil;
-         expectloc:=LOC_VOID;
+        result:=nil;
+        expectloc:=LOC_VOID;
+        fromtemp:=nil;
+        totemp:=nil;
 
-         firstpass(left);
-         firstpass(right);
-         firstpass(t1);
+        firstpass(left);
+        firstpass(right);
+        firstpass(t1);
 
-         if assigned(t2) then
-           firstpass(t2);
-         if codegenerror then
-           exit;
+        if assigned(t2) then
+          begin
+            firstpass(t2);
+            if codegenerror then
+              exit;
+          end;
 
-         { 'to' value must be evaluated once before loop, so its possible modifications
-           inside loop body do not affect the number of iterations (see webtbs/tw8883). }
-         if not (t1.nodetype in [ordconstn,temprefn]) then
-           result:=wrap_to_value;
+        { first set the to value
+          because the count var can be in the expression ! }
+        do_loopvar_at_end:=(lnf_dont_mind_loopvar_on_exit in loopflags)
+        { if the loop is unrolled and there is a jump into the loop,
+          then we can't do the trick with incrementing the loop var only at the
+          end
+        }
+          and not(assigned(entrylabel));
+
+         { calculate pointer value and check if changeable and if so
+           load into temporary variable                              }
+         if (right.nodetype<>ordconstn) or (t1.nodetype<>ordconstn) then
+           begin
+             do_loopvar_at_end:=false;
+             needsifblock:=true;
+           end
+         else
+           needsifblock:=false;
+
+        { convert the for loop into a while loop }
+        result:=internalstatements(statements);
+        ifblock:=internalstatements(ifstatements);
+        loopblock:=internalstatements(loopstatements);
+
+        usefromtemp:=(might_have_sideeffects(t1) and not(is_const(right))) or (node_complexity(right)>1);
+        usetotemp:=not(is_const(t1));
+
+        if needsifblock then
+          begin
+            { do not generate a temp. for the from node, if it is a const, it can be copied directly since
+              no side effect might change it }
+            if usefromtemp then
+              begin
+                fromtemp:=ctempcreatenode.create(right.resultdef,right.resultdef.size,tt_persistent,true);
+                { the if block might be optimized out, so we put the deletetempnode after the if-block, however,
+                  this causes a long life time of the fromtemp. If the final regsync is left away, the reg. allocator
+                  figures out the needed life time. As their are no loops involved between the uses of the fromtemp,
+                  this does no hurt }
+                fromtemp.includetempflag(ti_no_final_regsync);
+                addstatement(statements,fromtemp);
+                { while it would be beneficial to fold the initial reverse succ/pred into this assignment, this is
+                  not possible because it might wrap around and the if check later on goes wrong }
+                addstatement(statements,cassignmentnode.create_internal(ctemprefnode.create(fromtemp),right.getcopy));
+              end;
+
+            if usetotemp then
+              begin
+                totemp:=ctempcreatenode.create(t1.resultdef,t1.resultdef.size,tt_persistent,true);
+                addstatement(statements,totemp);
+                addstatement(statements,cassignmentnode.create_internal(ctemprefnode.create(totemp),t1.getcopy));
+              end;
+
+            if usefromtemp then
+              begin
+                addstatement(ifstatements,cassignmentnode.create_internal(left.getcopy,ctemprefnode.create(fromtemp)));
+                if not(do_loopvar_at_end) then
+                  iterate_counter(ifstatements,lnf_backward in loopflags);
+              end
+            else
+              begin
+                if not(do_loopvar_at_end) then
+                  addstatement(ifstatements,cassignmentnode.create_internal(left.getcopy,
+                    iterate_counter_func(right.getcopy,lnf_backward in loopflags)))
+                else
+                  addstatement(ifstatements,cassignmentnode.create_internal(left.getcopy,right.getcopy));
+              end;
+          end
+        else
+          begin
+            if not(do_loopvar_at_end) then
+              addstatement(ifstatements,cassignmentnode.create_internal(left.getcopy,
+                iterate_counter_func(right.getcopy,lnf_backward in loopflags)))
+            else
+              addstatement(ifstatements,cassignmentnode.create_internal(left.getcopy,right.getcopy));
+          end;
+
+        if assigned(entrylabel) then
+          addstatement(ifstatements,cgotonode.create(tlabelnode(entrylabel).labsym));
+
+        if not(do_loopvar_at_end) then
+          iterate_counter(loopstatements,not(lnf_backward in loopflags));
+
+        { avoid copying t2, it is used only once and it might be big }
+        addstatement(loopstatements,t2);
+        t2:=nil;
+
+        if do_loopvar_at_end then
+         iterate_counter(loopstatements,not(lnf_backward in loopflags));
+
+        if do_loopvar_at_end then
+          begin
+            if lnf_backward in loopflags then
+              cond:=ltn
+            else
+              cond:=gtn;
+          end
+        else
+          begin
+            if lnf_backward in loopflags then
+              cond:=lten
+            else
+              cond:=gten;
+          end;
+
+        if needsifblock then
+          begin
+            if usetotemp then
+              toexpr:=ctemprefnode.create(totemp)
+            else
+              toexpr:=t1.getcopy;
+
+            addstatement(ifstatements,cwhilerepeatnode.create(caddnode.create_internal(cond,left.getcopy,toexpr),loopblock,false,true));
+
+            if usefromtemp then
+              fromexpr:=ctemprefnode.create(fromtemp)
+            else
+              fromexpr:=right.getcopy;
+
+            if usetotemp then
+              toexpr:=ctemprefnode.create(totemp)
+            else
+              toexpr:=t1.getcopy;
+
+            if lnf_backward in loopflags then
+              addstatement(statements,cifnode.create(caddnode.create_internal(gten,
+                fromexpr,toexpr),ifblock,nil))
+            else
+              addstatement(statements,cifnode.create(caddnode.create_internal(lten,
+                fromexpr,toexpr),ifblock,nil));
+
+            if usetotemp then
+              addstatement(statements,ctempdeletenode.create(totemp));
+            if usefromtemp then
+              addstatement(statements,ctempdeletenode.create(fromtemp));
+          end
+        else
+          begin
+            addstatement(ifstatements,cwhilerepeatnode.create(caddnode.create_internal(cond,left.getcopy,t1.getcopy),loopblock,false,true));
+            addstatement(statements,ifblock);
+          end;
       end;
 
 
@@ -1880,10 +2056,18 @@ implementation
 
     destructor tlabelnode.destroy;
       begin
-        { Remove reference in labelsym, this is to prevent
-          goto's to this label }
-        if assigned(labsym) and (labsym.code=pointer(self)) then
-          labsym.code:=nil;
+        if assigned(labsym) then
+          begin
+            if not assigned(labsym.Owner) then
+              labsym.Free // Free labelsym if it has no owner
+            else
+              if labsym.code=pointer(self) then
+                begin
+                  { Remove reference in labelsym, this is to prevent
+                    goto's to this label }
+                  labsym.code:=nil;
+                end;
+          end;
         inherited destroy;
       end;
 
@@ -2098,6 +2282,7 @@ implementation
         if has_no_code(left) then
           result:=cnothingnode.create;
       end;
+
 
     procedure ttryexceptnode.adjust_estimated_stack_size;
       begin

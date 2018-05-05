@@ -44,23 +44,20 @@ implementation
        globtype,globals,verbose,constexp,
        systems,
        { aasm }
-       cpubase,aasmbase,aasmtai,aasmdata,
+       cpubase,aasmtai,aasmdata,
        { symtable }
        symconst,symbase,symtype,symdef,symsym,symtable,defutil,defcmp,
-       paramgr,symutil,
+       paramgr,
        { pass 1 }
        pass_1,htypechk,
-       nutils,ngenutil,nbas,nmat,nadd,ncal,nmem,nset,ncnv,ninl,ncon,nld,nflw,
+       nutils,ngenutil,nbas,ncal,nmem,nset,ncnv,ncon,nld,nflw,
        { parser }
        scanner,
        pbase,ptype,pexpr,
        { codegen }
        procinfo,cgbase,
        { assembler reader }
-       rabase,
-       { wide- and unicodestrings}
-       widestr
-       ;
+       rabase;
 
 
     function statement : tnode;forward;
@@ -378,11 +375,14 @@ implementation
              loopvarsym:=nil;
 
              { variable must be an ordinal, int64 is not allowed for 32bit targets }
-             if not(is_ordinal(hloopvar.resultdef))
+             if (
+                 not(is_ordinal(hloopvar.resultdef))
     {$ifndef cpu64bitaddr}
-                or is_64bitint(hloopvar.resultdef)
+                 or is_64bitint(hloopvar.resultdef)
     {$endif not cpu64bitaddr}
-                then
+               ) and
+               (hloopvar.resultdef.typ<>undefineddef)
+               then
                MessagePos(hloopvar.fileinfo,type_e_ordinal_expr_expected);
 
              hp:=hloopvar;
@@ -683,7 +683,7 @@ implementation
                 if not hasimplicitderef then
                   begin
                     valuenode:=caddrnode.create_internal_nomark(valuenode);
-                    include(valuenode.flags,nf_typedaddr);
+                    include(taddrnode(valuenode).addrnodeflags,anf_typedaddr);
                     refnode:=cderefnode.create(refnode);
                     fillchar(refnode.fileinfo,sizeof(tfileposinfo),0);
                   end;
@@ -948,7 +948,7 @@ implementation
                                  with "e: Exception" the e is not necessary }
 
                                { support unit.identifier }
-                               unit_found:=try_consume_unitsym_no_specialize(srsym,srsymtable,t,false);
+                               unit_found:=try_consume_unitsym_no_specialize(srsym,srsymtable,t,false,objname);
                                if srsym=nil then
                                  begin
                                    identifier_not_found(orgpattern);
@@ -1366,7 +1366,7 @@ implementation
          filepos:=current_tokenpos;
          consume(starttoken);
 
-         while not((token = _END) or (token = _FINALIZATION)) do
+         while not((token=_END) or (token=_FINALIZATION)) do
            begin
               if first=nil then
                 begin
@@ -1378,7 +1378,7 @@ implementation
                    tstatementnode(last).right:=cstatementnode.create(statement,nil);
                    last:=tstatementnode(last).right;
                 end;
-              if ((token = _END) or (token = _FINALIZATION)) then
+              if ((token=_END) or (token=_FINALIZATION)) then
                 break
               else
                 begin
@@ -1408,9 +1408,9 @@ implementation
     function assembler_block : tnode;
       var
         p : tnode;
-        {$if not(defined(sparc)) and not(defined(arm)) and not(defined(avr)) and not(defined(mips))}
+        {$if not(defined(sparcgen)) and not(defined(arm)) and not(defined(avr)) and not(defined(mips))}
         locals : longint;
-        {$endif}
+        {$endif not(defined(sparcgen)) and not(defined(arm)) and not(defined(avr)) and not(defined(mips))}
         srsym : tsym;
       begin
          if parse_generic then
@@ -1436,7 +1436,7 @@ implementation
          include(current_procinfo.flags,pi_is_assembler);
          p:=_asm_statement;
 
-{$if not(defined(sparc)) and not(defined(arm)) and not(defined(avr)) and not(defined(mips))}
+{$if not(defined(sparcgen)) and not(defined(arm)) and not(defined(avr)) and not(defined(mips))}
          if (po_assembler in current_procinfo.procdef.procoptions) then
            begin
              { set the framepointer to esp for assembler functions when the
@@ -1462,7 +1462,7 @@ implementation
                  current_procinfo.framepointer:=NR_STACK_POINTER_REG;
                end;
            end;
-{$endif not(defined(sparc)) and not(defined(arm)) and not(defined(avr)) not(defined(mipsel))}
+{$endif not(defined(sparcgen)) and not(defined(arm)) and not(defined(avr)) not(defined(mipsel))}
 
         { Flag the result as assigned when it is returned in a
           register.

@@ -50,6 +50,7 @@ interface
           ppufile    : tcompilerppufile; { the PPU file }
           sourcefn   : TPathStr; { Source specified with "uses .. in '..'" }
           comments   : TCmdStrList;
+          nsprefix   : TCmdStr; { Namespace prefix the unit was found with }
 {$ifdef Test_Double_checksum}
           crc_array  : pointer;
           crc_size   : longint;
@@ -123,7 +124,7 @@ implementation
 uses
   SysUtils,
   cfileutl,
-  systems,version,
+  systems,version,options,
   symtable, symsym,
   wpoinfo,
   scanner,
@@ -173,6 +174,9 @@ var
            ppufile.free;
            ppufile:=nil;
          end;
+        freederefunitimportsyms;
+        unitimportsymsderefs.free;
+        unitimportsymsderefs:=tfplist.create;
         inherited reset;
       end;
 
@@ -371,34 +375,49 @@ var
          singlepathstring,
          filename : TCmdStr;
 
-         Function UnitExists(const ext:string;var foundfile:TCmdStr):boolean;
+         Function UnitExists(const ext:string;var foundfile:TCmdStr;const prefix:TCmdStr):boolean;
+         var
+           s : tcmdstr;
          begin
            if CheckVerbosity(V_Tried) then
              Message1(unit_t_unitsearch,Singlepathstring+filename+ext);
-           UnitExists:=FindFile(FileName+ext,Singlepathstring,true,foundfile);
+           s:=FileName+ext;
+           if prefix<>'' then
+             s:=prefix+'.'+s;
+           UnitExists:=FindFile(s,Singlepathstring,true,foundfile);
          end;
 
-         Function PPUSearchPath(const s:TCmdStr):boolean;
+         Function PPUSearchPath(const s,prefix:TCmdStr):boolean;
          var
            found : boolean;
-           hs    : TCmdStr;
+           hs,
+           newname : TCmdStr;
          begin
            Found:=false;
            singlepathstring:=FixPath(s,false);
          { Check for PPU file }
-           Found:=UnitExists(target_info.unitext,hs);
+           Found:=UnitExists(target_info.unitext,hs,prefix);
            if Found then
             Begin
               SetFileName(hs,false);
+              if prefix<>'' then
+                begin
+                  newname:=prefix+'.'+realmodulename^;
+                  stringdispose(realmodulename);
+                  realmodulename:=stringdup(newname);
+                  stringdispose(modulename);
+                  modulename:=stringdup(upper(newname));
+                end;
               Found:=openppufile;
             End;
            PPUSearchPath:=Found;
          end;
 
-         Function SourceSearchPath(const s:TCmdStr):boolean;
+         Function SourceSearchPath(const s,prefix:TCmdStr):boolean;
          var
            found   : boolean;
-           hs      : TCmdStr;
+           hs,
+           newname : TCmdStr;
          begin
            Found:=false;
            singlepathstring:=FixPath(s,false);
@@ -407,18 +426,18 @@ var
            do_compile:=true;
            recompile_reason:=rr_noppu;
          {Check for .pp file}
-           Found:=UnitExists(sourceext,hs);
+           Found:=UnitExists(sourceext,hs,prefix);
            if not Found then
             begin
               { Check for .pas }
-              Found:=UnitExists(pasext,hs);
+              Found:=UnitExists(pasext,hs,prefix);
             end;
            if not Found and
               ((m_mac in current_settings.modeswitches) or
                (tf_p_ext_support in target_info.flags)) then
             begin
               { Check for .p, if mode is macpas}
-              Found:=UnitExists(pext,hs);
+              Found:=UnitExists(pext,hs,prefix);
             end;
            mainsource:='';
            if Found then
@@ -427,26 +446,34 @@ var
               { Load Filenames when found }
               mainsource:=hs;
               SetFileName(hs,false);
+              if prefix<>'' then
+                begin
+                  newname:=prefix+'.'+realmodulename^;
+                  stringdispose(realmodulename);
+                  realmodulename:=stringdup(newname);
+                  stringdispose(modulename);
+                  modulename:=stringdup(upper(newname));
+                end;
             end
            else
             sources_avail:=false;
            SourceSearchPath:=Found;
          end;
 
-         Function SearchPath(const s:TCmdStr):boolean;
+         Function SearchPath(const s,prefix:TCmdStr):boolean;
          var
            found : boolean;
          begin
            { First check for a ppu, then for the source }
            found:=false;
            if not onlysource then
-            found:=PPUSearchPath(s);
+            found:=PPUSearchPath(s,prefix);
            if not found then
-            found:=SourceSearchPath(s);
+            found:=SourceSearchPath(s,prefix);
            SearchPath:=found;
          end;
 
-         Function SearchPathList(list:TSearchPathList):boolean;
+         Function SearchPathList(list:TSearchPathList;const prefix:TCmdStr):boolean;
          var
            hp : TCmdStrListItem;
            found : boolean;
@@ -455,7 +482,7 @@ var
            hp:=TCmdStrListItem(list.First);
            while assigned(hp) do
             begin
-              found:=SearchPath(hp.Str);
+              found:=SearchPath(hp.Str,prefix);
               if found then
                break;
               hp:=TCmdStrListItem(hp.next);
@@ -463,9 +490,30 @@ var
            SearchPathList:=found;
          end;
 
+         function SearchPPUPaths(const prefix:TCmdStr):boolean;
+         begin
+           result:=PPUSearchPath('.',prefix);
+           if (not result) and (outputpath<>'') then
+            result:=PPUSearchPath(outputpath,prefix);
+           if (not result) and Assigned(main_module) and (main_module.Path<>'')  then
+            result:=PPUSearchPath(main_module.Path,prefix);
+         end;
+
+         function SearchSourcePaths(const prefix:TCmdStr):boolean;
+         begin
+           result:=SourceSearchPath('.',prefix);
+           if (not result) and Assigned(main_module) and (main_module.Path<>'') then
+             result:=SourceSearchPath(main_module.Path,prefix);
+           if (not result) and Assigned(loaded_from) then
+             result:=SearchPathList(loaded_from.LocalUnitSearchPath,prefix);
+           if not result then
+             result:=SearchPathList(UnitSearchPath,prefix);
+         end;
+
        var
          fnd : boolean;
          hs  : TPathStr;
+         nsitem : TCmdStrListItem;
        begin
          if shortname then
           filename:=FixFileName(Copy(realmodulename^,1,8))
@@ -479,16 +527,12 @@ var
             5. look for source in cwd
             6. look for source in maindir
             7. local unit pathlist
-            8. global unit pathlist }
+            8. global unit pathlist
+            9. for each default namespace:
+                  repeat 1 - 3 and 5 - 8 with namespace as prefix }
          fnd:=false;
          if not onlysource then
-          begin
-            fnd:=PPUSearchPath('.');
-            if (not fnd) and (outputpath<>'') then
-             fnd:=PPUSearchPath(outputpath);
-            if (not fnd) and Assigned(main_module) and (main_module.Path<>'')  then
-             fnd:=PPUSearchPath(main_module.Path);
-          end;
+            fnd:=SearchPPUPaths('');
          if (not fnd) and (sourcefn<>'') then
           begin
             { the full filename is specified so we can't use here the
@@ -520,13 +564,29 @@ var
              end;
           end;
          if not fnd then
-           fnd:=SourceSearchPath('.');
-         if (not fnd) and Assigned(main_module) and (main_module.Path<>'') then
-           fnd:=SourceSearchPath(main_module.Path);
-         if (not fnd) and Assigned(loaded_from) then
-           fnd:=SearchPathList(loaded_from.LocalUnitSearchPath);
-         if not fnd then
-           fnd:=SearchPathList(UnitSearchPath);
+           begin
+             fnd:=SearchSourcePaths('');
+             if not fnd and (namespacelist.count>0) then
+               begin
+                 nsitem:=TCmdStrListItem(namespacelist.first);
+                 while assigned(nsitem) do
+                   begin
+                     if not onlysource then
+                       begin
+                         fnd:=SearchPPUPaths(nsitem.str);
+                         if fnd then
+                           break;
+                       end;
+                     fnd:=SearchSourcePaths(nsitem.str);
+                     if fnd then
+                       break;
+
+                     nsitem:=TCmdStrListItem(nsitem.next);
+                   end;
+                 if assigned(nsitem) then
+                   nsprefix:=nsitem.str;
+               end;
+           end;
          search_unit:=fnd;
       end;
 
@@ -671,8 +731,8 @@ var
         if tmacro(p).is_used or is_initial then
           begin
             ppufile.putstring(p.name);
-            ppufile.putbyte(byte(is_initial));
-            ppufile.putbyte(byte(tmacro(p).is_used));
+            ppufile.putboolean(is_initial);
+            ppufile.putboolean(tmacro(p).is_used);
           end;
       end;
 
@@ -934,8 +994,8 @@ var
         while not ppufile.endofentry do
          begin
            hs:=ppufile.getstring;
-           was_initial:=boolean(ppufile.getbyte);
-           was_used:=boolean(ppufile.getbyte);
+           was_initial:=ppufile.getboolean;
+           was_used:=ppufile.getboolean;
            mac:=tmacro(initialmacrosymtable.Find(hs));
            if assigned(mac) then
              begin
@@ -1122,7 +1182,7 @@ var
         getmem(derefmap,derefmapsize*sizeof(tderefmaprec));
         fillchar(derefmap^,derefmapsize*sizeof(tderefmaprec),0);
         for i:=0 to derefmapsize-1 do
-          derefmap[i].modulename:=stringdup(ppufile.getstring);
+          derefmap[i].modulename:=ppufile.getpshortstring;
       end;
 
 
@@ -1251,7 +1311,7 @@ var
            case b of
              ibjvmnamespace :
                begin
-                 namespace:=stringdup(ppufile.getstring);
+                 namespace:=ppufile.getpshortstring;
                end;
              ibmodulename :
                begin
@@ -1264,13 +1324,17 @@ var
                  modulename:=stringdup(upper(newmodulename));
                  realmodulename:=stringdup(newmodulename);
                end;
+             ibfeatures :
+               begin
+                 ppufile.getsmallset(features);
+               end;
              ibmoduleoptions:
                begin
                  ppufile.getsmallset(moduleoptions);
                  if mo_has_deprecated_msg in moduleoptions then
                    begin
                      stringdispose(deprecatedmsg);
-                     deprecatedmsg:=stringdup(ppufile.getstring);
+                     deprecatedmsg:=ppufile.getpshortstring;
                    end;
                end;
              ibsourcefiles :
@@ -1297,7 +1361,7 @@ var
                readlinkcontainer(LinkOtherFrameworks);
              ibmainname:
                begin
-                 mainname:=stringdup(ppufile.getstring);
+                 mainname:=ppufile.getpshortstring;
                  if (mainaliasname<>defaultmainaliasname) then
                    Message1(scan_w_multiple_main_name_overrides,mainaliasname);
                  mainaliasname:=mainname^;
@@ -1406,6 +1470,12 @@ var
              ppufile.writeentry(ibmainname);
            end;
 
+         if cs_compilesystem in current_settings.moduleswitches then
+           begin
+             ppufile.putsmallset(features);
+             ppufile.writeentry(ibfeatures);
+           end;
+
          writesourcefiles;
 {$IFDEF MACRO_DIFF_HINT}
          writeusedmacros;
@@ -1455,6 +1525,13 @@ var
          tstoredsymtable(globalsymtable).buildderefimpl;
          tunitwpoinfo(wpoinfo).buildderef;
          tunitwpoinfo(wpoinfo).buildderefimpl;
+
+         if assigned(globalmacrosymtable) and (globalmacrosymtable.SymList.count > 0) then
+            begin
+              tstoredsymtable(globalmacrosymtable).buildderef;
+              tstoredsymtable(globalmacrosymtable).buildderefimpl;
+            end;
+
          if (flags and uf_local_symtable)<>0 then
            tstoredsymtable(localsymtable).buildderef_registered;
          buildderefunitimportsyms;
@@ -1661,7 +1738,7 @@ var
                   (pu.u.crc<>pu.checksum)
                  ) then
                begin
-                 Message2(unit_u_recompile_crc_change,realmodulename^,pu.u.realmodulename^,@queuecomment);
+                 Message2(unit_u_recompile_crc_change,realmodulename^,pu.u.ppufilename,@queuecomment);
 {$ifdef DEBUG_UNIT_CRC_CHANGES}
                  if (pu.u.interface_crc<>pu.interface_checksum) then
                    writeln('  intfcrc change: ',hexstr(pu.u.interface_crc,8),' <> ',hexstr(pu.interface_checksum,8))
@@ -1717,7 +1794,7 @@ var
               if (pu.u.interface_crc<>pu.interface_checksum) or
                  (pu.u.indirect_crc<>pu.indirect_checksum) then
                 begin
-                  Message2(unit_u_recompile_crc_change,realmodulename^,pu.u.realmodulename^+' {impl}',@queuecomment);
+                  Message2(unit_u_recompile_crc_change,realmodulename^,pu.u.ppufilename+' {impl}',@queuecomment);
 {$ifdef DEBUG_UNIT_CRC_CHANGES}
                   if (pu.u.interface_crc<>pu.interface_checksum) then
                     writeln('  intfcrc change (2): ',hexstr(pu.u.interface_crc,8),' <> ',hexstr(pu.interface_checksum,8))

@@ -5,7 +5,7 @@ unit tconstparser;
 interface
 
 uses
-  Classes, SysUtils, fpcunit, pastree, pscanner, tcbaseparser, testregistry;
+  Classes, SysUtils, fpcunit, pastree, pscanner, tcbaseparser, testregistry, pparser;
 
 Type
     { TTestConstParser }
@@ -16,6 +16,7 @@ Type
     FExpr: TPasExpr;
     FHint : string;
     FTyped: String;
+    procedure DoParseConstUnTypedRange;
   Protected
     Function ParseConst(ASource : String) : TPasConst;
     Procedure CheckExprNameKindClass(AKind : TPasExprKind; AClass : TClass);
@@ -77,6 +78,9 @@ Type
     Procedure TestTypedExprConst;
     Procedure TestRecordConst;
     Procedure TestArrayConst;
+    Procedure TestRangeConst;
+    Procedure TestRangeConstUnTyped;
+    Procedure TestArrayOfRangeConst;
   end;
 
   { TTestResourcestringParser }
@@ -506,6 +510,39 @@ begin
   AssertEquals('2 elements',2,Length(R.Values));
   AssertExpression('Element 1 value',R.Values[0],pekNumber,'1');
   AssertExpression('Element 2 value',R.Values[1],pekNumber,'2');
+end;
+
+procedure TTestConstParser.TestRangeConst;
+begin
+  Typed:='0..1';
+  ParseConst('1');
+  AssertEquals('Range type',TPasRangeType,TheConst.VarType.ClassType);
+  AssertExpression('Float const', TheExpr,pekNumber,'1');
+end;
+
+procedure TTestConstParser.DoParseConstUnTypedRange;
+
+begin
+  ParseConst('1..2');
+end;
+
+procedure TTestConstParser.TestRangeConstUnTyped;
+begin
+  AssertException('Range const is not allowed',EParserError,@DoParseConstUnTypedRange);
+end;
+
+procedure TTestConstParser.TestArrayOfRangeConst;
+Var
+  R : TArrayValues;
+begin
+  Typed:='array [0..7] of 0..1';
+  ParseConst('(0, 0, 0, 0, 0, 0, 0, 0)');
+  AssertEquals('Array Values',TArrayValues,TheExpr.ClassType);
+  R:=TheExpr as TArrayValues;
+  AssertEquals('Expression list of ',pekListOfExp,TheExpr.Kind);
+  AssertEquals('elements',8,Length(R.Values));
+//  AssertEquals('Range type',TPasRangeType,TheConst.VarType.ClassType);
+//  AssertExpression('Float const', TheExpr,pekNumber,'1');
 end;
 
 { TTestResourcestringParser }

@@ -26,7 +26,7 @@ unit nx64cnv;
 interface
 
     uses
-      node,ncgcnv,defutil,defcmp,pass_1,
+      node,defutil,pass_1,
       nx86cnv;
 
     type
@@ -59,14 +59,13 @@ interface
 implementation
 
     uses
-      verbose,systems,globals,globtype,
+      verbose,globals,globtype,
       aasmbase,aasmtai,aasmdata,aasmcpu,
       symconst,symdef,
-      cgbase,cga,procinfo,pass_2,
-      ncon,ncal,ncnv,
+      cgbase,cga,
+      ncnv,
       cpubase,
-      cgutils,cgobj,hlcgobj,cgx86,ncgutil,
-      tgobj;
+      cgutils,cgobj,hlcgobj,cgx86;
 
 
     function tx8664typeconvnode.first_int_to_real : tnode;
@@ -138,7 +137,7 @@ implementation
                    cg.a_jmp_flags(current_asmdata.CurrAsmList,F_NC,l2);
                    new_section(current_asmdata.asmlists[al_typedconsts],sec_rodata_norel,l1.name,const_align(sizeof(pint)));
                    current_asmdata.asmlists[al_typedconsts].concat(Tai_label.Create(l1));
-                   reference_reset_symbol(href,l1,0,4);
+                   reference_reset_symbol(href,l1,0,4,[]);
                    { simplify for PIC }
                    tcgx86(cg).make_simple_ref(current_asmdata.CurrAsmList,href);
 

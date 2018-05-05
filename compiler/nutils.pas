@@ -93,7 +93,7 @@ interface
       which was determined during an earlier typecheck pass (because the value
       may e.g. be a parameter to a call, which needs to be of the declared
       parameter type) }
-    function create_simplified_ord_const(value: tconstexprint; def: tdef; forinline: boolean): tnode;
+    function create_simplified_ord_const(const value: tconstexprint; def: tdef; forinline: boolean): tnode;
 
     { returns true if n is only a tree of administrative nodes
       containing no code }
@@ -122,6 +122,8 @@ interface
     { count the number of nodes in the node tree,
       rough estimation how large the tree "node" is }
     function node_count(node : tnode) : dword;
+
+    function node_count_weighted(node : tnode) : dword;
 
     { returns true, if the value described by node is constant/immutable, this approximation is safe
       if no dirty tricks like buffer overflows or pointer magic are used }
@@ -154,9 +156,9 @@ interface
 implementation
 
     uses
-      cutils,verbose,globals,
+      cutils,verbose,globals,compinnr,
       symconst,symdef,
-      defutil,defcmp,htypechk,
+      defcmp,defutil,
       nbas,ncon,ncnv,nld,nflw,nset,ncal,nadd,nmem,ninl,
       cpubase,cgbase,procinfo,
       pass_1;
@@ -779,9 +781,10 @@ implementation
               typeconvn:
                 begin
                   { may be more complex in some cases }
-                  if not(ttypeconvnode(p).retains_value_location) then
+                  if not(ttypeconvnode(p).retains_value_location) and
+                    not((ttypeconvnode(p).convtype=tc_pointer_2_array) and (ttypeconvnode(p).left.expectloc in [LOC_CREGISTER,LOC_REGISTER,LOC_CONSTANT])) then
                     inc(result);
-                  if (result = NODE_COMPLEXITY_INF) then
+                  if result = NODE_COMPLEXITY_INF then
                     exit;
                   p := tunarynode(p).left;
                 end;
@@ -1072,7 +1075,7 @@ implementation
       end;
 
 
-    function create_simplified_ord_const(value: tconstexprint; def: tdef; forinline: boolean): tnode;
+    function create_simplified_ord_const(const value: tconstexprint; def: tdef; forinline: boolean): tnode;
       begin
         if not forinline then
           result:=genintconstnode(value)
@@ -1325,9 +1328,12 @@ implementation
         if (n.nodetype in [assignn,calln,asmn]) or
           ((n.nodetype=inlinen) and
            (tinlinenode(n).inlinenumber in [in_write_x,in_writeln_x,in_read_x,in_readln_x,in_str_x_string,
-             in_val_x,in_reset_x,in_rewrite_x,in_reset_typedfile,in_rewrite_typedfile,in_settextbuf_file_x,
+             in_val_x,in_reset_x,in_rewrite_x,in_reset_typedfile,in_rewrite_typedfile,
+             in_reset_typedfile_name,in_rewrite_typedfile_name,in_settextbuf_file_x,
              in_inc_x,in_dec_x,in_include_x_y,in_exclude_x_y,in_break,in_continue,in_setlength_x,
-             in_finalize_x,in_new_x,in_dispose_x,in_exit,in_copy_x,in_initialize_x,in_leave,in_cycle])
+             in_finalize_x,in_new_x,in_dispose_x,in_exit,in_copy_x,in_initialize_x,in_leave,in_cycle,
+             in_and_assign_x_y,in_or_assign_x_y,in_xor_assign_x_y,in_sar_assign_x_y,in_shl_assign_x_y,
+             in_shr_assign_x_y,in_rol_assign_x_y,in_ror_assign_x_y,in_neg_assign_x,in_not_assign_x])
           ) then
           result:=fen_norecurse_true;
       end;
@@ -1351,6 +1357,22 @@ implementation
       begin
         nodecount:=0;
         foreachnodestatic(node,@donodecount,nil);
+        result:=nodecount;
+      end;
+
+
+    function donodecount_weighted(var n: tnode; arg: pointer): foreachnoderesult;
+      begin
+        if not(n.nodetype in [blockn,statementn,callparan,nothingn]) then
+          inc(nodecount);
+        result:=fen_false;
+      end;
+
+
+    function node_count_weighted(node : tnode) : dword;
+      begin
+        nodecount:=0;
+        foreachnodestatic(node,@donodecount_weighted,nil);
         result:=nodecount;
       end;
 

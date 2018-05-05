@@ -31,13 +31,11 @@ interface
        globtype,globals,tokens,constexp,
        { symtable }
        symconst,symbase,symtype,
-       { ppu }
-       ppu,
        { node }
        node,
        { aasm }
-       aasmbase,aasmtai,
-       cpubase,cpuinfo,
+       aasmtai,
+       cpuinfo,
        cgbase,
        parabase
        ;
@@ -114,7 +112,7 @@ interface
           function  needs_inittable : boolean;override;
           function  rtti_mangledname(rt:trttitype):TSymStr;override;
           function  OwnerHierarchyName: string; override;
-          function  fullownerhierarchyname:TSymStr;override;
+          function  fullownerhierarchyname(skipprocparams:boolean):TSymStr;override;
           function  needs_separate_initrtti:boolean;override;
           function  in_currentunit: boolean;
           { regvars }
@@ -406,6 +404,7 @@ interface
           { for Object Pascal helpers }
           extendeddef   : tdef;
           extendeddefderef: tderef;
+          helpertype : thelpertype;
           { for Objective-C: protocols and classes can have the same name there }
           objextname     : pshortstring;
           { to be able to have a variable vmt position }
@@ -518,6 +517,7 @@ interface
           function elecount : asizeuint;
           constructor create_from_pointer(def:tpointerdef);virtual;
           constructor create(l,h:asizeint;def:tdef);virtual;
+          constructor create_openarray;virtual;
           class function getreusable(def: tdef; elems: asizeint): tarraydef; virtual;
           { same as above, but in case the def must never be freed after the
             current module has been compiled -- even if the def was not written
@@ -583,7 +583,7 @@ interface
 
        tprocnameoption = (pno_showhidden, pno_proctypeoption, pno_paranames,
          pno_ownername, pno_noclassmarker, pno_noleadingdollar,
-         pno_mangledname);
+         pno_mangledname, pno_noparams);
        tprocnameoptions = set of tprocnameoption;
        tproccopytyp = (pc_normal,
                        { always creates a top-level function, removes all
@@ -634,6 +634,8 @@ interface
           function stack_tainting_parameter(side: tcallercallee): boolean;
           function is_pushleftright: boolean;virtual;
           function address_type:tdef;virtual;
+          { address type, generated for ofs() }
+          function ofs_address_type:tdef;virtual;
           procedure declared_far;virtual;
           procedure declared_near;virtual;
        private
@@ -701,6 +703,7 @@ interface
           procstarttai,
           procendtai   : tai;
           skpara: pointer;
+          personality: tprocdef;
           forwarddef,
           interfacedef : boolean;
           hasforward  : boolean;
@@ -734,10 +737,12 @@ interface
          procedure Setprocendtai(AValue: tai);
          function Getskpara: pointer;
          procedure Setskpara(AValue: pointer);
+         function Getpersonality: tprocdef;
+         procedure Setpersonality(AValue: tprocdef);
          function Getforwarddef: boolean;
          procedure Setforwarddef(AValue: boolean);
          function Getinterfacedef: boolean;
-         procedure Setinterfacedef(AValue: boolean);
+         procedure Setinterfacedef(AValue: boolean);virtual;
          function Gethasforward: boolean;
          procedure Sethasforward(AValue: boolean);
          function GetIsEmpty: boolean;
@@ -819,6 +824,10 @@ interface
           procedure make_external;
           procedure init_genericdecl;
 
+          { returns whether the mangled name or any of its aliases is equal to
+            s }
+          function  has_alias_name(const s: TSymStr):boolean;
+
           { aliases to fields only required when a function is implemented in
             the current unit }
           property resultname: PShortString read GetResultName write SetResultName;
@@ -842,6 +851,8 @@ interface
           property procendtai: tai read Getprocendtai write Setprocendtai;
           { optional parameter for the synthetic routine generation logic }
           property skpara: pointer read Getskpara write Setskpara;
+          { ABI-conformant exception handling personality function }
+          property personality: tprocdef read Getpersonality write Setpersonality;
           { true, if the procedure is only declared
             (forward procedure) }
           property forwarddef: boolean read Getforwarddef write Setforwarddef;
@@ -1065,6 +1076,7 @@ interface
        methodpointertype,         { typecasting of methodpointers to extract self }
        nestedprocpointertype,     { typecasting of nestedprocpointers to extract parentfp }
        hresultdef,
+       typekindtype,              { def of TTypeKind for correct handling of GetTypeKind parameters }
        { we use only one variant def for every variant class }
        cvarianttype,
        colevarianttype,
@@ -1481,42 +1493,8 @@ implementation
               end
             else
               begin
-                if addgenerics and
-                    (sp_generic_dummy in sym.symoptions)
-                    then
-                  begin
-                    { did we already search for a generic with that name? }
-                    list:=tfpobjectlist(current_module.genericdummysyms.find(sym.name));
-                    if not assigned(list) then
-                      begin
-                        list:=tfpobjectlist.create(true);
-                        current_module.genericdummysyms.add(sym.name,list);
-                      end;
-                    { is the dummy sym still "dummy"? }
-                    if (sym.typ=typesym) and
-                        (
-                          { dummy sym defined in mode Delphi }
-                          (ttypesym(sym).typedef.typ=undefineddef) or
-                          { dummy sym defined in non-Delphi mode }
-                          (tstoreddef(ttypesym(sym).typedef).is_generic)
-                        ) then
-                      begin
-                        { do we have a non-generic type of the same name
-                          available? }
-                        if not searchsym_with_flags(sym.name,srsym,srsymtable,[ssf_no_addsymref]) then
-                          srsym:=nil;
-                      end
-                    else
-                      { dummy symbol is already not so dummy anymore }
-                      srsym:=nil;
-                    if assigned(srsym) then
-                      begin
-                        entry:=tgenericdummyentry.create;
-                        entry.resolvedsym:=srsym;
-                        entry.dummysym:=sym;
-                        list.add(entry);
-                      end;
-                  end;
+                if addgenerics then
+                  add_generic_dummysym(sym);
                 { add nested helpers as well }
                 if (def.typ in [recorddef,objectdef]) and
                     (sto_has_helper in tabstractrecorddef(def).symtable.tableoptions) then
@@ -1892,16 +1870,17 @@ implementation
         until tmp=nil;
       end;
 
-    function tstoreddef.fullownerhierarchyname: TSymStr;
+    function tstoreddef.fullownerhierarchyname(skipprocparams:boolean): TSymStr;
       var
         lastowner: tsymtable;
         tmp: tdef;
+        pno: tprocnameoptions;
       begin
 {$ifdef symansistr}
-        if _fullownerhierarchyname<>'' then
+        if not skipprocparams and (_fullownerhierarchyname<>'') then
           exit(_fullownerhierarchyname);
 {$else symansistr}
-        if assigned(_fullownerhierarchyname) then
+        if not skipprocparams and assigned(_fullownerhierarchyname) then
           exit(_fullownerhierarchyname^);
 {$endif symansistr}
         { the def can only reside inside structured types or
@@ -1921,16 +1900,23 @@ implementation
             result:=tabstractrecorddef(tmp).objrealname^+'.'+result
           else
             if tmp.typ=procdef then
-              result:=tprocdef(tmp).customprocname([pno_paranames,pno_proctypeoption])+'.'+result;
+              begin
+                pno:=[pno_paranames,pno_proctypeoption];
+                if skipprocparams then
+                  include(pno,pno_noparams);
+                result:=tprocdef(tmp).customprocname(pno)+'.'+result;
+              end;
         until tmp=nil;
         { add the unit name }
         if assigned(lastowner) and
            assigned(lastowner.realname) then
           result:=lastowner.realname^+'.'+result;
+        if not skipprocparams then
+          { don't store the name in this case }
 {$ifdef symansistr}
-        _fullownerhierarchyname:=result;
+          _fullownerhierarchyname:=result;
 {$else symansistr}
-        _fullownerhierarchyname:=stringdup(result);
+          _fullownerhierarchyname:=stringdup(result);
 {$endif symansistr}
       end;
 
@@ -2232,6 +2218,9 @@ implementation
 
 
    procedure tstoreddef.register_def;
+     var
+       gst : tgetsymtable;
+       st : tsymtable;
      begin
        if registered then
          exit;
@@ -2239,6 +2228,12 @@ implementation
        if assigned(current_module) then
          begin
            exclude(defoptions,df_not_registered_no_free);
+           for gst:=low(tgetsymtable) to high(tgetsymtable) do
+             begin
+               st:=getsymtable(gst);
+               if assigned(st) then
+                 tstoredsymtable(st).register_children;
+             end;
            if defid<defid_not_registered then
              defid:=deflist_index
            else
@@ -2584,7 +2579,7 @@ implementation
     procedure tenumdef.calcsavesize(packenum: shortint);
       begin
 {$IFNDEF cpu64bitaddr} {$push}{$warnings off} {$ENDIF} //comparison always false warning
-        if (packenum=8) or (min<low(longint)) or (int64(max)>high(cardinal)) then
+        if (packenum=8) or (int64(min)<low(longint)) or (int64(max)>high(cardinal)) then
          savesize:=8
 {$IFNDEF cpu64bitaddr} {$pop} {$ENDIF}
         else
@@ -3231,6 +3226,10 @@ implementation
       begin
         inherited create(dt,true);
         pointeddef:=def;
+        if df_generic in pointeddef.defoptions then
+          include(defoptions,df_generic);
+        if df_specialization in pointeddef.defoptions then
+          include(defoptions,df_specialization);
       end;
 
 
@@ -3282,6 +3281,8 @@ implementation
       begin
         inherited create(pointerdef,def);
         has_pointer_math:=cs_pointermath in current_settings.localswitches;
+        if df_specialization in tstoreddef(def).defoptions then
+          genericdef:=cpointerdef.getreusable(tstoreddef(def).genericdef);
       end;
 
 
@@ -3409,6 +3410,8 @@ implementation
     constructor tclassrefdef.create(def:tdef);
       begin
          inherited create(classrefdef,def);
+         if df_specialization in tstoreddef(def).defoptions then
+           genericdef:=cclassrefdef.create(tstoreddef(def).genericdef);
       end;
 
 
@@ -3616,6 +3619,12 @@ implementation
       end;
 
 
+    constructor tarraydef.create_openarray;
+      begin
+        self.create(0,-1,sizesinttype)
+      end;
+
+
     class function tarraydef.getreusable(def: tdef; elems: asizeint): tarraydef;
       var
         res: PHashSetItem;
@@ -3650,6 +3659,7 @@ implementation
         result:=tarraydef(res^.Data);
       end;
 
+
     class function tarraydef.getreusable_no_free(def: tdef; elems: asizeint): tarraydef;
       begin
         result:=getreusable(def,elems);
@@ -3664,6 +3674,7 @@ implementation
         symtable:=nil;
         inherited;
       end;
+
 
     constructor tarraydef.create_from_pointer(def:tpointerdef);
       begin
@@ -3841,6 +3852,7 @@ implementation
         if not(
                (ado_IsDynamicArray in arrayoptions) or
                (ado_IsConvertedPointer in arrayoptions) or
+               (ado_IsConstructor in arrayoptions) or
                (highrange<lowrange)
 	      ) and
            (size=-1) then
@@ -3943,9 +3955,9 @@ implementation
     constructor tabstractrecorddef.ppuload(dt:tdeftyp;ppufile:tcompilerppufile);
       begin
         inherited ppuload(dt,ppufile);
-        objrealname:=stringdup(ppufile.getstring);
+        objrealname:=ppufile.getpshortstring;
         objname:=stringdup(upper(objrealname^));
-        import_lib:=stringdup(ppufile.getstring);
+        import_lib:=ppufile.getpshortstring;
         { only used for external C++ classes and Java classes/records }
         if (import_lib^='') then
           stringdispose(import_lib);
@@ -4529,6 +4541,8 @@ implementation
 
     function trecorddef.needs_inittable : boolean;
       begin
+        { each record with managed field or with any management operator needs
+          init table }
         needs_inittable:=(trecordsymtable(symtable).managementoperators<>[]) or
           trecordsymtable(symtable).needs_init_final
       end;
@@ -5225,6 +5239,12 @@ implementation
       end;
 
 
+    function tabstractprocdef.ofs_address_type:tdef;
+      begin
+        result:=address_type;
+      end;
+
+
     procedure tabstractprocdef.declared_far;
       begin
         Message1(parser_w_proc_directive_ignored,'FAR');
@@ -5326,6 +5346,22 @@ implementation
         if not assigned(implprocdefinfo) then
           internalerror(2014010311);
         implprocdefinfo^.skpara:=AValue;
+      end;
+
+
+    function tprocdef.Getpersonality: tprocdef;
+      begin
+        if not assigned(implprocdefinfo) then
+          internalerror(2016121701);
+         result:=implprocdefinfo^.personality;
+      end;
+
+
+    procedure tprocdef.Setpersonality(AValue: tprocdef);
+      begin
+        if not assigned(implprocdefinfo) then
+          internalerror(2016121702);
+        implprocdefinfo^.personality:=AValue;
       end;
 
 
@@ -5471,7 +5507,7 @@ implementation
            _mangledname:='';
 {$else symansistr}
          if po_has_mangledname in procoptions then
-          _mangledname:=stringdup(ppufile.getstring)
+          _mangledname:=ppufile.getpshortstring
          else
           _mangledname:=nil;
 {$endif symansistr}
@@ -5483,23 +5519,23 @@ implementation
          visibility:=tvisibility(ppufile.getbyte);
          ppufile.getsmallset(symoptions);
          if sp_has_deprecated_msg in symoptions then
-           deprecatedmsg:=stringdup(ppufile.getstring)
+           deprecatedmsg:=ppufile.getpshortstring
          else
            deprecatedmsg:=nil;
          { import stuff }
          if po_has_importdll in procoptions then
-           import_dll:=stringdup(ppufile.getstring)
+           import_dll:=ppufile.getpshortstring
          else
            import_dll:=nil;
          if po_has_importname in procoptions then
-           import_name:=stringdup(ppufile.getstring)
+           import_name:=ppufile.getpshortstring
          else
            import_name:=nil;
          import_nr:=ppufile.getword;
          if (po_msgint in procoptions) then
            messageinf.i:=ppufile.getlongint;
          if (po_msgstr in procoptions) then
-           messageinf.str:=stringdup(ppufile.getstring);
+           messageinf.str:=ppufile.getpshortstring;
          if (po_dispid in procoptions) then
            dispid:=ppufile.getlongint;
          { inline stuff }
@@ -5774,7 +5810,9 @@ implementation
                   if (pno_ownername in pno) and
                      assigned(struct) then
                     s:=s+struct.RttiName+'.';
-                  s:=s+arraytokeninfo[t].str+typename_paras(pno);
+                  s:=s+arraytokeninfo[t].str;
+                  if not (pno_noparams in pno) then
+                    s:=s+typename_paras(pno);
                   break;
                 end;
           end
@@ -5815,7 +5853,9 @@ implementation
             if (pno_noleadingdollar in pno) and
                (rn[1]='$') then
               delete(rn,1,1);
-            s:=s+rn+typename_paras(pno);
+            s:=s+rn;
+            if not (pno_noparams in pno) then
+              s:=s+typename_paras(pno);
           end;
         if not(proctypeoption in [potype_constructor,potype_destructor,
              potype_class_constructor,potype_class_destructor]) and
@@ -5827,6 +5867,8 @@ implementation
         else if po_is_block in procoptions then
           s:=s+' is block';
         s:=s+';';
+        if po_far in procoptions then
+          s:=s+' far;';
         { forced calling convention? }
         if (po_hascallingconvention in procoptions) then
           s:=s+' '+ProcCallOptionStr[proccalloption]+';';
@@ -5868,6 +5910,24 @@ implementation
         if assigned(genericdecltokenbuf) then
           internalerror(2015061901);
         genericdecltokenbuf:=tdynamicarray.create(256);
+      end;
+
+
+    function tprocdef.has_alias_name(const s: TSymStr): boolean;
+      var
+        item : TCmdStrListItem;
+      begin
+        result:=true;
+        if mangledname=s then
+          exit;
+        item:=TCmdStrListItem(aliasnames.first);
+        while assigned(item) do
+          begin
+            if item.str=s then
+              exit;
+            item:=TCmdStrListItem(item.next);
+          end;
+        result:=false;
       end;
 
 
@@ -6404,9 +6464,13 @@ implementation
 
     function tprocvardef.size : asizeint;
       begin
-         if ((po_methodpointer in procoptions) or
-             is_nested_pd(self)) and
-            not(po_addressonly in procoptions) then
+         { we return false for is_addressonly for a block (because it's not a
+           simple pointer to a function), but they are handled as implicit
+           pointers to a datastructure that contains everything ->
+           voidpointertype.size instead of voidcodepointertype.size }
+         if po_is_block in procoptions then
+           size:=voidpointertype.size
+         else if not is_addressonly then
            begin
              if is_nested_pd(self) then
                size:=voidcodepointertype.size+parentfpvoidpointertype.size
@@ -6426,7 +6490,7 @@ implementation
 
     function tprocvardef.is_addressonly:boolean;
       begin
-        result:=(not(po_methodpointer in procoptions) and
+        result:=((not(po_methodpointer in procoptions) or (po_staticmethod in procoptions)) and
                  not(po_is_block in procoptions) and
                  not is_nested_pd(self)) or
                 (po_addressonly in procoptions);
@@ -6491,6 +6555,8 @@ implementation
            s := s+' of object';
          if is_nested_pd(self) then
            s := s+' is nested';
+         if po_far in procoptions then
+           s := s+';far';
          GetTypeName := s+';'+ProcCallOptionStr[proccalloption]+'>';
       end;
 
@@ -6533,7 +6599,8 @@ implementation
       begin
          inherited ppuload(objectdef,ppufile);
          objecttype:=tobjecttyp(ppufile.getbyte);
-         objextname:=stringdup(ppufile.getstring);
+         helpertype:=thelpertype(ppufile.getbyte);
+         objextname:=ppufile.getpshortstring;
          { only used for external Objective-C classes/protocols }
          if (objextname^='') then
            stringdispose(objextname);
@@ -6552,7 +6619,7 @@ implementation
            begin
               new(iidguid);
               ppufile.getguid(iidguid^);
-              iidstr:=stringdup(ppufile.getstring);
+              iidstr:=ppufile.getpshortstring;
            end;
          abstractcnt:=ppufile.getlongint;
 
@@ -6737,6 +6804,7 @@ implementation
          ppufile.do_indirect_crc:=true;
          inherited ppuwrite(ppufile);
          ppufile.putbyte(byte(objecttype));
+         ppufile.putbyte(byte(helpertype));
          if assigned(objextname) then
            ppufile.putstring(objextname^)
          else

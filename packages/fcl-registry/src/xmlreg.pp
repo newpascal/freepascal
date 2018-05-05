@@ -10,7 +10,7 @@ uses
 
 Type
 
-  TDataType = (dtUnknown,dtDWORD,dtString,dtBinary);
+  TDataType = (dtUnknown,dtDWORD,dtString,dtBinary,dtStrings);
   TDataInfo = record
     DataType : TDataType;
     DataSize : Integer;
@@ -39,6 +39,8 @@ Type
     FCurrentKey : String;
     Procedure SetFileName(Value : String);
   Protected
+    function DoGetValueData(Name: String; out DataType: TDataType; Var Data; Var DataSize: Integer; IsUnicode: Boolean): Boolean; virtual;
+    function DoSetValueData(Name: String; DataType: TDataType; const Data; DataSize: Integer; IsUnicode: Boolean): Boolean; virtual;
     Procedure LoadFromStream(S : TStream);
     Function  NormalizeKey(KeyPath : String) : String;
     Procedure CreateEmptyDoc;
@@ -61,8 +63,8 @@ Type
     Function  CreateKey(KeyPath : String) : Boolean;
     Function  GetValueSize(Name : String) : Integer;
     Function  GetValueType(Name : String) : TDataType;
-    Function  GetValueInfo(Name : String; Var Info : TDataInfo) : Boolean;
-    Function  GetKeyInfo(Var Info : TKeyInfo) : Boolean;
+    Function  GetValueInfo(Name : String; Out Info : TDataInfo; AsUnicode : Boolean = False) : Boolean;
+    Function  GetKeyInfo(Out Info : TKeyInfo) : Boolean;
     Function  EnumSubKeys(List : TStrings) : Integer;
     Function  EnumValues(List : TStrings) : Integer;
     Function  KeyExists(KeyPath : String) : Boolean;
@@ -71,8 +73,11 @@ Type
     Function  DeleteValue(S : String) : Boolean;
     Procedure Flush;
     Procedure Load;
-    Function GetValueData(Name : String; Var DataType : TDataType; Var Data; Var DataSize : Integer) : Boolean;
+    Function GetValueData(Name : String; Out DataType : TDataType; Var Data; Var DataSize : Integer) : Boolean;
     Function SetValueData(Name : String; DataType : TDataType; Const Data; DataSize : Integer) : Boolean;
+    // These interpret the Data buffer as unicode data
+    Function GetValueDataUnicode(Name : String; Out DataType : TDataType; Var Data; Var DataSize : Integer) : Boolean;
+    Function SetValueDataUnicode(Name : String; DataType : TDataType; Const Data; DataSize : Integer) : Boolean;
     Property FileName : String Read FFileName Write SetFileName;
     Property RootKey : String Read FRootKey Write SetRootkey;
     Property AutoFlush : Boolean Read FAutoFlush Write FAutoFlush;
@@ -285,7 +290,7 @@ begin
   MaybeFlush;
 end;
 
-Function TXmlRegistry.GetValueData(Name : String; Var DataType : TDataType; Var Data; Var DataSize : Integer) : Boolean;
+Function TXmlRegistry.DoGetValueData(Name : String; Out DataType : TDataType; Var Data; Var DataSize : Integer; IsUnicode : Boolean) : Boolean;
 
 Type
   PCardinal = ^Cardinal;
@@ -293,10 +298,12 @@ Type
 Var
   Node  : TDomElement;
   DataNode : TDomNode;
-  ND : Integer;
+  BL,ND,NS : Integer;
   S : UTF8String;
+  U : UnicodeString;
   HasData: Boolean;
-  IntValue: Integer;
+  D : DWord;
+  
 begin
   Node:=FindValueKey(Name);
   Result:=Node<>Nil;
@@ -309,43 +316,54 @@ begin
     If Result then
       begin
       DataType:=TDataType(ND);
+      NS:=0; // Initialize, for optional nodes.
       Case DataType of
         dtDWORD : begin   // DataNode is required
-                  if HasData and TryStrToInt(DataNode.NodeValue,IntValue) then
-                    begin
-                    PCardinal(@Data)^:=IntValue;
-                    DataSize:=SizeOf(Cardinal);
-                    end
-                  else
-                    Result:=False;
+                  NS:=SizeOf(Cardinal);
+                  Result:=HasData and TryStrToDWord(DataNode.NodeValue,D) and (DataSize>=NS);
+                  if Result then
+                    PCardinal(@Data)^:=D;
                   end;
-        dtString : begin  // DataNode is optional
+        dtString : // DataNode is optional
                    if HasData then
                      begin
-                     S:=UTF8Encode(DataNode.NodeValue); // Convert to ansistring
-                     DataSize:=Length(S);
-                     if (DataSize>0) then
-                       Move(S[1],Data,DataSize);
-                     end
-                   else
-                     DataSize:=0;
-                   end;
-        dtBinary : begin  // DataNode is optional
+                     if not IsUnicode then
+                       begin
+                       S:=UTF8Encode(DataNode.NodeValue); // Convert to ansistring
+                       NS:=Length(S);
+                       Result:=(DataSize>=NS);
+                       if Result then
+                         Move(S[1],Data,NS);
+                       end
+                     else
+                       begin
+                       U:=DataNode.NodeValue;
+                       NS:=Length(U)*SizeOf(UnicodeChar);
+                       Result:=(DataSize>=NS);
+                       if Result then
+                         Move(U[1],Data,NS);
+                       end
+                     end;
+
+        dtBinary,
+        dtStrings : // DataNode is optional
                    if HasData then
                      begin
-                     DataSize:=Length(DataNode.NodeValue);
-                     If (DataSize>0) then
-                       HexToBuf(DataNode.NodeValue,Data,DataSize);
-                     end
-                   else
-                     DataSize:=0;
-                   end;
+                     BL:=Length(DataNode.NodeValue);
+                     NS:=BL div 2;
+                     Result:=DataSize>=NS;
+                     If Result then
+                       // No need to check for -1, We checked NS before calling.
+                       NS:=HexToBuf(DataNode.NodeValue,Data,BL);
+                     end;
       end;
+      // Report needed/used size in all cases
+      DataSize:=NS;
       end;
     end;
 end;
 
-Function TXmlRegistry.SetValueData(Name : String; DataType : TDataType; Const Data; DataSize : Integer) : Boolean;
+Function TXmlRegistry.DoSetValueData(Name : String; DataType : TDataType; Const Data; DataSize : Integer; IsUnicode : Boolean) : Boolean;
 
 Type
   PCardinal = ^Cardinal;
@@ -353,7 +371,8 @@ Type
 Var
   Node  : TDomElement;
   DataNode : TDomNode;
-  SW : Widestring;
+  SW : UnicodeString;
+
 begin
   Node:=FindValueKey(Name);
   If Node=Nil then
@@ -367,10 +386,14 @@ begin
     Case DataType of
       dtDWORD : SW:=IntToStr(PCardinal(@Data)^);
       dtString : begin
-                   SW:=WideString(PAnsiChar(@Data));
+                 if IsUnicode then
+                   SW:=UnicodeString(PUnicodeChar(@Data))
+                 else
+                   SW:=UnicodeString(PAnsiChar(@Data));
                    //S:=UTF8Encode(SW);
                  end;
       dtBinary : SW:=BufToHex(Data,DataSize);
+      dtStrings : SW:=BufToHex(Data,DataSize);
     else
       sw:='';
     end;
@@ -391,6 +414,28 @@ begin
     FDirty:=True;
     MaybeFlush;
     end;
+end;
+
+Function TXmlRegistry.SetValueData(Name : String; DataType : TDataType; Const Data; DataSize : Integer) : Boolean;
+
+begin
+  Result:=DoSetValueData(Name,DataType,Data,DataSize,False);
+end;
+
+Function TXmlRegistry.GetValueData(Name : String; Out DataType : TDataType; Var Data; Var DataSize : Integer) : Boolean;
+
+begin
+  Result:=DoGetValueData(Name,DataType,Data,DataSize,False);
+end;
+
+function TXmlRegistry.GetValueDataUnicode(Name: String; out DataType: TDataType; Var Data; Var DataSize: Integer): Boolean;
+begin
+  Result:=DoGetValueData(Name,DataType,Data,DataSize,True);
+end;
+
+function TXmlRegistry.SetValueDataUnicode(Name: String; DataType: TDataType; const Data; DataSize: Integer): Boolean;
+begin
+  Result:=DoSetValueData(Name,DataType,Data,DataSize,True)
 end;
 
 Function TXmlRegistry.FindSubKey (S : String; N : TDomElement) : TDomElement;
@@ -539,16 +584,21 @@ end;
 Function TXMLRegistry.hexToBuf(Const Str : String; Var Buf; Var Len : Integer ) : Integer;
 
 Var
-  I : Integer;
+  NLeN,I : Integer;
   P : PByte;
   S : String;
   B : Byte;
   Code : Integer;
 
 begin
-  P:=@Buf;
-  Len:= Length(Str) div 2;
   Result:=0;
+  P:=@Buf;
+  NLen:= Length(Str) div 2;
+  If (NLen>Len) then
+    begin
+    Len:=NLen;
+    Exit(-1);
+    end;
   For I:=0 to Len-1 do
     begin
     S:='$'+Copy(Str,(I*2)+1,2);
@@ -602,7 +652,7 @@ begin
     Result:=dtUnknown;
 end;
 
-Function TXMLRegistry.GetValueInfo(Name : String; Var Info : TDataInfo) : Boolean;
+function TXmlRegistry.GetValueInfo(Name: String; out Info: TDataInfo; AsUnicode: Boolean): Boolean;
 
 Var
   N  : TDomElement;
@@ -615,10 +665,17 @@ begin
   If Result then
     begin
     DN:=N.FirstChild;
-    if Assigned(DN) and (DN.NodeType=TEXT_NODE) then begin
-      S := UTF8Encode(DN.NodeValue);
-      L:=Length(S);
-    end else
+    if Assigned(DN) and (DN.NodeType=TEXT_NODE) then
+      begin
+      if AsUnicode then
+        L:=Length(DN.NodeValue)*SizeOf(UnicodeChar)
+      else
+        begin
+        S := UTF8Encode(DN.NodeValue);
+        L:=Length(S);
+        end
+      end
+    else
       L:=0;
     With Info do
       begin
@@ -627,20 +684,21 @@ begin
         dtUnknown : DataSize:=0;
         dtDword   : Datasize:=SizeOf(Cardinal);
         dtString  : DataSize:=L;
+        dtStrings,
         dtBinary  : DataSize:=L div 2;
       end;
       end;
     end;
 end;
 
-Function  TXMLRegistry.GetKeyInfo(Var Info : TKeyInfo) : Boolean;
+Function  TXMLRegistry.GetKeyInfo(Out Info : TKeyInfo) : Boolean;
 
 Var
   Node,DataNode : TDOMNode;
   L    : Integer;
 
 begin
-  FillChar(Info,SizeOf(Info),0);
+  Info:=Default(TKeyInfo);
   Result:=FCurrentElement<>Nil;
   If Result then
     With Info do

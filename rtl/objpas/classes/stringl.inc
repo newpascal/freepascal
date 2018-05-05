@@ -200,7 +200,8 @@ Var
   p : pchar;
   BreakChars : set of char;
   S : String;
-  
+  doQuote : Boolean;
+    
 begin
   CheckSpecialChars;
   result:='';
@@ -213,11 +214,16 @@ begin
   For i:=0 to count-1 do
     begin
     S:=Strings[i];
-    p:=pchar(S);
-    //Quote strings that include BreakChars:
-    while not(p^ in BreakChars) do
-     inc(p);
-    if (p<>pchar(S)+length(S)) then
+    doQuote:=FAlwaysQuote;
+    If not DoQuote then
+      begin
+      p:=pchar(S);
+      //Quote strings that include BreakChars:
+      while not(p^ in BreakChars) do
+        inc(p);
+      DoQuote:=(p<>pchar(S)+length(S));  
+      end;
+    if DoQuote then
       Result:=Result+QuoteString(S,QuoteChar)
     else
       Result:=Result+S;
@@ -722,6 +728,7 @@ begin
   FDefaultEncoding:=TEncoding.Default;
   FEncoding:=nil;
   FWriteBOM:=True;
+  FAlwaysQuote:=False;
 end;
 
 Function TStrings.Add(const S: string): Integer;
@@ -751,6 +758,16 @@ begin
   Result:=AddObject(Format(Fmt,Args),AObject);
 end;
 
+function TStrings.AddPair(const AName, AValue: string): TStrings;
+begin
+  Result:=AddPair(AName,AValue,Nil);
+end;
+
+function TStrings.AddPair(const AName, AValue: string; AObject: TObject): TStrings;
+begin
+  Result := Self;
+  AddObject(Concat(AName, NameValueSeparator, AValue), AObject);
+end;
 
 Procedure TStrings.Append(const S: string);
 
@@ -969,12 +986,18 @@ end;
 
 
 Procedure TStrings.LoadFromFile(const FileName: string);
+
+begin
+  LoadFromFile(FileName,False)
+end;
+
+Procedure TStrings.LoadFromFile(const FileName: string; IgnoreEncoding : Boolean);
 Var
         TheStream : TFileStream;
 begin
   TheStream:=TFileStream.Create(FileName,fmOpenRead or fmShareDenyWrite);
   try
-    LoadFromStream(TheStream);
+    LoadFromStream(TheStream, IgnoreEncoding);
   finally
     TheStream.Free;
   end;
@@ -994,9 +1017,13 @@ begin
   end;
 end;
 
-
-
 Procedure TStrings.LoadFromStream(Stream: TStream);
+
+begin
+  LoadFromStream(Stream,False);
+end;
+
+Procedure TStrings.LoadFromStream(Stream: TStream; IgnoreEncoding : Boolean);
 {
    Borlands method is no good, since a pipe for
    instance doesn't have a size.
@@ -1012,6 +1039,11 @@ Var
   BufLen,
   I,BufDelta     : Longint;
 begin
+  if not IgnoreEncoding then
+    begin
+    LoadFromStream(Stream,Nil);
+    Exit;
+    end;
   // reread into a buffer
   beginupdate;
   try
@@ -1358,8 +1390,7 @@ end;
 function TStringList.Get(Index: Integer): string;
 
 begin
-  If (Index<0) or (INdex>=Fcount)  then
-    Error (SListIndexError,Index);
+  CheckIndex(Index);
   Result:=Flist^[Index].FString;
 end;
 
@@ -1384,8 +1415,7 @@ end;
 function TStringList.GetObject(Index: Integer): TObject;
 
 begin
-  If (Index<0) or (INdex>=Fcount)  then
-    Error (SListIndexError,Index);
+  CheckIndex(Index);
   Result:=Flist^[Index].FObject;
 end;
 
@@ -1396,8 +1426,7 @@ procedure TStringList.Put(Index: Integer; const S: string);
 begin
   If Sorted then
     Error(SSortedListError,0);
-  If (Index<0) or (INdex>=Fcount)  then
-    Error (SListIndexError,Index);
+  CheckIndex(Index);
   Changing;
   Flist^[Index].FString:=S;
   Changed;
@@ -1408,8 +1437,7 @@ end;
 procedure TStringList.PutObject(Index: Integer; AObject: TObject);
 
 begin
-  If (Index<0) or (INdex>=Fcount)  then
-    Error (SListIndexError,Index);
+  CheckIndex(Index);
   Changing;
   Flist^[Index].FObject:=AObject;
   Changed;
@@ -1508,8 +1536,7 @@ end;
 procedure TStringList.Delete(Index: Integer);
 
 begin
-  If (Index<0) or (Index>=FCount) then
-    Error(SlistINdexError,Index);
+  CheckIndex(Index);
   Changing;
   Flist^[Index].FString:='';
   if FOwnsObjects then
@@ -1527,10 +1554,8 @@ end;
 procedure TStringList.Exchange(Index1, Index2: Integer);
 
 begin
-  If (Index1<0) or (Index1>=FCount) then
-    Error(SListIndexError,Index1);
-  If (Index2<0) or (Index2>=FCount) then
-    Error(SListIndexError,Index2);
+  CheckIndex(Index1);
+  CheckIndex(Index2);
   Changing;
   ExchangeItemsInt(Index1,Index2);
   changed;
@@ -1559,6 +1584,12 @@ begin
   if (AValue=sslAuto) then
     Sort;
   FSortStyle:=AValue;
+end;
+
+procedure TStringList.CheckIndex(AIndex: Integer);
+begin
+  If (AIndex<0) or (AIndex>=FCount) then
+    Error(SListIndexError,AIndex);
 end;
 
 
@@ -1629,10 +1660,11 @@ begin
   If SortStyle=sslAuto then
     Error (SSortedListError,0)
   else
+    begin
     If (Index<0) or (Index>FCount) then
-      Error (SListIndexError,Index)
-    else
-      InsertItem (Index,S);
+      Error(SListIndexError,Index); // Cannot use CheckIndex, because there >= FCount...
+    InsertItem (Index,S);
+    end;
 end;
 
 

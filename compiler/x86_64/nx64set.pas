@@ -27,7 +27,7 @@ interface
 
     uses
       globtype,
-      node,nset,pass_1,nx86set;
+      nset,nx86set;
 
     type
       tx8664casenode = class(tx86casenode)
@@ -41,13 +41,11 @@ implementation
     uses
       systems,
       verbose,globals,constexp,
-      symconst,symdef,defutil,
-      aasmbase,aasmtai,aasmdata,aasmcpu,
-      cgbase,pass_2,
-      ncon,
-      cpubase,cpuinfo,procinfo,
-      cga,cgutils,cgobj,ncgutil,
-      cgx86;
+      defutil,
+      aasmbase,aasmtai,aasmdata,
+      cgbase,
+      cpubase,procinfo,
+      cga,cgutils,cgobj;
 
 
 {*****************************************************************************
@@ -121,17 +119,17 @@ implementation
         indexreg:=cg.makeregsize(current_asmdata.CurrAsmList,hregister,OS_ADDR);
         cg.a_load_reg_reg(current_asmdata.CurrAsmList,opcgsize,OS_ADDR,hregister,indexreg);
         { load table address }
-        reference_reset_symbol(href,tablelabel,0,4);
+        reference_reset_symbol(href,tablelabel,0,4,[]);
         basereg:=cg.getaddressregister(current_asmdata.CurrAsmList);
         cg.a_loadaddr_ref_reg(current_asmdata.CurrAsmList,href,basereg);
         { load table slot, 32-bit sign extended }
-        reference_reset_base(href,basereg,-aint(min_)*4,4);
+        reference_reset_base(href,basereg,-aint(min_)*4,ctempposinvalid,4,[]);
         href.index:=indexreg;
         href.scalefactor:=4;
         jumpreg:=cg.getaddressregister(current_asmdata.CurrAsmList);
         cg.a_load_ref_reg(current_asmdata.CurrAsmList,OS_S32,OS_ADDR,href,jumpreg);
         { add table address }
-        reference_reset_base(href,basereg,0,sizeof(pint));
+        reference_reset_base(href,basereg,0,ctempposinvalid,sizeof(pint),[]);
         href.index:=jumpreg;
         href.scalefactor:=1;
         cg.a_loadaddr_ref_reg(current_asmdata.CurrAsmList,href,jumpreg);

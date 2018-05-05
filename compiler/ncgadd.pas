@@ -72,11 +72,11 @@ interface
 
     uses
       globtype,systems,
-      cutils,verbose,globals,
-      symconst,symdef,paramgr,
-      aasmbase,aasmtai,aasmdata,defutil,
-      procinfo,pass_2,tgobj,
-      nutils,ncon,nset,ncgutil,cgobj,cgutils,
+      verbose,globals,
+      symconst,symdef,
+      aasmbase,aasmdata,defutil,
+      pass_2,tgobj,
+      nutils,nset,ncgutil,cgobj,cgutils,
       hlcgobj
       ;
 
@@ -520,7 +520,7 @@ interface
           checkoverflow and
           (left.resultdef.typ<>pointerdef) and
           (right.resultdef.typ<>pointerdef) and
-          (cs_check_overflow in current_settings.localswitches);
+          (cs_check_overflow in current_settings.localswitches) and not(nf_internal in flags);
 
 {$ifdef cpu64bitalu}
         case nodetype of
@@ -714,7 +714,7 @@ interface
          checkoverflow and
           (left.resultdef.typ<>pointerdef) and
           (right.resultdef.typ<>pointerdef) and
-          (cs_check_overflow in current_settings.localswitches);
+          (cs_check_overflow in current_settings.localswitches) and not(nf_internal in flags);
 
        if nodetype<>subn then
         begin

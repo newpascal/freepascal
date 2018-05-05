@@ -123,6 +123,10 @@ begin
     P.Targets.AddUnit('pdilib.pp',[PalmOS]);
     P.Targets.AddUnit('helperserviceclass.pp',[PalmOS]);
 
+    P.ExamplePath.Add('examples');
+    P.Targets.AddExampleProgram('hello.pas');
+    P.Targets.AddExampleProgram('palmcube.pas');
+
 {$ifndef ALLPACKAGES}
     Run;
     end;

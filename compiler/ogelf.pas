@@ -31,7 +31,7 @@ interface
        { target }
        systems,
        { assembler }
-       cpuinfo,cpubase,aasmbase,aasmtai,aasmdata,assemble,
+       aasmbase,assemble,
        { ELF definitions }
        elfbase,
        { output }
@@ -53,8 +53,8 @@ interface
           shlink,
           shinfo,
           shentsize : longint;
-          constructor create(AList:TFPHashObjectList;const Aname:string;Aalign:shortint;Aoptions:TObjSectionOptions);override;
-          constructor create_ext(aobjdata:TObjData;const Aname:string;Ashtype,Ashflags:longint;Aalign:shortint;Aentsize:longint);
+          constructor create(AList:TFPHashObjectList;const Aname:string;Aalign:longint;Aoptions:TObjSectionOptions);override;
+          constructor create_ext(aobjdata:TObjData;const Aname:string;Ashtype,Ashflags:longint;Aalign:longint;Aentsize:longint);
           constructor create_reloc(aobjdata:TObjData;const Aname:string;allocflag:boolean);
           procedure writeReloc_internal(aTarget:TObjSection;offset:aword;len:byte;reltype:TObjRelocationType);override;
        end;
@@ -668,7 +668,7 @@ implementation
                                TElfObjSection
 ****************************************************************************}
 
-    constructor TElfObjSection.create(AList:TFPHashObjectList;const Aname:string;Aalign:shortint;Aoptions:TObjSectionOptions);
+    constructor TElfObjSection.create(AList:TFPHashObjectList;const Aname:string;Aalign:longint;Aoptions:TObjSectionOptions);
       begin
         inherited create(AList,Aname,Aalign,aoptions);
         index:=0;
@@ -681,7 +681,7 @@ implementation
       end;
 
 
-    constructor TElfObjSection.create_ext(aobjdata:TObjData;const Aname:string;Ashtype,Ashflags:longint;Aalign:shortint;Aentsize:longint);
+    constructor TElfObjSection.create_ext(aobjdata:TObjData;const Aname:string;Ashtype,Ashflags:longint;Aalign:longint;Aentsize:longint);
       var
         aoptions : TObjSectionOptions;
       begin
@@ -1260,7 +1260,7 @@ implementation
            { section data }
            layoutsections(datapos);
            { section headers }
-           shoffset:=datapos;
+           shoffset:=align(datapos,dword(Sizeof(AInt)));
            inc(datapos,(nsections+1)*sizeof(telfsechdr));
 
            { Write ELF Header }
@@ -1298,6 +1298,9 @@ implementation
            writer.writezeros($40-sizeof(header)); { align }
            { Sections }
            WriteSectionContent(data);
+
+           { Align header }
+           Writer.Writezeros(Align(Writer.Size,Sizeof(AInt))-Writer.Size);
            { section headers, start with an empty header for sh_undef }
            writer.writezeros(sizeof(telfsechdr));
            ObjSectionList.ForEachCall(@section_write_sechdr,nil);

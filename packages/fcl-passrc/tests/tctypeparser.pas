@@ -43,7 +43,7 @@ type
     Procedure DoParseEnumerated(Const ASource : String; Const AHint : String; ACount : integer);
     Procedure DoTestFileType(Const AType : String; Const AHint : String; ADestType : TClass = Nil);
     Procedure DoTestRangeType(Const AStart,AStop,AHint : String);
-    Procedure DoParseSimpleSet(Const ASource : String; Const AHint : String);
+    Procedure DoParseSimpleSet(Const ASource : String; Const AHint : String; IsPacked : Boolean = False);
     Procedure DoParseComplexSet(Const ASource : String; Const AHint : String);
     procedure DoParseRangeSet(const ASource: String; const AHint: String);
     Procedure DoTestComplexSet;
@@ -113,8 +113,12 @@ type
     procedure TestStaticArrayPlatform;
     Procedure TestStaticArrayPacked;
     Procedure TestStaticArrayTypedIndex;
+    Procedure TestStaticArrayOfMethod;
+    procedure TestStaticArrayOfProcedure;
     Procedure TestDynamicArray;
     Procedure TestDynamicArrayComment;
+    procedure TestDynamicArrayOfMethod;
+    procedure TestDynamicArrayOfProcedure;
     Procedure TestGenericArray;
     Procedure TestSimpleEnumerated;
     Procedure TestSimpleEnumeratedComment;
@@ -129,6 +133,7 @@ type
     Procedure TestFileTypePlatform;
     Procedure TestRangeType;
     Procedure TestCharRangeType;
+    Procedure TestCharRangeType2;
     Procedure TestRangeTypeDeprecated;
     Procedure TestRangeTypePlatform;
     Procedure TestIdentifierRangeType;
@@ -136,6 +141,7 @@ type
     Procedure TestIdentifierRangeTypePlatform;
     Procedure TestNegativeIdentifierRangeType;
     Procedure TestSimpleSet;
+    Procedure TestPackedSet;
     Procedure TestSimpleSetDeprecated;
     Procedure TestSimpleSetPlatform;
     Procedure TestComplexSet;
@@ -159,7 +165,8 @@ type
     Procedure TestReferencePointer;
     Procedure TestInvalidColon;
     Procedure TestTypeHelper;
-    Procedure TestSpecializationDelphi;
+    procedure TestPointerReference;
+    Procedure TestPointerKeyWord;
   end;
 
   { TTestRecordTypeParser }
@@ -234,6 +241,7 @@ type
     Procedure TestOnePlatformFieldDeprecated;
     Procedure TestOnePlatformFieldPlatform;
     Procedure TestOneConstOneField;
+    Procedure TestOneGenericField;
     Procedure TestTwoFields;
     procedure TestTwoFieldProtected;
     procedure TestTwoFieldStrictPrivate;
@@ -262,6 +270,8 @@ type
     Procedure TestFieldAndProperty;
     Procedure TestFieldAndClassMethod;
     Procedure TestFieldAndClassOperator;
+    Procedure TestFieldAndClassVar;
+    Procedure TestFieldAndVar;
     Procedure TestNested;
     Procedure TestNestedDeprecated;
     Procedure TestNestedPlatform;
@@ -322,6 +332,7 @@ type
     Procedure TestVariantNestedVariantBothDeprecated;
     Procedure TestVariantNestedVariantBothDeprecatedDeprecated;
     Procedure TestVariantNestedVariantBothDeprecatedPlatform;
+    Procedure TestOperatorField;
   end;
 
   { TTestProcedureTypeParser }
@@ -408,6 +419,7 @@ type
     Procedure TestProcedureOutOpenArray;
     Procedure TestProcedureVarOpenArray;
     Procedure TestProcedureArrayOfConst;
+    Procedure TestProcedureReference;
     Procedure TestProcedureOfObject;
     Procedure TestProcedureOfObjectOneArg;
     Procedure TestProcedureIsNested;
@@ -1084,6 +1096,13 @@ begin
   TestCallingConventions(@DoTestProcedureArrayOfConst);
 end;
 
+procedure TTestProcedureTypeParser.TestProcedureReference;
+begin
+  ParseType('reference to procedure',ccDefault,TPasProcedureType);
+  AssertEquals('Argument count',0,Proc.Args.Count);
+  AssertEquals('Is Reference to',True,Proc.IsReferenceTo);
+end;
+
 Procedure TTestProcedureTypeParser.TestProcedureOfObject;
 begin
   TestCallingConventions(@DoTestProcedureOfObject);
@@ -1233,6 +1252,7 @@ end;
 
 procedure TTestRecordTypeParser.AssertConst1(Hints: TPasMemberHints);
 begin
+  if Hints=[] then ;
   AssertEquals('Member 1 type',TPasConst,TObject(TheRecord.Members[0]).ClassType);
   AssertEquals('Const 1 name','x',Const1.Name);
   AssertNotNull('Have 1 const expr',Const1.Expr);
@@ -1776,6 +1796,16 @@ begin
   AssertField2([]);
 end;
 
+procedure TTestRecordTypeParser.TestOneGenericField;
+begin
+  TestFields(['Generic : Integer;'],'',False);
+  AssertEquals('Member 1 field type',TPasVariable,TObject(TheRecord.Members[0]).ClassType);
+  AssertEquals('Field 1 name','Generic',Field1.Name);
+  AssertNotNull('Have 1 Field type',Field1.VarType);
+  AssertEquals('Field 1 type',TPasUnresolvedTypeRef,Field1.VarType.ClassType);
+  AssertEquals('Field 1 type name','Integer',Field1.VarType.Name);
+end;
+
 procedure TTestRecordTypeParser.TestTwoFields;
 begin
   TestFields(['x : integer;','y : integer'],'',False);
@@ -2023,6 +2053,20 @@ begin
   AssertTrue('Method 2 hints match',[]=P.Hints);
   // Standard type
   AssertEquals('Method 2 result type','Integer', P.FuncType.ResultEl.ResultType.Name);
+end;
+
+procedure TTestRecordTypeParser.TestFieldAndClassVar;
+begin
+  TestFields(['x : integer;','class var y : integer;'],'',False);
+  AssertField1([]);
+  AssertTrue('Second field is class var',vmClass in Field2.VarModifiers);
+end;
+
+procedure TTestRecordTypeParser.TestFieldAndVar;
+begin
+  TestFields(['x : integer;','var y : integer;'],'',False);
+  AssertField1([]);
+  AssertTrue('Second field is regular var',not (vmClass in Field2.VarModifiers));
 end;
 
 procedure TTestRecordTypeParser.TestNested;
@@ -2358,6 +2402,12 @@ begin
   DoTestVariantNestedVariantBothDeprecated('platform');
 end;
 
+procedure TTestRecordTypeParser.TestOperatorField;
+begin
+  TestFields(['operator : integer;'],'',False);
+  AssertEquals('Field 1 name','operator',Field1.Name);
+end;
+
 { TBaseTestTypeParser }
 
 Function TBaseTestTypeParser.ParseType(ASource: String; ATypeClass: TClass;
@@ -2507,12 +2557,15 @@ begin
   AssertEquals('Range start',AStop,Stringreplace(TPasRangeType(TheType).RangeEnd,' ','',[rfReplaceAll]));
 end;
 
-procedure TTestTypeParser.DoParseSimpleSet(const ASource: String;
-  const AHint: String);
+procedure TTestTypeParser.DoParseSimpleSet(const ASource: String; const AHint: String; IsPacked: Boolean);
 begin
-  ParseType('Set of '+ASource,TPasSetType,AHint);
+  if IsPacked then
+    ParseType('Packed Set of '+ASource,TPasSetType,AHint)
+  else
+    ParseType('Set of '+ASource,TPasSetType,AHint);
   AssertNotNull('Have enumtype',TPasSetType(TheType).EnumType);
   AssertEquals('Element type ',TPasUnresolvedTypeRef,TPasSetType(TheType).EnumType.ClassType);
+  AssertEquals('IsPacked is correct',isPacked,TPasSetType(TheType).IsPacked);
 end;
 
 procedure TTestTypeParser.DoParseComplexSet(const ASource: String;
@@ -2890,6 +2943,30 @@ begin
   AssertEquals('Array type','Boolean',TPasArrayType(TheType).IndexRange);
 end;
 
+procedure TTestTypeParser.TestStaticArrayOfMethod;
+begin
+  DoParseArray('array[0..127] of procedure of object','',TPasProcedureType);
+  AssertEquals('Array element type',TPasProcedureType,TPasArrayType(TheType).ElType.ClassType);
+end;
+
+procedure TTestTypeParser.TestStaticArrayOfProcedure;
+begin
+  DoParseArray('array[0..127] of procedure','',TPasProcedureType);
+  AssertEquals('Array element type',TPasProcedureType,TPasArrayType(TheType).ElType.ClassType);
+end;
+
+procedure TTestTypeParser.TestDynamicArrayOfMethod;
+begin
+  DoParseArray('array of procedure of object','',TPasProcedureType);
+  AssertEquals('Array element type',TPasProcedureType,TPasArrayType(TheType).ElType.ClassType);
+end;
+
+procedure TTestTypeParser.TestDynamicArrayOfProcedure;
+begin
+  DoParseArray('array of procedure ','',TPasProcedureType);
+  AssertEquals('Array element type',TPasProcedureType,TPasArrayType(TheType).ElType.ClassType);
+end;
+
 procedure TTestTypeParser.TestDynamicArray;
 begin
   DoParseArray('array of integer','',Nil);
@@ -3029,6 +3106,11 @@ begin
   DoTestRangeType('#1','#4','');
 end;
 
+procedure TTestTypeParser.TestCharRangeType2;
+begin
+  DoTestRangeType('''A''','''B''','');
+end;
+
 procedure TTestTypeParser.TestRangeTypeDeprecated;
 begin
   DoTestRangeType('1','4','deprecated');
@@ -3095,6 +3177,11 @@ procedure TTestTypeParser.TestComplexSetPlatform;
 begin
   DoParseComplexSet('(one, two, three)','platform');
   DoTestComplexSet;
+end;
+
+procedure TTestTypeParser.TestPackedSet;
+begin
+  DoParseSimpleSet('Byte','',True);
 end;
 
 procedure TTestTypeParser.TestRangeLowHigh;
@@ -3280,10 +3367,26 @@ begin
   ParseType('Type Helper for AnsiString end',TPasClassType,'');
 end;
 
-procedure TTestTypeParser.TestSpecializationDelphi;
+procedure TTestTypeParser.TestPointerReference;
 begin
-  ParseType('TFPGList<integer>',TPasClassType,'');
+  Add('Type');
+  Add('  pReference = ^Reference;');
+  Add('  Reference = object');
+  Add('  end;');
+  ParseDeclarations;
+  AssertEquals('type definition count',1,Declarations.Types.Count);
+  AssertEquals('object definition count',1,Declarations.Classes.Count);
 end;
+
+procedure TTestTypeParser.TestPointerKeyWord;
+begin
+  Add('type');
+  Add('  &file = object');
+  Add('  end;');
+  ParseDeclarations;
+  AssertEquals('object definition count',1,Declarations.Classes.Count);
+end;
+
 
 initialization
   RegisterTests([TTestTypeParser,TTestRecordTypeParser,TTestProcedureTypeParser]);

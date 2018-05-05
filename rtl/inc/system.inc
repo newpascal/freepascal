@@ -23,46 +23,6 @@ type
   ObjpasInt = LongInt;
 {$endif CPU16}
 
-{ The RTTI is implemented through a series of constants : }
-
-Const
-   // please update tkManagedTypes below if you add new
-   // values
-   tkUnknown        = 0;
-   tkInteger        = 1;
-   tkChar           = 2;
-   tkEnumeration    = 3;
-   tkFloat          = 4;
-   tkSet            = 5;
-   tkMethod         = 6;
-   tkSString        = 7;
-   tkString         = tkSString;
-   tkLString        = 8;
-   tkAString        = 9;
-   tkWString        = 10;
-   tkVariant        = 11;
-   tkArray          = 12;
-   tkRecord         = 13;
-   tkInterface      = 14;
-   tkClass          = 15;
-   tkObject         = 16;
-   tkWChar          = 17;
-   tkBool           = 18;
-   tkInt64          = 19;
-   tkQWord          = 20;
-   tkDynArray       = 21;
-   tkInterfaceCorba = 22;
-   tkProcVar        = 23;
-   tkUString        = 24;
-   tkHelper         = 26;
-   tkFile           = 27;
-   tkClassRef       = 28;
-   tkPointer        = 29;
-
-  // all potentially managed types
-  tkManagedTypes   = [tkAstring,tkWstring,tkUstring,tkArray,
-                     tkObject,tkRecord,tkDynArray,tkInterface,tkVariant];
-
 {****************************************************************************
                                 Local types
 ****************************************************************************}
@@ -251,6 +211,14 @@ function do_isdevice(handle:thandle):boolean;forward;
   {$define SYSPROCDEFINED}
 {$endif cpusparc}
 
+{$ifdef cpusparc64}
+  {$ifdef SYSPROCDEFINED}
+    {$Error Can't determine processor type !}
+  {$endif}
+  {$i sparc64.inc}  { Case dependent, don't change }
+  {$define SYSPROCDEFINED}
+{$endif cpusparc64}
+
 {$ifdef cpuarm}
   {$ifdef SYSPROCDEFINED}
     {$Error Can't determine processor type !}
@@ -335,13 +303,13 @@ begin
 end;
 
 
-procedure fpc_zeromem(p:pointer;len:ptruint);
+procedure fpc_zeromem(p:pointer;len:sizeuint);
 begin
   FillChar(p^,len,0);
 end;
 
 
-procedure fpc_fillmem(out data;len:ptruint;b : byte);
+procedure fpc_fillmem(out data;len:sizeuint;b : byte);
 begin
   FillByte(data,len,b);
 end;
@@ -444,6 +412,24 @@ function aligntoptr(p : pointer) : pointer;inline;
   end;
 
 
+function aligntoqword(p : pointer) : pointer;inline;
+{$push}
+{$packrecords c}
+  type
+    TAlignCheck = record
+      b : byte;
+      q : qword;
+    end;
+{$pop}
+  begin
+{$ifdef FPC_REQUIRES_PROPER_ALIGNMENT}
+    result:=align(p,PtrInt(@TAlignCheck(nil^).q))
+{$else FPC_REQUIRES_PROPER_ALIGNMENT}
+    result:=p;
+{$endif FPC_REQUIRES_PROPER_ALIGNMENT}
+  end;
+
+
 {****************************************************************************
                   Subroutines for String handling
 ****************************************************************************}
@@ -469,6 +455,18 @@ function aligntoptr(p : pointer) : pointer;inline;
 {$endif FPC_HAS_FEATURE_WIDESTRINGS}
 
 {$i aliases.inc}
+
+{****************************************************************************
+                  Run-Time Type Information (RTTI) declarations
+****************************************************************************}
+
+type
+  PTypeKind = ^TTypeKind;
+
+const
+  // all potentially managed types
+  tkManagedTypes   = [tkAstring,tkWstring,tkUstring,tkArray,
+                     tkObject,tkRecord,tkDynArray,tkInterface,tkVariant];
 
 {*****************************************************************************
                         Dynamic Array support
@@ -625,10 +623,11 @@ begin
       OldRandSeed:=RandSeed;
       l_index:=MTWIST_N;
     end;
-  if mt_index=MTWIST_N then
+  if l_index=MTWIST_N then
     begin
       mtwist_update_state;
       l_index:=0;
+      mt_index:=1;
     end;
   result:=mt_state[l_index];
   result:=result xor (result shr 11);
@@ -745,6 +744,42 @@ begin
 end;
 {$endif ndef FPC_SYSTEM_HAS_GET_CALLER_STACKINFO}
 
+{$ifdef FPC_HAS_EXPLICIT_INTERLOCKED_POINTER}
+{$ifndef FPC_SYSTEM_HAS_EXPLICIT_INTERLOCKED_POINTER}
+
+function InterLockedDecrement (var Target: pointer) : pointer;
+  begin
+    Result := Pointer(InterLockedDecrement(PtrInt(Target)));
+  end;
+
+function InterLockedIncrement (var Target: pointer) : pointer;
+  begin
+    Result := Pointer(InterLockedIncrement(PtrInt(Target)));
+  end;
+
+function InterLockedExchange (var Target: pointer; Source : pointer) : pointer;
+  begin
+    Result := Pointer(InterLockedExchange(PtrInt(Target), PtrInt(Source)));
+  end;
+
+function InterLockedExchangeAdd (var Target: pointer; Source : pointer) : pointer;
+  begin
+    Result := Pointer(InterLockedExchangeAdd(PtrInt(Target), PtrInt(Source)));
+  end;
+
+function InterLockedCompareExchange (var Target: pointer; NewValue: pointer; Comperand: pointer): pointer;
+  begin
+    Result := Pointer(InterLockedCompareExchange(PtrInt(Target), PtrInt(NewValue), PtrInt(Comperand)));
+  end;
+
+function InterLockedCompareExchangePointer (var Target: pointer; NewValue: pointer; Comperand: pointer): pointer;
+  begin
+    Result := Pointer(InterLockedCompareExchange(PtrInt(Target), PtrInt(NewValue), PtrInt(Comperand)));
+  end;
+
+{$endif FPC_SYSTEM_HAS_EXPLICIT_INTERLOCKED_POINTER}
+{$endif FPC_HAS_EXPLICIT_INTERLOCKED_POINTER}
+
 procedure fpc_objecterror; compilerproc;
 begin
   HandleErrorAddrFrameInd(210,get_pc_addr,get_frame);
@@ -770,7 +805,7 @@ end;
 
 procedure fpc_threaderror; [public,alias:'FPC_THREADERROR'];
 begin
-  HandleErrorAddrFrameInd(6,get_pc_addr,get_frame);
+    HandleErrorAddrFrameInd(236{RuntimeErrorExitCodes[reThreadError]},get_pc_addr,get_frame);
 end;
 
 
@@ -977,10 +1012,12 @@ begin
     Flush(Output);
   if Textrec(ErrOutput).Mode=fmOutput then
     Flush(ErrOutput);
+{$ifndef FPC_STDOUT_TRUE_ALIAS}
   if Textrec(stdout).Mode=fmOutput then
     Flush(stdout);
   if Textrec(StdErr).Mode=fmOutput then
     Flush(StdErr);
+{$endif FPC_STDOUT_TRUE_ALIAS}
 end;
 {$endif FPC_HAS_FEATURE_CONSOLEIO}
 
@@ -1086,7 +1123,7 @@ begin
 end;
 
 
-Procedure Halt(ErrNum: Longint);
+Procedure Halt(ErrNum: Longint);noreturn;
 Begin
 {$ifdef FPC_HAS_FEATURE_EXITCODE}
 {$ifdef FPC_LIMITED_EXITCODE}
@@ -1182,7 +1219,7 @@ begin
 end;
 
 
-procedure RunError(w : word);[alias: 'FPC_RUNERROR'];
+procedure RunError(w : word);[alias: 'FPC_RUNERROR'];noreturn;
 var
   bp : pointer;
   pcaddr : codepointer;
@@ -1197,13 +1234,13 @@ begin
 end;
 
 
-Procedure RunError;{$ifdef SYSTEMINLINE}inline;{$endif}
+Procedure RunError;{$ifdef SYSTEMINLINE}inline;{$endif}noreturn;
 Begin
   RunError (0);
 End;
 
 
-Procedure Halt;{$ifdef SYSTEMINLINE}inline;{$endif}
+Procedure Halt;{$ifdef SYSTEMINLINE}inline;{$endif}noreturn;
 Begin
   Halt(0);
 End;
@@ -1245,7 +1282,7 @@ Begin
      End;
 {$ifdef FPC_HAS_FEATURE_EXCEPTIONS}
    except
-     { prevent endless dump if an exception occured }
+     { prevent endless dump if an exception occurred }
    end;
 {$endif FPC_HAS_FEATURE_EXCEPTIONS}
 End;
@@ -1333,6 +1370,11 @@ End;
 {$ifdef FPC_HAS_FEATURE_HEAP}
 {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}
 function ArrayStringToPPchar(const S:Array of AnsiString;reserveentries:Longint):ppchar; // const ?
+{$ifdef EXCLUDE_COMPLEX_PROCS}
+begin
+  runerror(217);
+end;
+{$else EXCLUDE_COMPLEX_PROCS}
 // Extra allocate reserveentries pchar's at the beginning (default param=0 after 1.0.x ?)
 // Note: for internal use by skilled programmers only
 // if "s" goes out of scope in the parent procedure, the pointer is dangling.
@@ -1355,6 +1397,7 @@ begin
   p[high(s)+1+Reserveentries]:=nil;
   ArrayStringToPPchar:=p;
 end;
+{$endif EXCLUDE_COMPLEX_PROCS}
 
 
 Function StringToPPChar(Var S:AnsiString;ReserveEntries:integer):ppchar;

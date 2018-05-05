@@ -78,7 +78,7 @@ end;
 
 {
   The lowlevel file functions should take care of setting the InOutRes to the
-  correct value if an error has occured, else leave it untouched
+  correct value if an error has occurred, else leave it untouched
 }
 
 function PosixToRunError  (PosixErrno : longint):word;
@@ -145,10 +145,10 @@ Function Do_IsDevice(Handle:THandle):boolean;
   data is function-dependent.
 }
 const
-{$if defined(PowerPC) or defined(PowerPc64)}
+{$if defined(cpupowerpc) or defined(cpupowerpc64)}
   IOCtl_TCGETS=$402c7413;
 {$else}
-{$if defined(sparc)}
+{$if defined(cpusparc) or defined(cpusparc64)}
   IOCtl_TCGETS=$40245408;
 {$else}
   IOCtl_TCGETS=$5401; // TCGETS is also in termios.inc, but the sysunix needs only this

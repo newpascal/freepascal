@@ -27,8 +27,8 @@ interface
 
     uses
        globtype,
-       cpuinfo,cpubase,cgbase,cgutils,
-       aasmbase,aasmtai,aasmdata,aasmcpu,
+       cgbase,cgutils,
+       aasmtai,aasmdata,aasmcpu,
        node,
        symtype;
 
@@ -159,12 +159,22 @@ interface
              that temp is not deallocated until this temp is deleted (since
              otherwise the assigned value may be freed before the last use of
              the temp) }
-         ti_const
+         ti_const,
+         { the temp. needs no final sync instruction if it is located in a register,
+           so there are no loops involved in the usage of the temp.
+         }
+         ti_no_final_regsync,
+         { this applied only to delete nodes: the single purpose of the temp. delete node is to clean up memory. In case
+           of cse it might happen that the tempcreate node is optimized away so tempinfo is never initialized properly but
+           the allocated memory must be disposed
+           If a temp. node has this flag set, the life time of the temp. data must be determined by reg. life, the temp.
+           location (in the sense of stack space/register) is never release }
+         ti_cleanup_only
          );
        ttempinfoflags = set of ttempinfoflag;
 
      const
-       tempinfostoreflags = [ti_may_be_in_reg,ti_addr_taken,ti_reference,ti_readonly];
+       tempinfostoreflags = [ti_may_be_in_reg,ti_addr_taken,ti_reference,ti_readonly,ti_no_final_regsync];
 
      type
        { to allow access to the location by temp references even after the temp has }
@@ -298,11 +308,10 @@ interface
 implementation
 
     uses
-      cutils,
       verbose,globals,systems,
       symconst,symdef,defutil,defcmp,
       pass_1,
-      nutils,nld,ncal,nflw,
+      nutils,nld,
       procinfo
       ;
 
@@ -734,6 +743,8 @@ implementation
               if hp=nil then
                 break;
               p_asm.concat(hp);
+              if hp.typ=ait_section then
+                inc(p_asm.section_count);
             until false;
           end
         else
@@ -805,6 +816,7 @@ implementation
           begin
             n.p_asm:=TAsmList.create;
             n.p_asm.concatlistcopy(p_asm);
+            n.p_asm.section_count:=p_asm.section_count;
           end
         else n.p_asm := nil;
         n.currenttai:=currenttai;
@@ -952,7 +964,7 @@ implementation
         n.tempinfo^.owner:=n;
         n.tempinfo^.typedef := tempinfo^.typedef;
         n.tempinfo^.temptype := tempinfo^.temptype;
-        n.tempflags := n.tempflags * tempinfostoreflags;
+        n.tempflags := tempflags * tempinfostoreflags;
 
         { when the tempinfo has already a hookoncopy then it is not
           reset by a tempdeletenode }
@@ -1202,16 +1214,28 @@ implementation
 
 
     procedure ttemprefnode.mark_write;
+      begin
+        include(flags,nf_write);
+      end;
 
-    begin
-      include(flags,nf_write);
-    end;
 
     procedure ttemprefnode.printnodedata(var t:text);
+      var
+        f : ttempinfoflag;
+        notfirst : Boolean;
       begin
         inherited printnodedata(t);
-        writeln(t,printnodeindention,'temptypedef = ',tempinfo^.typedef.typesymbolprettyname,' = "',
-          tempinfo^.typedef.GetTypeName,'", tempinfo = $',hexstr(ptrint(tempinfo),sizeof(ptrint)*2));
+        write(t,printnodeindention,'temptypedef = ',tempinfo^.typedef.typesymbolprettyname,' = "',
+          tempinfo^.typedef.GetTypeName,'", (tempinfo = $',hexstr(ptrint(tempinfo),sizeof(ptrint)*2),' flags = [');
+        notfirst:=false;
+        for f in tempinfo^.flags do
+          begin
+            if notfirst then
+              write(t,',');
+            write(t,f);
+            notfirst:=true;
+          end;
+        writeln(t,'])');
       end;
 
 

@@ -49,6 +49,7 @@ uses
     procedure maybe_insert_generic_rename_symbol(const name:tidstring;genericlist:tfphashobjectlist);
     function generate_generic_name(const name:tidstring;specializename:ansistring;owner_hierarchy:string):tidstring;
     procedure split_generic_name(const name:tidstring;out nongeneric:string;out count:longint);
+    procedure add_generic_dummysym(sym:tsym);
     function resolve_generic_dummysym(const name:tidstring):tsym;
     function could_be_generic(const name:tidstring):boolean;inline;
 
@@ -69,9 +70,7 @@ uses
   symconst,symsym,symtable,defcmp,procinfo,
   { modules }
   fmodule,
-  { pass 1 }
-  htypechk,
-  node,nobj,nmem,
+  node,nobj,
   { parser }
   scanner,
   pbase,pexpr,pdecsub,ptype,psub;
@@ -144,9 +143,32 @@ uses
               begin
                 case formaldef.typ of
                   recorddef:
+                    { delphi has own fantasy about record constraint
+                      (almost non-nullable/non-nilable value type) }
+                    {NEWPASCAL_MOD
+                    if m_delphi in current_settings.modeswitches then
+                      case paradef.typ of
+                        floatdef,enumdef,orddef:
+                          continue;
+                        objectdef:
+                          if tobjectdef(paradef).objecttype=odt_object then
+                            continue
+                          else
+                            MessagePos(filepos,type_e_record_type_expected);
+                        else
+                          MessagePos(filepos,type_e_record_type_expected);
+                      end
+                    else
+                      MessagePos(filepos,type_e_record_type_expected);
+                    }
                     case paradef.typ of
-                      floatdef,enumdef,orddef,stringdef,setdef,variantdef:
+                      floatdef,enumdef,orddef,stringdef,setdef,variantdef,filedef:
                         continue;
+                      arraydef:
+                        if ado_IsDynamicArray in tarraydef(paradef).arrayoptions then
+                          MessagePos(filepos,type_e_record_type_expected)
+                        else
+                          continue;
                       objectdef:
                         if tobjectdef(paradef).objecttype = odt_object then
                           continue
@@ -305,6 +327,7 @@ uses
         tmpparampos : tfileposinfo;
         namepart : string;
         prettynamepart : ansistring;
+        module : tmodule;
       begin
         result:=true;
         if genericdeflist=nil then
@@ -320,8 +343,12 @@ uses
         if assigned(parsedtype) then
           begin
             genericdeflist.Add(parsedtype);
-            specializename:='$'+parsedtype.fulltypename;
-            prettyname:=parsedtype.typesym.prettyname;
+            module:=find_module_from_symtable(parsedtype.owner);
+            if not assigned(module) then
+              internalerror(2016112801);
+            namepart:='_$'+hexstr(module.moduleid,8)+'$$'+parsedtype.unique_id_str;
+            specializename:='$'+namepart;
+            prettyname:=parsedtype.fullownerhierarchyname(true)+parsedtype.typesym.prettyname;
             if assigned(poslist) then
               begin
                 New(parampos);
@@ -331,7 +358,7 @@ uses
           end
         else
           begin
-            specializename:='';
+            specializename:='$';
             prettyname:='';
           end;
         while not (token in [_GT,_RSHARPBRACKET]) do
@@ -363,22 +390,23 @@ uses
                     else if (typeparam.resultdef.typ<>errordef) then
                       begin
                         genericdeflist.Add(typeparam.resultdef);
+                        module:=find_module_from_symtable(typeparam.resultdef.owner);
+                        if not assigned(module) then
+                          internalerror(2016112802);
+                        namepart:='_$'+hexstr(module.moduleid,8)+'$$'+typeparam.resultdef.unique_id_str;
                         { we use the full name of the type to uniquely identify it }
                         if (symtablestack.top.symtabletype=parasymtable) and
                             (symtablestack.top.defowner.typ=procdef) and
                             (typeparam.resultdef.owner=symtablestack.top) then
                           begin
                             { special handling for specializations inside generic function declarations }
-                            namepart:=tdef(symtablestack.top.defowner).unique_id_str;
-                            namepart:='genproc'+namepart+'_'+tdef(symtablestack.top.defowner).fullownerhierarchyname+'_'+tprocdef(symtablestack.top.defowner).procsym.realname+'_'+typeparam.resultdef.typename;
-                            prettynamepart:=tdef(symtablestack.top.defowner).fullownerhierarchyname+tprocdef(symtablestack.top.defowner).procsym.prettyname;
+                            prettynamepart:=tdef(symtablestack.top.defowner).fullownerhierarchyname(true)+tprocdef(symtablestack.top.defowner).procsym.prettyname;
                           end
                         else
                           begin
-                            namepart:=typeparam.resultdef.fulltypename;
-                            prettynamepart:=typeparam.resultdef.fullownerhierarchyname;
+                            prettynamepart:=typeparam.resultdef.fullownerhierarchyname(true);
                           end;
-                        specializename:=specializename+'$'+namepart;
+                        specializename:=specializename+namepart;
                         if not first then
                           prettyname:=prettyname+',';
                         prettyname:=prettyname+prettynamepart+typeparam.resultdef.typesym.prettyname;
@@ -712,6 +740,7 @@ uses
         ufinalspecializename : tidstring;
         prettyname : ansistring;
         generictypelist : tfphashobjectlist;
+        srsymtable,
         specializest : tsymtable;
         hashedid : thashedidstring;
         tempst : tglobalsymtable;
@@ -723,6 +752,7 @@ uses
         old_current_structdef : tabstractrecorddef;
         old_current_specializedef,
         old_current_genericdef : tstoreddef;
+        old_current_procinfo : tprocinfo;
         hmodule : tmodule;
         oldcurrent_filepos : tfileposinfo;
         recordbuf : tdynamicarray;
@@ -847,27 +877,29 @@ uses
         { decide in which symtable to put the specialization }
         if parse_generic and not assigned(result) then
           begin
-            if not assigned(current_genericdef) then
-              internalerror(2014050901);
             if assigned(current_procinfo) and (df_generic in current_procinfo.procdef.defoptions) then
               { if we are parsing the definition of a method we specialize into
                 the local symtable of it }
               specializest:=current_procinfo.procdef.getsymtable(gs_local)
             else
-              { we specialize the partial specialization into the symtable of the currently parsed
-                generic }
-              case current_genericdef.typ of
-                procvardef:
-                  specializest:=current_genericdef.getsymtable(gs_para);
-                procdef:
-                  specializest:=current_genericdef.getsymtable(gs_local);
-                objectdef,
-                recorddef:
-                  specializest:=current_genericdef.getsymtable(gs_record);
-                arraydef:
-                  specializest:=tarraydef(current_genericdef).symtable;
-                else
-                  internalerror(2014050902);
+              begin
+                if not assigned(current_genericdef) then
+                  internalerror(2014050901);
+                { we specialize the partial specialization into the symtable of the currently parsed
+                  generic }
+                case current_genericdef.typ of
+                  procvardef:
+                    specializest:=current_genericdef.getsymtable(gs_para);
+                  procdef:
+                    specializest:=current_genericdef.getsymtable(gs_local);
+                  objectdef,
+                  recorddef:
+                    specializest:=current_genericdef.getsymtable(gs_record);
+                  arraydef:
+                    specializest:=tarraydef(current_genericdef).symtable;
+                  else
+                    internalerror(2014050902);
+                end;
               end;
           end
         else
@@ -884,7 +916,17 @@ uses
           begin
             hashedid.id:=ufinalspecializename;
 
-            srsym:=tsym(specializest.findwithhash(hashedid));
+            if specializest.symtabletype=objectsymtable then
+              begin
+                { search also in parent classes }
+                if not assigned(current_genericdef) or (current_genericdef.typ<>objectdef) then
+                  internalerror(2016112901);
+                if not searchsym_in_class(tobjectdef(current_genericdef),tobjectdef(current_genericdef),ufinalspecializename,srsym,srsymtable,[]) then
+                  srsym:=nil;
+              end
+            else
+              srsym:=tsym(specializest.findwithhash(hashedid));
+
             if assigned(srsym) then
               begin
                 retrieve_genericdef_or_procsym(srsym,result,psym);
@@ -918,6 +960,9 @@ uses
                 old_current_specializedef:=nil;
                 old_current_genericdef:=nil;
                 old_current_structdef:=nil;
+                old_current_procinfo:=current_procinfo;
+
+                current_procinfo:=nil;
 
                 if parse_class_parent then
                   begin
@@ -938,7 +983,10 @@ uses
                 { First a new sym so we can reuse this specialization and
                   references to this specialization can be handled }
                 if genericdef.typ=procdef then
-                  srsym:=cprocsym.create(finalspecializename)
+                  if assigned(psym) then
+                    srsym:=psym
+                  else
+                    srsym:=cprocsym.create(finalspecializename)
                 else
                   srsym:=ctypesym.create(finalspecializename,generrordef,true);
                 { insert the symbol only if we don't know already that we have
@@ -987,7 +1035,7 @@ uses
                           pd.procsym:=psym
                         else
                           pd.procsym:=srsym;
-                        parse_proc_dec_finish(pd,po_classmethod in tprocdef(genericdef).procoptions);
+                        parse_proc_dec_finish(pd,po_classmethod in tprocdef(genericdef).procoptions,tprocdef(genericdef).struct);
                       end;
                     result:=pd;
                   end
@@ -1092,6 +1140,7 @@ uses
                   end;
 
                 block_type:=old_block_type;
+                current_procinfo:=old_current_procinfo;
                 if parse_class_parent then
                   begin
                     current_structdef:=old_current_structdef;
@@ -1469,6 +1518,50 @@ uses
             end;
         nongeneric:=name;
         count:=0;
+      end;
+
+
+    procedure add_generic_dummysym(sym:tsym);
+      var
+        list: TFPObjectList;
+        srsym : tsym;
+        srsymtable : tsymtable;
+        entry : tgenericdummyentry;
+      begin
+        if sp_generic_dummy in sym.symoptions then
+          begin
+            { did we already search for a generic with that name? }
+            list:=tfpobjectlist(current_module.genericdummysyms.find(sym.name));
+            if not assigned(list) then
+              begin
+                list:=tfpobjectlist.create(true);
+                current_module.genericdummysyms.add(sym.name,list);
+              end;
+            { is the dummy sym still "dummy"? }
+            if (sym.typ=typesym) and
+                (
+                  { dummy sym defined in mode Delphi }
+                  (ttypesym(sym).typedef.typ=undefineddef) or
+                  { dummy sym defined in non-Delphi mode }
+                  (tstoreddef(ttypesym(sym).typedef).is_generic)
+                ) then
+              begin
+                { do we have a non-generic type of the same name
+                  available? }
+                if not searchsym_with_flags(sym.name,srsym,srsymtable,[ssf_no_addsymref]) then
+                  srsym:=nil;
+              end
+            else
+              { dummy symbol is already not so dummy anymore }
+              srsym:=nil;
+            if assigned(srsym) then
+              begin
+                entry:=tgenericdummyentry.create;
+                entry.resolvedsym:=srsym;
+                entry.dummysym:=sym;
+                list.add(entry);
+              end;
+          end;
       end;
 
 

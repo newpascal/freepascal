@@ -49,10 +49,11 @@ implementation
 
      uses
        systems,
-       aasmdata,
+       aasmbase,aasmdata,aasmllvm,
        nld,
-       symtable,symconst,symdef,symsym,
-       tgobj,cgbase,hlcgobj;
+       symtable,symconst,symdef,symsym,defutil,
+       procinfo,tgobj,
+       llvmbase,cgbase,hlcgobj;
 
 function tllvmloadnode.pass_1: tnode;
   begin
@@ -75,6 +76,7 @@ procedure tllvmloadnode.pass_generate_code;
     field: tfieldvarsym;
     procreg, selfreg: tregister;
     selfdef: tdef;
+    ai: taillvm;
   begin
     inherited;
     case symtableentry.typ of
@@ -84,7 +86,9 @@ procedure tllvmloadnode.pass_generate_code;
             a single memory location, as we don't use the registerhi/register
             location hack for llvm (llvm will put it back into registers itself)
           }
-          if assigned(left) then
+          if assigned(left) and
+            (resultdef.typ in [symconst.procdef,procvardef]) and
+             not tabstractprocdef(resultdef).is_addressonly then
             begin
               pvdef:=tprocvardef(procdef.getcopyas(procvardef,pc_normal));
               { on little endian, location.register contains proc and
@@ -113,9 +117,21 @@ procedure tllvmloadnode.pass_generate_code;
               hlcg.g_ptrtypecast_ref(current_asmdata.CurrAsmList,cpointerdef.getreusable(pvdef),cpointerdef.getreusable(methodpointertype),mpref);
               hlcg.g_load_reg_field_by_name(current_asmdata.CurrAsmList,cprocvardef.getreusableprocaddr(procdef),trecorddef(methodpointertype),procreg,'proc',mpref);
               hlcg.g_load_reg_field_by_name(current_asmdata.CurrAsmList,selfdef,trecorddef(methodpointertype),selfreg,'self',mpref);
-              location_reset_ref(location,LOC_REFERENCE,location.size,href.alignment);
+              location_reset_ref(location,LOC_REFERENCE,location.size,href.alignment,href.volatility);
               location.reference:=href;
             end;
+        end;
+      labelsym:
+        begin
+          selfreg:=hlcg.getaddressregister(current_asmdata.CurrAsmList,voidcodepointertype);
+          ai:=taillvm.blockaddress(
+              current_asmdata.RefAsmSymbol(current_procinfo.procdef.mangledname,AT_FUNCTION),
+              location.reference.symbol
+            );
+          current_asmdata.CurrAsmList.concat(
+            taillvm.op_reg_tai_size(la_bitcast,selfreg,ai,voidcodepointertype)
+          );
+          reference_reset_base(location.reference,selfreg,0,ctempposinvalid,location.reference.alignment,location.reference.volatility);
         end;
     end;
   end;

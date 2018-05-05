@@ -26,7 +26,7 @@ unit ppu;
 interface
 
   uses
-    systems,globtype,constexp,cstreams,entfile;
+    constexp,entfile;
 
 { Also write the ppu if only crc if done, this can be used with ppudump to
   see the differences between the intf and implementation }
@@ -43,7 +43,7 @@ type
 {$endif Test_Double_checksum}
 
 const
-  CurrentPPUVersion = 187;
+  CurrentPPUVersion = 200;
 
 { unit flags }
   uf_init                = $000001; { unit has initialization section }
@@ -150,8 +150,7 @@ implementation
 {$ifdef Test_Double_checksum}
     comphook,
 {$endif def Test_Double_checksum}
-    fpccrc,
-    cutils;
+    fpccrc;
 
 function swapendian_ppureal(d:ppureal):ppureal;
 

@@ -4,7 +4,7 @@
     Copyright (c) 1999-2000 by Florian Klaempfl
     member of the Free Pascal development team
 
-    Sysutils unit for win32
+    SysUtils unit for win32
 
     See the file COPYING.FPC, included in this distribution,
     for details about the copyright.
@@ -14,7 +14,7 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
  **********************************************************************}
-unit sysutils;
+unit SysUtils;
 interface
 
 {$MODE objfpc}
@@ -36,6 +36,9 @@ uses
 {$DEFINE HAS_GETTICKCOUNT}
 {$DEFINE HAS_GETTICKCOUNT64}
 {$DEFINE OS_FILESETDATEBYNAME}
+
+// this target has an fileflush implementation, don't include dummy
+{$DEFINE SYSUTILS_HAS_FILEFLUSH_IMPL}
 
 { used OS file system APIs use unicodestring }
 {$define SYSUTILS_HAS_UNICODESTR_FILEUTIL_IMPL}
@@ -283,6 +286,11 @@ const
                FILE_SHARE_READ or FILE_SHARE_WRITE);
 
 
+function FileFlush(Handle: THandle): Boolean;
+begin
+  Result:= FlushFileBuffers(Handle);
+end;
+
 Function FileOpen (Const FileName : unicodestring; Mode : Integer) : THandle;
 begin
   result := CreateFileW(PWideChar(FileName), dword(AccessMode[Mode and 3]),
@@ -349,8 +357,6 @@ end;
 
 Procedure FileClose (Handle : THandle);
 begin
-  if Handle<=4 then
-   exit;
   CloseHandle(Handle);
 end;
 
@@ -444,6 +450,14 @@ begin
   Result:=0;
 end;
 
+Procedure InternalFindClose (var Handle: THandle; var FindData: TFindData);
+begin
+   if Handle <> INVALID_HANDLE_VALUE then
+    begin
+    Windows.FindClose(Handle);
+    Handle:=INVALID_HANDLE_VALUE;
+    end;
+end;
 
 Function InternalFindFirst (Const Path : UnicodeString; Attr : Longint; out Rslt : TAbstractSearchRec; var Name : UnicodeString) : Longint;
 begin
@@ -460,6 +474,8 @@ begin
    end;
   { Find file with correct attribute }
   Result:=FindMatch(Rslt,Name);
+  if (Result<>0) then
+    InternalFindClose(Rslt.FindHandle,Rslt.FindData);
 end;
 
 Function InternalFindNext (Var Rslt : TAbstractSearchRec; var Name: UnicodeString) : Longint;
@@ -471,11 +487,6 @@ begin
 end;
 
 
-Procedure InternalFindClose (var Handle: THandle; var FindData: TFindData);
-begin
-   if Handle <> INVALID_HANDLE_VALUE then
-    Windows.FindClose(Handle);
-end;
 
 
 Function FileGetDate (Handle : THandle) : Longint;
@@ -731,39 +742,22 @@ end;
 function ConvertEraString(Count ,Year,Month,Day : integer) : string;
   var
     ASystemTime: TSystemTime;
-    buf: array[0..100] of char;
+    wbuf: array[0..100] of WideChar;
     ALCID : LCID;
-    PriLangID : Word;
-    SubLangID : Word;
 begin
   Result := ''; if (Count<=0) then exit;
   DateTimeToSystemTime(EncodeDate(Year,Month,Day),ASystemTime);
 
   ALCID := GetThreadLocale;
 //  ALCID := SysLocale.DefaultLCID;
-  if GetDateFormatA(ALCID , DATE_USE_ALT_CALENDAR
-      , @ASystemTime, PChar('gg')
-      , @buf, SizeOf(buf)) > 0 then
+  if GetDateFormatW(ALCID , DATE_USE_ALT_CALENDAR
+      , @ASystemTime, PWChar('gg')
+      , @wbuf, SizeOf(wbuf)) > 0 then
   begin
-    Result := buf;
     if Count = 1 then
-    begin
-      PriLangID := ALCID and $3FF;
-      SubLangID := (ALCID and $FFFF) shr 10;
-      case PriLangID of
-        LANG_JAPANESE:
-          begin
-            Result := Copy(WideString(Result),1,1);
-          end;
-        LANG_CHINESE:
-          if (SubLangID = SUBLANG_CHINESE_TRADITIONAL) then
-          begin
-            Result := Copy(WideString(Result),1,1);
-          end;
-      end;
-    end;
+      wbuf[1] := #0;
+    Result := string(WideString(wbuf));
   end;
-// if Result = '' then Result := StringOfChar('G',Count);
 end;
 
 function ConvertEraYearString(Count ,Year,Month,Day : integer) : string;

@@ -31,9 +31,6 @@ interface
       symdef,procinfo,optdfa;
 
     type
-
-      { tcgprocinfo }
-
       tcgprocinfo = class(tprocinfo)
       private
         procedure CreateInlineInfo;
@@ -86,7 +83,7 @@ interface
     procedure read_proc(isclassmethod:boolean; usefwpd: tprocdef;isgeneric:boolean);
 
     { parses only the body of a non nested routine; needs a correctly setup pd }
-    procedure read_proc_body(pd:tprocdef);inline;
+    procedure read_proc_body(pd:tprocdef);
 
     procedure import_external_proc(pd:tprocdef);
 
@@ -101,9 +98,9 @@ implementation
        globtype,tokens,verbose,comphook,constexp,
        systems,cpubase,aasmbase,aasmtai,aasmdata,
        { symtable }
-       symconst,symbase,symsym,symtype,symtable,defutil,symcreat,
+       symconst,symbase,symsym,symtype,symtable,defutil,defcmp,symcreat,
        paramgr,
-       ppu,fmodule,
+       fmodule,
        { pass 1 }
        nutils,ngenutil,nld,ncal,ncon,nflw,nadd,ncnv,nmem,
        pass_1,
@@ -116,20 +113,22 @@ implementation
 {$endif}
        { parser }
        scanner,gendef,
-       pbase,pstatmnt,pdecl,pdecsub,pexports,pgenutil,pparautl,pgentype,
+       pbase,pstatmnt,pdecl,pdecsub,pexports,pgenutil,pparautl,
        { codegen }
-       tgobj,cgbase,cgobj,cgutils,hlcgobj,hlcgcpu,dbgbase,
+       tgobj,cgbase,cgobj,hlcgobj,hlcgcpu,dbgbase,
 {$ifdef llvm}
       { override create_hlcodegen from hlcgcpu }
       hlcgllvm,
 {$endif}
-       ncgutil,regvars,
+       ncgutil,
        optbase,
        opttail,
        optcse,
        optloop,
        optconstprop,
-       optdeadstore
+       optdeadstore,
+       optloadmodifystore,
+       optutils
 {$if defined(arm)}
        ,cpuinfo
 {$endif arm}
@@ -238,7 +237,7 @@ implementation
                b.left:=cstatementnode.create(
                          ccallnode.createintern('fpc_zeromem',
                            ccallparanode.create(
-                             cordconstnode.create(vardef.size,ptruinttype,false),
+                             cordconstnode.create(vardef.size,sizeuinttype,false),
                              ccallparanode.create(
                                caddrnode.create_internal(
                                  cloadnode.create(tsym(p),tsym(p).owner)),
@@ -1338,7 +1337,7 @@ implementation
           begin
             include(flags,pi_do_call);
             { the main program never returns due to the do_exit call }
-            if not(current_module.islibrary) then
+            if not(current_module.islibrary) and (procdef.proctypeoption=potype_proginit) then
               include(procdef.procoptions,po_noreturn);
           end;
 
@@ -1437,6 +1436,9 @@ implementation
         if cs_opt_nodecse in current_settings.optimizerswitches then
           do_optcse(code);
 
+        if cs_opt_use_load_modify_store in current_settings.optimizerswitches then
+          do_optloadmodifystore(code);
+
         { only do secondpass if there are no errors }
         if (ErrorCount=0) then
           begin
@@ -1476,6 +1478,8 @@ implementation
             { caller paraloc info is also necessary in the stackframe_entry
               code of the ppc (and possibly other processors)               }
             procdef.init_paraloc_info(callerside);
+
+            CalcExecutionWeights(code);
 
             { Print the node to tree.log }
             if paraprintnodetree=1 then
@@ -1813,6 +1817,7 @@ implementation
          old_current_genericdef,
          old_current_specializedef: tstoreddef;
          old_parse_generic: boolean;
+         recordtokens : boolean;
 
       begin
          old_current_procinfo:=current_procinfo;
@@ -1824,6 +1829,19 @@ implementation
 
          current_procinfo:=self;
          current_structdef:=procdef.struct;
+
+
+        { check if the definitions of certain types are available which might not be available in older rtls and
+          which are assigned "on the fly" in types_dec }
+{$ifndef jvm}
+        if not assigned(rec_exceptaddr) then
+          Message1(cg_f_internal_type_not_found,'TEXCEPTADDR');
+        if not assigned(rec_tguid) then
+          Message1(cg_f_internal_type_not_found,'TGUID');
+        if not assigned(rec_jmp_buf) then
+          Message1(cg_f_internal_type_not_found,'TJMPBUF');
+{$endif}
+
          { if the procdef is truly a generic (thus takes parameters itself) then
            /that/ is our genericdef, not the - potentially - generic struct }
          if procdef.is_generic then
@@ -1858,7 +1876,15 @@ implementation
          entrypos:=current_filepos;
          entryswitches:=current_settings.localswitches;
 
-         if (df_generic in procdef.defoptions) then
+         recordtokens:=procdef.is_generic or
+                       (
+                         assigned(procdef.struct) and
+                         (df_generic in procdef.struct.defoptions) and
+                         assigned(procdef.owner) and
+                         (procdef.owner.defowner=procdef.struct)
+                       );
+
+         if recordtokens then
            begin
              { start token recorder for generic template }
              procdef.initgeneric;
@@ -1868,7 +1894,7 @@ implementation
          { parse the code ... }
          code:=block(current_module.islibrary);
 
-         if (df_generic in procdef.defoptions) then
+         if recordtokens then
            begin
              { stop token recorder for generic template }
              current_scanner.stoprecordtokens;
@@ -1979,7 +2005,6 @@ implementation
       end;
 
 
-
     procedure read_proc_body(old_current_procinfo:tprocinfo;pd:tprocdef);
       {
         Parses the procedure directives, then parses the procedure body, then
@@ -2037,10 +2062,7 @@ implementation
           for accessing locals in the parent procedure (PFV) }
         if current_procinfo.has_nestedprocs then
           begin
-            if (df_generic in current_procinfo.procdef.defoptions) then
-              Comment(V_Error,'Generic methods cannot have nested procedures')
-            else
-             if (po_inline in current_procinfo.procdef.procoptions) then
+            if (po_inline in current_procinfo.procdef.procoptions) then
               begin
                 Message1(parser_h_not_supported_for_inline,'nested procedures');
                 Message(parser_h_inlining_disabled);
@@ -2070,7 +2092,15 @@ implementation
         { For specialization we didn't record the last semicolon. Moving this parsing
           into the parse_body routine is not done because of having better file position
           information available }
-        if not(df_specialization in current_procinfo.procdef.defoptions) then
+        if not current_procinfo.procdef.is_specialization and
+            (
+              not assigned(current_procinfo.procdef.struct) or
+              not (df_specialization in current_procinfo.procdef.struct.defoptions)
+              or not (
+                assigned(current_procinfo.procdef.owner) and
+                (current_procinfo.procdef.owner.defowner=current_procinfo.procdef.struct)
+              )
+            ) then
           consume(_SEMICOLON);
 
         if not isnestedproc then
@@ -2106,7 +2136,9 @@ implementation
         old_current_genericdef,
         old_current_specializedef: tstoreddef;
         pdflags    : tpdflags;
-        pd,firstpd : tprocdef;
+        def,pd,firstpd : tprocdef;
+        srsym : tsym;
+        i : longint;
       begin
          { save old state }
          old_current_procinfo:=current_procinfo;
@@ -2196,6 +2228,41 @@ implementation
 
          { Set mangled name }
          proc_set_mangledname(pd);
+
+         { inherit generic flags from parent routine }
+         if assigned(old_current_procinfo) and
+             (old_current_procinfo.procdef.defoptions*[df_specialization,df_generic]<>[]) then
+           begin
+             if df_generic in old_current_procinfo.procdef.defoptions then
+               include(pd.defoptions,df_generic);
+             if df_specialization in old_current_procinfo.procdef.defoptions then
+               begin
+                 include(pd.defoptions,df_specialization);
+                 { find the corresponding routine in the generic routine }
+                 if not assigned(old_current_procinfo.procdef.genericdef) then
+                   internalerror(2016121701);
+                 srsym:=tsym(tprocdef(old_current_procinfo.procdef.genericdef).getsymtable(gs_local).find(pd.procsym.name));
+                 if not assigned(srsym) or (srsym.typ<>procsym) then
+                   internalerror(2016121702);
+                 { in practice the generic procdef should be at the same index
+                   as the index of the current procdef, but as there *might* be
+                   differences between the amount of defs generated for the
+                   specialization and the generic search for the def using
+                   parameter comparison }
+                 for i:=0 to tprocsym(srsym).procdeflist.count-1 do
+                   begin
+                     def:=tprocdef(tprocsym(srsym).procdeflist[i]);
+                     if (compare_paras(def.paras,pd.paras,cp_none,[cpo_ignorehidden,cpo_openequalisexact,cpo_ignoreuniv])=te_exact) and
+                         (compare_defs(def.returndef,pd.returndef,nothingn)=te_exact) then
+                       begin
+                         pd.genericdef:=def;
+                         break;
+                       end;
+                   end;
+                 if not assigned(pd.genericdef) then
+                   internalerror(2016121703);
+               end;
+           end;
 
          { compile procedure when a body is needed }
          if (pd_body in pdflags) then
@@ -2362,7 +2429,7 @@ implementation
                    begin
                      { class modifier is only allowed for procedures, functions, }
                      { constructors, destructors                                 }
-                     if not(token in [_FUNCTION,_PROCEDURE,_CONSTRUCTOR,_DESTRUCTOR,_OPERATOR]) and
+                     if not((token in [_FUNCTION,_PROCEDURE,_DESTRUCTOR,_OPERATOR]) or (token=_CONSTRUCTOR)) and
                         not((token=_ID) and (idtoken=_OPERATOR)) then
                        Message(parser_e_procedure_or_function_expected);
 

@@ -17,18 +17,24 @@ unit Types;
   interface
 {$modeswitch advancedrecords}
 {$modeswitch class}
-{$ifdef Windows}
+{$if defined(win32) or defined(win64) or defined(wince)}
     uses
        Windows;
-{$endif Windows}
+{$elseif defined(win16)}
+    uses
+       WinTypes;
+{$endif}
 
-{$ifdef mswindows}
+{$if defined(win32) or defined(win64)}
 const
   RT_RCDATA = Windows.RT_RCDATA deprecated 'Use Windows.RT_RCDATA instead';
-{$endif mswindows}
+{$elseif defined(win16)}
+const
+  RT_RCDATA = WinTypes.RT_RCDATA deprecated 'Use WinTypes.RT_RCDATA instead';
+{$endif}
 
 type
-  TEndian = (Big,Little);
+  TEndian =  Objpas.TEndian;
   TDirection = (FromBeginning, FromEnd);
   TValueRelationship = -1..1;
   
@@ -68,7 +74,7 @@ type
   TCompDynArray = array of Comp;
 {$endif}
 
-{$ifdef Windows}
+{$if defined(win32) or defined(win64) or defined(wince)}
   TArray4IntegerType = Windows.TArray4IntegerType;
   TSmallPoint = Windows.TSmallPoint;
   PSmallPoint = Windows.PSmallPoint;
@@ -236,7 +242,7 @@ const
   STG_S_MONITORING            = $00030203;
 {$endif}
 
-{$ifndef Windows}
+{$if (not defined(win32)) and (not defined(win64)) and (not defined(wince))}
 type
   PCLSID = PGUID;
   TCLSID = TGUID;
@@ -307,14 +313,14 @@ type
   end;
 
   IStream = interface(ISequentialStream) ['{0000000C-0000-0000-C000-000000000046}']
-     function Seek(dlibMove : LargeUInt; dwOrigin : Longint; out libNewPosition : LargeUInt) : HResult;stdcall;
+     function Seek(dlibMove : LargeInt; dwOrigin : DWORD; out libNewPosition : LargeUInt) : HResult;stdcall;
      function SetSize(libNewSize : LargeUInt) : HRESULT;stdcall;
      function CopyTo(stm: IStream;cb : LargeUInt;out cbRead : LargeUInt; out cbWritten : LargeUInt) : HRESULT;stdcall;
-     function Commit(grfCommitFlags : Longint) : HRESULT;stdcall;
+     function Commit(grfCommitFlags : DWORD) : HRESULT;stdcall;
      function Revert : HRESULT;stdcall;
-     function LockRegion(libOffset : LargeUInt;cb : LargeUInt; dwLockType : Longint) : HRESULT;stdcall;
-     function UnlockRegion(libOffset : LargeUInt;cb : LargeUInt; dwLockType : Longint) : HRESULT;stdcall;
-     Function Stat(out statstg : TStatStg;grfStatFlag : Longint) : HRESULT;stdcall;
+     function LockRegion(libOffset : LargeUInt;cb : LargeUInt; dwLockType : DWORD) : HRESULT;stdcall;
+     function UnlockRegion(libOffset : LargeUInt;cb : LargeUInt; dwLockType : DWORD) : HRESULT;stdcall;
+     Function Stat(out statstg : TStatStg;grfStatFlag : DWORD) : HRESULT;stdcall;
      function Clone(out stm : IStream) : HRESULT;stdcall;
   end;
 
@@ -336,7 +342,7 @@ implementation
 
 Uses Math;
 
-{$ifndef Windows}
+{$if (not defined(win32)) and (not defined(win64)) and (not defined(wince))}
   {$i typshrd.inc}
 {$endif}
 

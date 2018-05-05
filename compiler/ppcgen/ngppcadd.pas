@@ -55,7 +55,7 @@ implementation
       cutils,verbose,globals,
       symconst,symdef,paramgr,
       aasmbase,aasmtai,aasmdata,aasmcpu,defutil,htypechk,
-      cgbase,cpuinfo,pass_1,pass_2,regvars,
+      cgbase,cpuinfo,pass_1,pass_2,
       cpupara,cgcpu,cgutils,procinfo,
       ncon,nset,
       ncgutil,tgobj,rgobj,rgcpu,cgobj,hlcgobj;
@@ -326,7 +326,13 @@ implementation
           ltn,lten,gtn,gten,
           equaln,unequaln :
             begin
-              op:=A_FCMPO;
+              { clang does not recognize fcmpo instruction,
+                so we need to fall back to fcmpu, which does not
+                generate the same exeception information }
+              if target_asm.id = as_clang then
+                op:=A_FCMPU
+              else
+                op:=A_FCMPO;
               cmpop:=true;
             end;
           else

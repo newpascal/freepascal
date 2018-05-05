@@ -108,7 +108,6 @@ interface
           guidconstn,       { A GUID COM Interface constant }
           rttin,            { Rtti information so they can be accessed in result/firstpass}
           loadparentfpn,    { Load the framepointer of the parent for nested procedures }
-          dataconstn,       { node storing some binary data }
           objcselectorn,    { node for an Objective-C message selector }
           objcprotocoln,    { node for an Objective-C @protocol() expression (returns metaclass associated with protocol) }
           specializen       { parser-only node to handle Delphi-mode inline specializations }
@@ -193,7 +192,6 @@ interface
           'guidconstn',
           'rttin',
           'loadparentfpn',
-          'dataconstn',
           'objcselectorn',
           'objcprotocoln',
           'specializen');
@@ -202,7 +200,6 @@ interface
       nodetype_const = [ordconstn,
                         pointerconstn,
                         stringconstn,
-                        dataconstn,
                         guidconstn,
                         realconstn];
 
@@ -231,9 +228,6 @@ interface
          { this node is the user code entry, if a node with this flag is removed
            during simplify, the flag must be moved to another node }
          nf_usercode_entry,
-
-         { taddrnode }
-         nf_typedaddr,
 
          { tderefnode }
          nf_no_checkpointer,
@@ -280,7 +274,7 @@ interface
          { tloadvmtaddrnode }
          nf_ignore_for_wpo  { we know that this loadvmtaddrnode cannot be used to construct a class instance }
 
-         { WARNING: there are now 32 elements in this type, and a set of this
+         { WARNING: there are now 31 elements in this type, and a set of this
              type is written to the PPU. So before adding more than 32 elements,
              either move some flags to specific nodes, or stream a normalset
              to the ppu

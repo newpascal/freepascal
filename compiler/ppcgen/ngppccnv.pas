@@ -59,7 +59,7 @@ implementation
    uses
       verbose,globtype,globals,systems,
       symconst,symdef,aasmbase,aasmtai,aasmdata,
-      defutil,
+      defutil,cutils,
       cgbase,cgutils,pass_1,pass_2,
       ncgutil,procinfo,
       cpubase,aasmcpu,
@@ -72,6 +72,7 @@ implementation
         hreg2    : tregister;
 {$ifndef cpu64bitalu}
         href     : treference;
+        oldloc   : tlocation;
 {$endif not cpu64bitalu}
         resflags : tresflags;
         opsize   : tcgsize;
@@ -90,11 +91,19 @@ implementation
               location_copy(location,left.location);
               newsize:=def_cgsize(resultdef);
               { change of size? change sign only if location is LOC_(C)REGISTER? Then we have to sign/zero-extend }
-              if (tcgsize2size[newsize]<>tcgsize2size[left.location.size]) or
+              if (tcgsize2size[newsize]>tcgsize2size[left.location.size]) or
                  ((newsize<>left.location.size) and (location.loc in [LOC_REGISTER,LOC_CREGISTER])) then
                 hlcg.location_force_reg(current_asmdata.CurrAsmList,location,left.resultdef,resultdef,true)
               else
-                location.size:=newsize;
+                begin
+                  location.size:=newsize;
+                  if (target_info.endian = ENDIAN_BIG) and
+                     (location.loc in [LOC_REFERENCE,LOC_CREFERENCE]) then
+                    begin
+                      inc(location.reference.offset,TCGSize2Size[left.location.size]-TCGSize2Size[location.size]);
+                      location.reference.alignment:=newalignment(location.reference.alignment,TCGSize2Size[left.location.size]-TCGSize2Size[location.size]);
+                    end;
+                end;
               exit;
            end;
 

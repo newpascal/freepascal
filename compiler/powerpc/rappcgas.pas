@@ -56,13 +56,13 @@ Unit rappcgas;
       { parser }
       procinfo,
       rabase,rautils,
-      cgbase,cgobj,cgppc
+      cgbase,cgobj,cgppc,paramgr
       ;
 
     procedure tppcattreader.ReadSym(oper : tppcoperand);
       var
          tempstr, mangledname : string;
-         typesize,l,k : aint;
+         typesize,l,k : tcgint;
       begin
         tempstr:=actasmpattern;
         Consume(AS_ID);
@@ -139,7 +139,7 @@ Unit rappcgas;
         end;
 
       var
-        l : aint;
+        l : tcgint;
         relsym: string;
         asmsymtyp: tasmsymtype;
         isflags: tindsymflags;
@@ -287,7 +287,7 @@ Unit rappcgas;
     Procedure tppcattreader.BuildOperand(oper : tppcoperand);
       var
         expr : string;
-        typesize,l : aint;
+        typesize,l : tcgint;
 
 
         procedure AddLabelOperand(hl:tasmlabel);
@@ -312,11 +312,12 @@ Unit rappcgas;
             hasdot  : boolean;
             l,
             toffset,
-            tsize   : aint;
+            tsize   : tcgint;
           begin
             if not(actasmtoken in [AS_DOT,AS_PLUS,AS_MINUS]) then
              exit;
             l:=0;
+            mangledname:='';
             hasdot:=(actasmtoken=AS_DOT);
             if hasdot then
               begin
@@ -338,10 +339,8 @@ Unit rappcgas;
                   { don't allow direct access to fields of parameters, because that
                     will generate buggy code. Allow it only for explicit typecasting }
                   if hasdot and
-                     (not oper.hastype) and
-                     (tabstractvarsym(oper.opr.localsym).owner.symtabletype=parasymtable) and
-                     (current_procinfo.procdef.proccalloption<>pocall_register) then
-                    Message(asmr_e_cannot_access_field_directly_for_parameters);
+                     (not oper.hastype) then
+                     checklocalsubscript(oper.opr.localsym);
                   inc(oper.opr.localsymofs,l)
                 end;
               OPR_CONSTANT :
@@ -407,7 +406,7 @@ Unit rappcgas;
       var
         tempreg : tregister;
         hl : tasmlabel;
-        ofs : aint;
+        ofs : tcgint;
       Begin
         expr:='';
         case actasmtoken of

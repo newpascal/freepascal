@@ -73,7 +73,7 @@ Const
 
   MariaDBVersion =
 {$IFDEF mysql57}
-    '10.1';
+    '10.';
 {$ELSE}
 {$IFDEF mysql56}   // MariaDB 10.0 is compatible with MySQL 5.6
     '10.';
@@ -621,6 +621,7 @@ Var
   i : integer;
   ParamNames,ParamValues : array of string;
   Res: PMYSQL_RES;
+  Status : Integer;
 
 begin
   C:=Cursor as TCursorName;
@@ -682,7 +683,20 @@ begin
           C.FRes:=Res;
           C.FSelectable:=True;
           end;
-      until mysql_next_result(FMySQL)<>0;
+        Status:=mysql_next_result(FMySQL);
+        if (Status>0) then
+          begin
+          if not ForcedClose then
+            MySQLError(FMySQL, SErrGettingResult, Self)
+          else
+            begin
+            C.RowsAffected:=0;
+            C.FSelectable:= False;
+            C.FRes:=nil;
+            break;
+            end;
+          end;
+      until (Status<>0);
       end;
     end;
 end;
@@ -1042,9 +1056,6 @@ begin
     exit;
   SetString(Src, Source, Len);
 
-  if Len > FieldDef.Size then
-    Len := FieldDef.Size;
-
   case FieldDef.DataType of
     ftSmallint:
       begin
@@ -1072,10 +1083,10 @@ begin
         end
       else
       {$ENDIF}
-      if Src <> '' then
-        VL := StrToInt64(Src)
-      else
-        VL := 0;
+        if Src <> '' then
+          VL := StrToInt64(Src)
+        else
+          VL := 0;
       Move(VL, Dest^, SizeOf(LargeInt));
       end;
     ftFloat:
@@ -1127,16 +1138,21 @@ begin
       // String-fields which can contain more then dsMaxStringSize characters
       // are mapped to ftBlob fields, while their mysql-datatype is FIELD_TYPE_BLOB
       begin
+      if Len > FieldDef.Size*FieldDef.CharSize then Len := FieldDef.Size*FieldDef.CharSize;
       Move(Source^, Dest^, Len);
       (Dest+Len)^ := #0;
       end;
     ftVarBytes:
       begin
+      if Len > FieldDef.Size then Len := FieldDef.Size;
       PWord(Dest)^ := Len;
       Move(Source^, (Dest+sizeof(Word))^, Len);
       end;
     ftBytes:
+      begin
+      if Len > FieldDef.Size then Len := FieldDef.Size;
       Move(Source^, Dest^, Len);
+      end;
     ftBlob, ftMemo:
       CreateBlob := True;
   end;

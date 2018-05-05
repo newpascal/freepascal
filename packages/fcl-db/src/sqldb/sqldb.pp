@@ -12,7 +12,7 @@
 
  **********************************************************************}
 
-unit sqldb;
+unit SQLDB;
 
 {$mode objfpc}
 {$H+}
@@ -296,7 +296,7 @@ type
     property HostName : string Read FHostName Write FHostName;
     Property OnLog : TDBLogNotifyEvent Read FOnLog Write FOnLog;
     Property LogEvents : TDBEventTypes Read FLogEvents Write FLogEvents Default LogAllEvents;
-    Property Options : TSQLConnectionOptions Read FOptions Write SetOptions;
+    Property Options : TSQLConnectionOptions Read FOptions Write SetOptions default [];
     Property Role :  String read FRole write FRole;
     property Connected;
     property DatabaseName;
@@ -346,7 +346,7 @@ type
     property Action : TCommitRollbackAction read FAction write FAction Default caRollBack;
     property Database;
     property Params : TStringList read FParams write SetParams;
-    Property Options : TSQLTransactionOptions Read FOptions Write SetOptions;
+    Property Options : TSQLTransactionOptions Read FOptions Write SetOptions default [];
   end;
 
 
@@ -604,7 +604,7 @@ type
     property UpdateSQL : TStringList read FUpdateSQL write SetUpdateSQL;
     property DeleteSQL : TStringList read FDeleteSQL write SetDeleteSQL;
     property RefreshSQL : TStringList read FRefreshSQL write SetRefreshSQL;
-    Property Options : TSQLQueryOptions Read FOptions Write SetOptions;
+    Property Options : TSQLQueryOptions Read FOptions Write SetOptions default [];
     property Params : TParams read GetParams Write SetParams;
     Property ParamCheck : Boolean Read GetParamCheck Write SetParamCheck default true;
     property ParseSQL : Boolean read GetParseSQL write SetParseSQL default true;
@@ -1403,7 +1403,7 @@ function TSQLConnection.GetConnectionCharSet: string;
 begin
   // default implementation returns user supplied FCharSet
   // (can be overriden by descendants, which are able retrieve current connection charset using client API)
-  Result := FCharSet;
+  Result := LowerCase(FCharSet);
 end;
 
 function TSQLConnection.RowsAffected(cursor: TSQLCursor): TRowsCount;
@@ -1687,7 +1687,8 @@ begin
   // converts parameter value to connection charset
   if FCodePage = CP_UTF8 then
     Result := Param.AsUTF8String
-  else if FCodePage in [DefaultSystemCodePage, CP_ACP] then
+  else if (FCodePage = DefaultSystemCodePage) or
+          (FCodePage = CP_ACP) or (FCodePage = CP_NONE) then
     Result := Param.AsAnsiString
   else
   begin
@@ -1699,11 +1700,11 @@ end;
 function TSQLConnection.GetAsSQLText(Field : TField) : string;
 begin
   if (not assigned(Field)) or Field.IsNull then Result := 'Null'
-  else case field.DataType of
+  else case Field.DataType of
     ftString   : Result := QuotedStr(Field.AsString);
-    ftDate     : Result := '''' + FormatDateTime('yyyy-mm-dd',Field.AsDateTime,FSqlFormatSettings) + '''';
-    ftDateTime : Result := '''' + FormatDateTime('yyyy-mm-dd hh:nn:ss.zzz',Field.AsDateTime,FSqlFormatSettings) + '''';
-    ftTime     : Result := QuotedStr(TimeIntervalToString(Field.AsDateTime));
+    ftDate     : Result := '''' + FormatDateTime('yyyy-mm-dd',Field.AsDateTime,FSQLFormatSettings) + '''';
+    ftDateTime : Result := '''' + FormatDateTime('yyyy-mm-dd hh:nn:ss.zzz',Field.AsDateTime,FSQLFormatSettings) + '''';
+    ftTime     : Result := '''' + TimeIntervalToString(Field.AsDateTime) + '''';
   else
     Result := Field.AsString;
   end; {case}
@@ -1717,8 +1718,8 @@ begin
     ftMemo,
     ftFixedChar,
     ftString   : Result := QuotedStr(GetAsString(Param));
-    ftDate     : Result := '''' + FormatDateTime('yyyy-mm-dd',Param.AsDateTime,FSQLFormatSettings) + '''';
-    ftTime     : Result := QuotedStr(TimeIntervalToString(Param.AsDateTime));
+    ftDate     : Result := '''' + FormatDateTime('yyyy-mm-dd', Param.AsDateTime, FSQLFormatSettings) + '''';
+    ftTime     : Result := '''' + TimeIntervalToString(Param.AsDateTime) + '''';
     ftDateTime : Result := '''' + FormatDateTime('yyyy-mm-dd hh:nn:ss.zzz', Param.AsDateTime, FSQLFormatSettings) + '''';
     ftCurrency,
     ftBcd      : Result := CurrToStr(Param.AsCurrency, FSQLFormatSettings);
@@ -1934,7 +1935,7 @@ Var
   Where : String;
 
 begin
-  Result:=Query.RefreshSQL.Text;
+  Result:=Trim(Query.RefreshSQL.Text);
   if (Result='') then
     begin
     Where:='';
@@ -1963,7 +1964,7 @@ begin
     end;
 end;
 
-procedure TSQLConnection.ApplyFieldUpdate(C : TSQLCursor; P : TSQLDBParam;F : TField; UseOldValue : Boolean);
+procedure TSQLConnection.ApplyFieldUpdate(C : TSQLCursor; P : TSQLDBParam; F : TField; UseOldValue : Boolean);
 
 begin
   if UseOldValue then
@@ -1980,36 +1981,36 @@ var
   s   : string;
   x   : integer;
   Fld : TField;
-  P : TParam;
-  B,ReturningClause : Boolean;
+  Par, P : TParam;
+  UseOldValue, HasReturningClause : Boolean;
 
 begin
   qry:=Nil;
-  ReturningClause:=(sqSupportReturning in ConnOptions) and not (sqoRefreshUsingSelect in Query.Options) and (Query.RefreshSQL.Count=0);
+  HasReturningClause:=(sqSupportReturning in ConnOptions) and not (sqoRefreshUsingSelect in Query.Options) and (Trim(Query.RefreshSQL.Text)='');
   case UpdateKind of
     ukInsert : begin
                s := Trim(Query.FInsertSQL.Text);
                if s = '' then
-                 s := ConstructInsertSQL(Query, ReturningClause)
+                 s := ConstructInsertSQL(Query, HasReturningClause)
                else
-                 ReturningClause := False;
+                 HasReturningClause := False;
                qry := InitialiseUpdateStatement(Query, Query.FInsertQry);
                end;
     ukModify : begin
                s := Trim(Query.FUpdateSQL.Text);
                if s = '' then begin
                  //if not assigned(Query.FUpdateQry) or (Query.UpdateMode<>upWhereKeyOnly) then // first time or dynamic where part
-                   s := ConstructUpdateSQL(Query, ReturningClause);
+                   s := ConstructUpdateSQL(Query, HasReturningClause);
                end
                else
-                 ReturningClause := False;
+                 HasReturningClause := False;
                qry := InitialiseUpdateStatement(Query, Query.FUpdateQry);
                end;
     ukDelete : begin
                s := Trim(Query.FDeleteSQL.Text);
                if (s='') and (not assigned(Query.FDeleteQry) or (Query.UpdateMode<>upWhereKeyOnly)) then
                  s := ConstructDeleteSQL(Query);
-               ReturningClause := False;
+               HasReturningClause := False;
                qry := InitialiseUpdateStatement(Query, Query.FDeleteQry);
                end;
   end;
@@ -2019,14 +2020,28 @@ begin
   for x:=0 to Qry.Params.Count-1 do
     begin
     P:=Qry.Params[x];
-    S:=p.name;
-    B:=SameText(leftstr(S,4),'OLD_');
-    if B then
+    S:=P.Name;
+    UseOldValue:=SameText(Copy(S,1,4),'OLD_');
+    if UseOldValue then
+      begin
       Delete(S,1,4);
-    Fld:=Query.FieldByName(S);
-    ApplyFieldUpdate(Query.Cursor,P as TSQLDBParam,Fld,B);
+      Fld:=Query.FieldByName(S);
+      end
+    else
+      Fld:=Query.FindField(S);
+    if Assigned(Fld) then
+      ApplyFieldUpdate(Query.Cursor, P as TSQLDBParam, Fld, UseOldValue)
+    else
+      begin
+      // if does not exists field with given name, try look for param
+      Par:=Query.Params.FindParam(S);
+      if Assigned(Par) then
+        P.Assign(Par)
+      else
+        DatabaseErrorFmt(SFieldNotFound,[S],Query); // same error as raised by FieldByName()
+      end;
     end;
-  if ReturningClause then
+  if HasReturningClause then
     begin
     Qry.Close;
     Qry.Open
@@ -2038,7 +2053,7 @@ begin
     Qry.Close;
     DatabaseErrorFmt(SErrFailedToUpdateRecord, [Qry.RowsAffected], Query);
     end;
-  if ReturningClause then
+  if HasReturningClause then
     Query.ApplyReturningResult(Qry,UpdateKind);
 end;
 
@@ -2570,7 +2585,7 @@ Var
   DoReturning : Boolean;
 
 begin
-  Result:=(FRefreshSQL.Count<>0);
+  Result:=(Trim(FRefreshSQL.Text)<>'');
   DoReturning:=(sqSupportReturning in SQLConnection.ConnOptions) and not (sqoRefreshUsingSelect in Options);
   if Not (Result or DoReturning) then
     begin

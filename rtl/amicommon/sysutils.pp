@@ -33,6 +33,7 @@ interface
 {$DEFINE OS_FILESETDATEBYNAME}
 {$DEFINE HAS_SLEEP}
 {$DEFINE HAS_OSERROR}
+{$DEFINE HAS_TEMPDIR}
 
 {OS has only 1 byte version for ExecuteProcess}
 {$define executeprocuni}
@@ -87,9 +88,9 @@ var
   ASYS_FileList: Pointer; external name 'ASYS_FILELIST';
 
 
-function BADDR(bval: LongInt): Pointer; Inline;
+function BADDR(bval: BPTR): Pointer; Inline;
 begin
-  {$if defined(AROS) and (not defined(AROS_FLAVOUR_BINCOMPAT))}
+  {$if defined(AROS)}  // deactivated for now //and (not defined(AROS_BINCOMPAT))}
   BADDR := Pointer(bval);
   {$else}
   BADDR:=Pointer(bval Shl 2);
@@ -98,16 +99,16 @@ end;
 
 function BSTR2STRING(s : Pointer): PChar; Inline;
 begin
-  {$if defined(AROS) and (not defined(AROS_FLAVOUR_BINCOMPAT))}
+  {$if defined(AROS)}  // deactivated for now //and (not defined(AROS_BINCOMPAT))}
   BSTR2STRING:=PChar(s);
   {$else}
   BSTR2STRING:=PChar(BADDR(PtrInt(s)))+1;
   {$endif}
 end;
 
-function BSTR2STRING(s : LongInt): PChar; Inline;
+function BSTR2STRING(s : BPTR): PChar; Inline;
 begin
-  {$if defined(AROS) and (not defined(AROS_FLAVOUR_BINCOMPAT))}
+  {$if defined(AROS)}  // deactivated for now //and (not defined(AROS_BINCOMPAT))}
   BSTR2STRING:=PChar(s);
   {$else}
   BSTR2STRING:=PChar(BADDR(s))+1;
@@ -369,7 +370,7 @@ end;
 
 function FileAge (const FileName : RawByteString): Longint;
 var
-  tmpLock: Longint;
+  tmpLock: BPTR;
   tmpFIB : PFileInfoBlock;
   tmpDateTime: TDateTime;
   validFile: boolean;
@@ -397,7 +398,7 @@ end;
 
 function FileExists (const FileName : RawByteString) : Boolean;
 var
-  tmpLock: LongInt;
+  tmpLock: BPTR;
   tmpFIB : PFileInfoBlock;
   SystemFileName: RawByteString;
 begin
@@ -428,13 +429,17 @@ begin
 
   { $1e = faHidden or faSysFile or faVolumeID or faDirectory }
   Rslt.ExcludeAttr := (not Attr) and ($1e);
-  Rslt.FindHandle  := 0;
+  Rslt.FindHandle  := nil;
 
   new(Anchor);
   FillChar(Anchor^,sizeof(TAnchorPath),#0);
+  Rslt.FindHandle := Anchor;
 
-  if MatchFirst(pchar(tmpStr),Anchor)<>0 then exit;
-  Rslt.FindHandle := longint(Anchor);
+  if MatchFirst(pchar(tmpStr),Anchor)<>0 then
+    begin
+      InternalFindClose(Rslt.FindHandle);
+      exit;
+    end;
 
   with Anchor^.ap_Info do begin
     Name := fib_FileName;
@@ -442,7 +447,11 @@ begin
 
     Rslt.Size := fib_Size;
     Rslt.Time := DateTimeToFileDate(AmigaFileDateToDateTime(fib_Date,validDate));
-    if not validDate then exit;
+    if not validDate then 
+      begin
+        InternalFindClose(Rslt.FindHandle);
+        exit;
+      end;
 
     { "128" is Windows "NORMALFILE" attribute. Some buggy code depend on this... :( (KB) }
     Rslt.Attr := 128;
@@ -485,15 +494,15 @@ begin
 end;
 
 
-Procedure InternalFindClose(var Handle: THandle);
+Procedure InternalFindClose(var Handle: Pointer);
 var
-  Anchor: PAnchorPath;
+  Anchor: PAnchorPath absolute Handle;
 begin
-  Anchor:=PAnchorPath(Handle);
-  if not assigned(Anchor) then exit;
+  if not assigned(Anchor) then
+    exit;
   MatchEnd(Anchor);
   Dispose(Anchor);
-  Handle:=THandle(nil);
+  Handle:=nil;
 end;
 
 
@@ -629,7 +638,7 @@ end;
 //
 function DiskSize(Drive: AnsiString): Int64;
 var
-  DirLock: LongInt;
+  DirLock: BPTR;
   Inf: TInfoData;
   MyProc: PProcess;
   OldWinPtr: Pointer;
@@ -663,7 +672,7 @@ end;
 //
 function DiskFree(Drive: AnsiString): Int64;
 var
-  DirLock: LongInt;
+  DirLock: BPTR;
   Inf: TInfoData;
   MyProc: PProcess;
   OldWinPtr: Pointer;
@@ -695,7 +704,7 @@ end;
 
 function DirectoryExists(const Directory: RawByteString): Boolean;
 var
-  tmpLock: LongInt;
+  tmpLock: BPTR;
   FIB    : PFileInfoBlock;
   SystemDirName: RawByteString;
 begin
@@ -846,7 +855,7 @@ var
   tmpPath,
   convPath: RawByteString;
   CommandLine: AnsiString;
-  tmpLock: longint;
+  tmpLock: BPTR;
 
   E: EOSError;
 begin
@@ -906,6 +915,23 @@ procedure Sleep(Milliseconds: cardinal);
 begin
   // Amiga dos.library Delay() has precision of 1/50 seconds
   DOSDelay(Milliseconds div 20);
+end;
+
+
+function GetTempDir(Global: Boolean): string;
+begin
+  if Assigned(OnGetTempDir) then
+    Result := OnGetTempDir(Global)
+  else
+  begin
+    Result := GetEnvironmentVariable('TEMP');
+    if Result = '' Then
+      Result:=GetEnvironmentVariable('TMP');
+    if Result = '' then
+      Result := 'T:'; // fallback.
+  end;
+  if Result <> '' then
+    Result := IncludeTrailingPathDelimiter(Result);
 end;
 
 

@@ -10,19 +10,14 @@ uses
   pkgFppkg,
   fpmkunit;
 
-function GetRemoteRepositoryURL(const AFileName:string):string;
-
 procedure LoadLocalAvailableMirrors;
 function LoadManifestFromFile(const AManifestFN:string):TFPPackage;
 procedure FindInstalledPackages(ACompilerOptions:TCompilerOptions;showdups:boolean=true);
 Procedure AddFPMakeAddIn(APackage: TFPPackage);
-function  PackageIsBroken(APackage:TFPPackage; MarkForReInstall: boolean):boolean;
 function  FindBrokenPackages(SL:TStrings):Boolean;
 procedure CheckFPMakeDependencies;
 procedure ListPackages(const ShowGlobalAndLocal: boolean);
 procedure InitializeFppkg;
-
-procedure ClearRemoteRepository;
 
 procedure SetDefaultRepositoryClass(ARepositoryClass: TFPRepositoryClass);
 
@@ -44,7 +39,6 @@ resourcestring
   SErrRepositoryClassAlreadyAssigned = 'Default repository class is already assigned.';
 
 var
-  CurrentRemoteRepositoryURL : String;
   RepositoryClass : TFPRepositoryClass;
 
 procedure SetDefaultRepositoryClass(ARepositoryClass: TFPRepositoryClass);
@@ -66,34 +60,8 @@ end;
 *****************************************************************************}
 
 procedure LoadLocalAvailableMirrors;
-var
-  S : String;
-  X : TFPXMLMirrorHandler;
 begin
-  if assigned(AvailableMirrors) then
-    AvailableMirrors.Free;
-  AvailableMirrors:=TFPMirrors.Create(TFPMirror);
-
-  // Repository
-  S:=GFPpkg.Options.GlobalSection.LocalMirrorsFile;
-  log(llDebug,SLogLoadingMirrorsFile,[S]);
-  if not FileExists(S) then
-    exit;
-  try
-    X:=TFPXMLMirrorHandler.Create;
-    With X do
-      try
-        LoadFromXml(AvailableMirrors,S);
-      finally
-        Free;
-      end;
-  except
-    on E : Exception do
-      begin
-        Log(llError,E.Message);
-        Error(SErrCorruptMirrorsFile,[S]);
-      end;
-  end;
+  GFPpkg.LoadLocalAvailableMirrors;
 end;
 
 
@@ -139,23 +107,6 @@ begin
     Error(SErrFailedToSelectMirror);
 end;
 
-
-function GetRemoteRepositoryURL(const AFileName:string):string;
-begin
-  if CurrentRemoteRepositoryURL='' then
-    begin
-      if GFPpkg.Options.GlobalSection.RemoteRepository='auto' then
-        CurrentRemoteRepositoryURL:=SelectRemoteMirror
-      else
-        CurrentRemoteRepositoryURL:=GFPpkg.Options.GlobalSection.RemoteRepository;
-    end;
-  result := CurrentRemoteRepositoryURL;
-  if result[length(result)]<>'/' then
-    result := result + '/';
-  Result:=Result+GFPpkg.CompilerOptions.CompilerVersion+'/'+AFileName;
-end;
-
-
 {*****************************************************************************
                            Local Repository
 *****************************************************************************}
@@ -194,123 +145,43 @@ end;
 
 
 Procedure AddFPMakeAddIn(APackage: TFPPackage);
-begin
-  log(llDebug,SLogFoundFPMakeAddin,[APackage.Name]);
-  setlength(FPMKUnitDeps,length(FPMKUnitDeps)+1);
-  FPMKUnitDeps[high(FPMKUnitDeps)].package:=APackage.Name;
-  FPMKUnitDeps[high(FPMKUnitDeps)].reqver:=APackage.Version.AsString;
-  FPMKUnitDeps[high(FPMKUnitDeps)].def:='HAS_PACKAGE_'+APackage.Name;
-  FPMKUnitDeps[high(FPMKUnitDeps)].available:=true;
-end;
-
-
-function PackageIsBroken(APackage:TFPPackage; MarkForReInstall: boolean):boolean;
 var
-  j : integer;
-  D : TFPDependency;
-  DepPackage : TFPPackage;
-  AvailP: TFPPackage;
+  SelectedDep, i: Integer;
 begin
-  result:=false;
-  for j:=0 to APackage.Dependencies.Count-1 do
+  SelectedDep := -1;
+  for i := 0 to high(FPMKUnitDeps) do
     begin
-      D:=APackage.Dependencies[j];
-      if (GFPpkg.CompilerOptions.CompilerOS in D.OSes) and
-         (GFPpkg.CompilerOptions.CompilerCPU in D.CPUs) then
+      if FPMKUnitDeps[i].package = APackage.Name then
         begin
-          DepPackage:=GFPpkg.FindPackage(D.PackageName, pkgpkInstalled);
-          // Don't stop on missing dependencies
-          if assigned(DepPackage) then
-            begin
-              if (D.RequireChecksum<>$ffffffff) and (DepPackage.Checksum<>D.RequireChecksum) then
-                begin
-                  log(llInfo,SLogPackageChecksumChanged,[APackage.Name,D.PackageName]);
-                  result:=true;
-                  if MarkForReInstall then
-                    begin
-                      APackage.RecompileBroken:=true;
-                    end;
-                  exit;
-                end;
-            end
-          else
-            begin
-              log(llDebug,SDbgObsoleteDependency,[APackage.Name,D.PackageName]);
-              result:=true;
-              if MarkForReInstall then
-                begin
-                  APackage.RecompileBroken:=true;
-                end;
-            end;
+          log(llDebug,SLogUpdateFPMakeAddin,[APackage.Name]);
+          SelectedDep := i;
+          break;
         end;
     end;
+
+  if SelectedDep = -1 then
+    begin
+      log(llDebug,SLogFoundFPMakeAddin,[APackage.Name]);
+      setlength(FPMKUnitDeps,length(FPMKUnitDeps)+1);
+      SelectedDep := high(FPMKUnitDeps);
+    end;
+  FPMKUnitDeps[SelectedDep].package:=APackage.Name;
+  FPMKUnitDeps[SelectedDep].reqver:=APackage.Version.AsString;
+  FPMKUnitDeps[SelectedDep].def:='HAS_PACKAGE_'+APackage.Name;
+  FPMKUnitDeps[SelectedDep].PluginUnit:=APackage.FPMakePluginUnits;
+  FPMKUnitDeps[SelectedDep].available:=true;
 end;
 
 
 function FindBrokenPackages(SL:TStrings):Boolean;
-var
-  i,j : integer;
-  P : TFPPackage;
-  Repo: TFPRepository;
 begin
-  SL.Clear;
-  for i:= 0 to GFPpkg.RepositoryList.Count-1 do
-    begin
-      Repo := GFPpkg.RepositoryList.Items[i] as TFPRepository;
-      if Repo.RepositoryType=fprtInstalled then
-        for j:=0 to Repo.PackageCount-1 do
-          begin
-            P:=Repo.Packages[j];
-            if PackageIsBroken(P,True) then
-              begin
-                SL.Add(P.Name);
-              end;
-          end;
-    end;
-  Result:=(SL.Count>0);
+  Result := GFPpkg.FindBrokenPackages(SL);
 end;
 
 
 procedure CheckFPMakeDependencies;
-var
-  i : Integer;
-  P,AvailP : TFPPackage;
-  AvailVerStr : string;
-  ReqVer : TFPVersion;
 begin
-  // Reset availability
-  for i:=0 to high(FPMKUnitDeps) do
-    FPMKUnitDeps[i].available:=false;
-  // Not version check needed in Recovery mode, we always need to use
-  // the internal bootstrap procedure
-  if GFPpkg.Options.CommandLineSection.RecoveryMode then
-    exit;
-  // Check for fpmkunit dependencies
-  for i:=0 to high(FPMKUnitDeps) do
-    begin
-      P:=GFPpkg.FPMakeRepoFindPackage(FPMKUnitDeps[i].package, pkgpkInstalled);
-      if P<>nil then
-        begin
-          AvailP:=GFPpkg.FindPackage(FPMKUnitDeps[i].package, pkgpkAvailable);
-          if AvailP<>nil then
-            AvailVerStr:=AvailP.Version.AsString
-          else
-            AvailVerStr:='<not available>';
-          ReqVer:=TFPVersion.Create;
-          try
-            ReqVer.AsString:=FPMKUnitDeps[i].ReqVer;
-            log(llDebug,SLogFPMKUnitDepVersion,[P.Name,ReqVer.AsString,P.Version.AsString,AvailVerStr]);
-            if ReqVer.CompareVersion(P.Version)<=0 then
-              FPMKUnitDeps[i].available:=true
-            else
-              log(llDebug,SLogFPMKUnitDepTooOld,[FPMKUnitDeps[i].package]);
-          finally
-            ReqVer.Free;
-          end;
-        end
-      else
-        log(llDebug,SLogFPMKUnitDepTooOld,[FPMKUnitDeps[i].package]);
-    end;
+  GFPpkg.ScanAvailablePackages;
 end;
 
 
@@ -323,11 +194,12 @@ procedure ListPackages(const ShowGlobalAndLocal: boolean);
   procedure AddPackageToLine(APackage: TFPPackage; CheckIsBroken: Boolean; var Line: string);
   var
     PackageVersion: string;
+    s: string;
   begin
     if Assigned(APackage) then
       begin
         PackageVersion := APackage.Version.AsString;
-        if CheckIsBroken and PackageIsBroken(APackage, False) then
+        if CheckIsBroken and GFPpkg.PackageIsBroken(APackage, s, nil) then
           PackageVersion := PackageVersion + ' (B)';
       end
     else
@@ -397,11 +269,6 @@ begin
   if Assigned(GFPpkg) then
     GFPpkg.Free;
   GFPpkg := TpkgFPpkg.Create(nil);
-end;
-
-procedure ClearRemoteRepository;
-begin
-  CurrentRemoteRepositoryURL := '';
 end;
 
 initialization

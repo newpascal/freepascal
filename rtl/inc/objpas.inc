@@ -379,11 +379,11 @@
 
       class function TObject.InitInstance(instance : pointer) : tobject; {$ifdef SYSTEMINLINE} inline; {$ENDIF}
 
-{$if FPC_FULLVERSION>30100}
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
         var
            vmt  : PVmt;
            temp : pointer;
-{$endif FPC_FULLVERSION>30100}
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
         begin
            { the size is saved at offset 0 }
            fillchar(instance^, InstanceSize, 0);
@@ -393,8 +393,8 @@
            if {$ifdef VER3_0}PVmt(self)^.vIntfTable <> @emptyintf{$else}assigned(PVmt(self)^.vIntfTable){$endif} then
              InitInterfacePointers(self,instance);
 
-{$if FPC_FULLVERSION>30100}
-           { for record operators like initialize/finalize call int_initialize }
+{$ifdef FPC_HAS_MANAGEMENT_OPERATORS}
+           { for management operators like initialize call int_initialize }
            vmt := PVmt(self);
            while vmt<>nil do
              begin
@@ -405,7 +405,7 @@
                  RecordRTTI(Instance,Temp,@int_initialize);
                vmt:= vmt^.vParent;
              end;
-{$endif FPC_FULLVERSION>30100}
+{$endif FPC_HAS_MANAGEMENT_OPERATORS}
 
            InitInstance:=TObject(Instance);
         end;
@@ -966,7 +966,7 @@
           getinterfacetable:=PVmt(Self)^.vIntfTable;
         end;
 
-      class function TObject.UnitName : ansistring;
+      class function TObject.UnitName : {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}ansistring{$else FPC_HAS_FEATURE_ANSISTRINGS}shortstring{$endif FPC_HAS_FEATURE_ANSISTRINGS};
         type
           // from the typinfo unit
           TClassTypeInfo = {$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}packed{$endif}record
@@ -985,12 +985,23 @@
             // offset PTypeInfo by Length(Name) + 2 (ShortString length byte + SizeOf(Kind))
             inc(Pointer(classtypeinfo), PByte(Pointer(classtypeinfo)+1)^ + 2);
             {$ifdef FPC_REQUIRES_PROPER_ALIGNMENT}
-            classtypeinfo:=align(classtypeinfo,sizeof(classtypeinfo));
+            classtypeinfo:=aligntoqword(classtypeinfo);
             {$endif}
             result:=classtypeinfo^.UnitName;
           end
           else
             result:='';
+        end;
+
+      class function TObject.QualifiedClassName: {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}ansistring{$else FPC_HAS_FEATURE_ANSISTRINGS}shortstring{$endif FPC_HAS_FEATURE_ANSISTRINGS};
+        var
+          uname: {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}ansistring{$else FPC_HAS_FEATURE_ANSISTRINGS}shortstring{$endif FPC_HAS_FEATURE_ANSISTRINGS};
+        begin
+          uname := UnitName; //TODO: change 'UnitName' to 'UnitScope' as soon as RTL implement it
+          if uname='' then
+            result:=ClassName
+          else
+            result:=Concat(uname, '.', ClassName);
         end;
 
       function TObject.Equals(Obj: TObject) : boolean;
@@ -1003,7 +1014,7 @@
           result:=PtrInt(Self);
         end;
 
-      function TObject.ToString: ansistring;
+      function TObject.ToString: {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}ansistring{$else FPC_HAS_FEATURE_ANSISTRINGS}shortstring{$endif FPC_HAS_FEATURE_ANSISTRINGS};
         begin
           result:=ClassName;
         end;
@@ -1033,8 +1044,20 @@
       begin
          _Release:=interlockeddecrement(frefcount);
          if _Release=0 then
-           self.destroy;
+           begin
+           if interlockedincrement(fdestroycount)=1 then
+             self.destroy;
+           end;
       end;
+
+   destructor TInterfacedObject.destroy;
+
+   begin
+     // We must explicitly reset. Bug ID 32353
+     FRefCount:=0;
+     FDestroyCount:=0;
+     inherited destroy;
+   end;
 
     procedure TInterfacedObject.AfterConstruction;
 

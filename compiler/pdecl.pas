@@ -54,11 +54,11 @@ implementation
        cutils,
        { global }
        globals,tokens,verbose,widestr,constexp,
-       systems,aasmdata,fmodule,
+       systems,aasmdata,fmodule,compinnr,
        { symtable }
-       symconst,symbase,symtype,symcpu,symtable,symcreat,defutil,
+       symconst,symbase,symtype,symcpu,symcreat,defutil,
        { pass 1 }
-       htypechk,ninl,ncon,nobj,ngenutil,
+       ninl,ncon,nobj,ngenutil,
        { parser }
        scanner,
        pbase,pexpr,ptype,ptconst,pdecsub,pdecvar,pdecobj,pgenutil,
@@ -633,9 +633,12 @@ implementation
                     if not (m_delphi in current_settings.modeswitches) then
                       Message1(sym_e_duplicate_id,genorgtypename)
                     else
-                      { we need to find this symbol even if it's a variable or
-                        something else when doing an inline specialization }
-                      Include(sym.symoptions,sp_generic_dummy);
+                      begin
+                        { we need to find this symbol even if it's a variable or
+                          something else when doing an inline specialization }
+                        Include(sym.symoptions,sp_generic_dummy);
+                        add_generic_dummysym(sym);
+                      end;
                 end
               else
                 begin
@@ -684,47 +687,49 @@ implementation
                          is_java_class_or_interface(hdef) then
                         Message(parser_e_unique_unsupported);
 
-                      hdef:=tstoreddef(hdef).getcopy;
-
-                      { check if it is an ansistirng(codepage) declaration }
-                      if is_ansistring(hdef) and try_to_consume(_LKLAMMER) then
+                      if is_object(hdef) or
+                         is_class_or_interface_or_dispinterface(hdef) then
                         begin
-                          p:=comp_expr([ef_accept_equal]);
-                          consume(_RKLAMMER);
-                          if not is_constintnode(p) then
+                          { just create a child class type; this is
+                            Delphi-compatible }
+                          hdef:=cobjectdef.create(tobjectdef(hdef).objecttype,genorgtypename,tobjectdef(hdef),true);
+                        end
+                      else
+                        begin
+                          hdef:=tstoreddef(hdef).getcopy;
+                          { check if it is an ansistirng(codepage) declaration }
+                          if is_ansistring(hdef) and try_to_consume(_LKLAMMER) then
                             begin
-                              Message(parser_e_illegal_expression);
-                              { error recovery }
-                            end
-                          else
-                            begin
-                              if (tordconstnode(p).value<0) or (tordconstnode(p).value>65535) then
+                              p:=comp_expr([ef_accept_equal]);
+                              consume(_RKLAMMER);
+                              if not is_constintnode(p) then
                                 begin
-                                  Message(parser_e_invalid_codepage);
-                                  tordconstnode(p).value:=0;
+                                  Message(parser_e_illegal_expression);
+                                  { error recovery }
+                                end
+                              else
+                                begin
+                                  if (tordconstnode(p).value<0) or (tordconstnode(p).value>65535) then
+                                    begin
+                                      Message(parser_e_invalid_codepage);
+                                      tordconstnode(p).value:=0;
+                                    end;
+                                  tstringdef(hdef).encoding:=int64(tordconstnode(p).value);
                                 end;
-                              tstringdef(hdef).encoding:=int64(tordconstnode(p).value);
+                              p.free;
                             end;
-                          p.free;
+                          if (hdef.typ in [pointerdef,classrefdef]) and
+                             (tabstractpointerdef(hdef).pointeddef.typ=forwarddef) then
+                            current_module.checkforwarddefs.add(hdef);
                         end;
-
-                      { fix name, it is used e.g. for tables }
-                      if is_class_or_interface_or_dispinterface(hdef) then
-                        with tobjectdef(hdef) do
-                          begin
-                            stringdispose(objname);
-                            stringdispose(objrealname);
-                            objrealname:=stringdup(genorgtypename);
-                            objname:=stringdup(upper(genorgtypename));
-                          end;
-
                       include(hdef.defoptions,df_unique);
-                      if (hdef.typ in [pointerdef,classrefdef]) and
-                         (tabstractpointerdef(hdef).pointeddef.typ=forwarddef) then
-                        current_module.checkforwarddefs.add(hdef);
                     end;
                   if not assigned(hdef.typesym) then
-                    hdef.typesym:=newtype;
+                    begin
+                      hdef.typesym:=newtype;
+                      if sp_generic_dummy in newtype.symoptions then
+                        add_generic_dummysym(newtype);
+                    end;
                 end;
               { in non-Delphi modes we need a reference to the generic def
                 without the generic suffix, so it can be found easily when
@@ -736,6 +741,10 @@ implementation
                   of the defs in the def list of the module}
                 ttypesym(sym).typedef:=hdef;
               newtype.typedef:=hdef;
+              { ensure that the type is registered when no specialization is
+                currently done }
+              if current_scanner.replay_stack_depth=0 then
+                hdef.register_def;
               { KAZ: handle TGUID declaration in system unit }
               if (cs_compilesystem in current_settings.moduleswitches) and
                  assigned(hdef) and
@@ -839,7 +848,7 @@ implementation
                            else
                              begin
                                if (po_hascallingconvention in tprocvardef(hdef).procoptions) and
-                                  (tprocvardef(hdef).proccalloption=pocall_cdecl) then
+                                  (tprocvardef(hdef).proccalloption in [pocall_cdecl,pocall_mwpascal]) then
                                  begin
                                    include(tprocvardef(hdef).procoptions,po_is_block);
                                    { can't check yet whether the parameter types

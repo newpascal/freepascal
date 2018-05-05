@@ -190,6 +190,7 @@ interface
          { parameter switches }
          cs_check_unit_name,cs_constructor_name,cs_support_exceptions,
          cs_support_c_objectivepas,
+         cs_transparent_file_names,
          { units }
          cs_load_objpas_unit,
          cs_load_gpc_unit,
@@ -200,7 +201,7 @@ interface
          cs_gdb_valgrind,cs_no_regalloc,cs_stabs_preservecase,
          { assembling }
          cs_asm_leave,cs_asm_extern,cs_asm_pipe,cs_asm_source,
-         cs_asm_regalloc,cs_asm_tempalloc,cs_asm_nodes,
+         cs_asm_regalloc,cs_asm_tempalloc,cs_asm_nodes,cs_asm_pre_binutils_2_25,
          { linking }
          cs_link_nolink,cs_link_static,cs_link_smart,cs_link_shared,cs_link_deffile,
          cs_link_strip,cs_link_staticflag,cs_link_on_target,cs_link_extern,cs_link_opt_vtable,
@@ -312,7 +313,8 @@ interface
          cs_opt_remove_emtpy_proc,
          cs_opt_constant_propagate,
          cs_opt_dead_store_eliminate,
-         cs_opt_forcenostackframe
+         cs_opt_forcenostackframe,
+         cs_opt_use_load_modify_store
        );
        toptimizerswitches = set of toptimizerswitch;
 
@@ -334,14 +336,14 @@ interface
        end;
 
     const
-       OptimizerSwitchStr : array[toptimizerswitch] of string[17] = ('',
+       OptimizerSwitchStr : array[toptimizerswitch] of string[18] = ('',
          'LEVEL1','LEVEL2','LEVEL3','LEVEL4',
          'REGVAR','UNCERTAIN','SIZE','STACKFRAME',
          'PEEPHOLE','LOOPUNROLL','TAILREC','CSE',
          'DFA','STRENGTH','SCHEDULE','AUTOINLINE','USEEBP','USERBP',
          'ORDERFIELDS','FASTMATH','DEADVALUES','REMOVEEMPTYPROCS',
          'CONSTPROP',
-         'DEADSTORE','FORCENOSTACKFRAME'
+         'DEADSTORE','FORCENOSTACKFRAME','USELOADMODIFYSTORE'
        );
        WPOptimizerSwitchStr : array [twpoptimizerswitch] of string[14] = (
          'DEVIRTCALLS','OPTVMTS','SYMBOLLIVENESS'
@@ -367,7 +369,7 @@ interface
        { switches being applied to all CPUs at the given level }
        genericlevel1optimizerswitches = [cs_opt_level1,cs_opt_peephole];
        genericlevel2optimizerswitches = [cs_opt_level2,cs_opt_remove_emtpy_proc];
-       genericlevel3optimizerswitches = [cs_opt_level3,cs_opt_constant_propagate,cs_opt_nodedfa];
+       genericlevel3optimizerswitches = [cs_opt_level3,cs_opt_constant_propagate,cs_opt_nodedfa,cs_opt_use_load_modify_store,cs_opt_loopunroll];
        genericlevel4optimizerswitches = [cs_opt_level4,cs_opt_reorder_fields,cs_opt_dead_values,cs_opt_fastmath];
 
        { whole program optimizations whose information generation requires
@@ -388,7 +390,7 @@ interface
        tmodeswitch = (m_none,
          { generic }
          m_fpc,m_objfpc,m_delphi,m_tp7,m_mac,m_iso,m_extpas,
-         {$ifdef fpc_mode}m_gpc,{$endif}
+         {$ifdef gpc_mode}m_gpc,{$endif}
          { more specific }
          m_class,               { delphi class model }
          m_objpas,              { load objpas unit }
@@ -423,8 +425,8 @@ interface
                                   fields in Java) }
          m_default_unicodestring, { makes the default string type in $h+ mode unicodestring rather than
                                     ansistring; similarly, char becomes unicodechar rather than ansichar }
-         m_type_helpers,        { allows the declaration of "type helper" (non-Delphi) or "record helper"
-                                  (Delphi) for primitive types }
+         m_type_helpers,        { allows the declaration of "type helper" for all supported types
+                                  (primitive types, records, classes, interfaces) }
          m_blocks,              { support for http://en.wikipedia.org/wiki/Blocks_(C_language_extension) }
          m_isolike_io,          { I/O as it required by an ISO compatible compiler }
          m_isolike_program_para, { program parameters as it required by an ISO compatible compiler }
@@ -531,12 +533,20 @@ interface
          pocall_interrupt,
          { Directive for arm: pass floating point values in (v)float registers
            regardless of the actual calling conventions }
-         pocall_hardfloat
+         pocall_hardfloat,
+         { for x86-64: force sysv ABI (Pascal resp. C) }
+         pocall_sysv_abi_default,
+         pocall_sysv_abi_cdecl,
+         { for x86-64: forces Microsoft ABI (Pascal resp. C) }
+         pocall_ms_abi_default,
+         pocall_ms_abi_cdecl,
+         { for x86-64: Microsoft's "vectorcall" ABI }
+         pocall_vectorcall
        );
        tproccalloptions = set of tproccalloption;
 
      const
-       proccalloptionStr : array[tproccalloption] of string[14]=('',
+       proccalloptionStr : array[tproccalloption] of string[16]=('',
            'CDecl',
            'CPPDecl',
            'Far16',
@@ -550,7 +560,12 @@ interface
            'SoftFloat',
            'MWPascal',
            'Interrupt',
-           'HardFloat'
+           'HardFloat',
+           'SysV_ABI_Default',
+           'MS_ABI_CDecl', { TODO: Is this correct? Shouldn't it be SysV_ABI_Default }
+           'MS_ABI_Default',
+           'MS_ABI_CDecl',
+           'VectorCall'
          );
 
        { Default calling convention }
@@ -558,15 +573,17 @@ interface
        pocall_default = pocall_pascal;
 {$elseif defined(i386) or defined(x86_64)}
        pocall_default = pocall_register;
+{$elseif defined(m68k)}
+       pocall_default = pocall_register;
 {$else}
        pocall_default = pocall_stdcall;
 {$endif}
 
-       cstylearrayofconst = [pocall_cdecl,pocall_cppdecl,pocall_mwpascal];
+       cstylearrayofconst = [pocall_cdecl,pocall_cppdecl,pocall_mwpascal,pocall_sysv_abi_cdecl,pocall_ms_abi_cdecl];
 
        modeswitchstr : array[tmodeswitch] of string[18] = ('',
          '','','','','','','',
-         {$ifdef fpc_mode}'',{$endif}
+         {$ifdef gpc_mode}'',{$endif}
          { more specific }
          'CLASS',
          'OBJPAS',

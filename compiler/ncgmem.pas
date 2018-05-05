@@ -27,7 +27,7 @@ unit ncgmem;
 interface
 
     uses
-      globtype,cgbase,cgutils,cpuinfo,cpubase,
+      globtype,cgbase,cgutils,cpubase,
       symtype,
       node,nmem;
 
@@ -60,7 +60,7 @@ interface
        end;
 
        tcgvecnode = class(tvecnode)
-         function get_mul_size : aint;
+         function get_mul_size : asizeint;
        private
          procedure rangecheck_array;
          procedure rangecheck_string;
@@ -73,7 +73,7 @@ interface
          }
          procedure update_reference_reg_mul(maybe_const_reg: tregister;regsize: tdef; l: aint);virtual;
          procedure update_reference_reg_packed(maybe_const_reg: tregister; regsize: tdef; l: aint);virtual;
-         procedure update_reference_offset(var ref: treference; index, mulsize: aint); virtual;
+         procedure update_reference_offset(var ref: treference; index, mulsize: ASizeInt); virtual;
          procedure second_wideansistring;virtual;
          procedure second_dynamicarray;virtual;
          function valid_index_size(size: tcgsize): boolean;virtual;
@@ -87,14 +87,12 @@ implementation
     uses
       systems,
       cutils,cclasses,verbose,globals,constexp,fmodule,
-      symconst,symbase,symdef,symsym,symcpu,symtable,defutil,paramgr,
-      aasmbase,aasmtai,aasmdata,
+      symconst,symbase,symdef,symsym,symtable,defutil,paramgr,
+      aasmbase,aasmdata,
       procinfo,pass_2,parabase,
-      pass_1,nld,ncon,nadd,ncnv,nutils,
+      ncon,nadd,nutils,
       cgobj,hlcgobj,
-      tgobj,ncgutil,objcgutl,
-      defcmp
-      ;
+      objcgutl;
 
 
 {*****************************************************************************
@@ -127,7 +125,7 @@ implementation
                  vmtname:=tobjectdef(tclassrefdef(resultdef).pointeddef).vmt_mangledname;
                  reference_reset_symbol(href,
                    current_asmdata.RefAsmSymbol(vmtname,AT_DATA,indirect),0,
-                   resultdef.alignment);
+                   resultdef.alignment,[]);
                  hlcg.a_loadaddr_ref_reg(current_asmdata.CurrAsmList,resultdef,resultdef,href,location.register);
                  if otherunit then
                    current_module.add_extern_asmsym(vmtname,AB_EXTERNAL,AT_DATA);
@@ -146,7 +144,7 @@ implementation
                      { find/add necessary classref/classname pool entries }
                      objcfinishstringrefpoolentry(entry,sp_objcclassnames,sec_objc_cls_refs,sec_objc_class_names);
                    end;
-                 reference_reset_symbol(href,tasmlabel(entry^.Data),0,objc_idtype.alignment);
+                 reference_reset_symbol(href,tasmlabel(entry^.Data),0,objc_idtype.alignment,[]);
                  hlcg.a_load_ref_reg(current_asmdata.CurrAsmList,objc_idtype,objc_idtype,href,location.register);
                end;
            end
@@ -194,7 +192,7 @@ implementation
                 if hsym.localloc.loc<>LOC_REFERENCE then
                   internalerror(200309283);
 
-                hlcg.reference_reset_base(href,parentfpvoidpointertype,location.register,hsym.localloc.reference.offset,parentfpvoidpointertype.alignment);
+                hlcg.reference_reset_base(href,parentfpvoidpointertype,location.register,hsym.localloc.reference.offset,ctempposinvalid,parentfpvoidpointertype.alignment,[]);
                 hlcg.a_load_ref_reg(current_asmdata.CurrAsmList,parentfpvoidpointertype,parentfpvoidpointertype,href,location.register);
               end;
           end;
@@ -242,9 +240,9 @@ implementation
          { assume natural alignment, except for packed records }
          if not(resultdef.typ in [recorddef,objectdef]) or
             (tabstractrecordsymtable(tabstractrecorddef(resultdef).symtable).usefieldalignment<>1) then
-           location_reset_ref(location,LOC_REFERENCE,def_cgsize(resultdef),resultdef.alignment)
+           location_reset_ref(location,LOC_REFERENCE,def_cgsize(resultdef),resultdef.alignment,[])
          else
-           location_reset_ref(location,LOC_REFERENCE,def_cgsize(resultdef),1);
+           location_reset_ref(location,LOC_REFERENCE,def_cgsize(resultdef),1,[]);
 
          { can we fold an add/sub node into the offset of the deref node? }
          extraoffset:=0;
@@ -313,7 +311,7 @@ implementation
             pd:=tprocdef(tprocsym(sym).ProcdefList[0]);
             paraloc1.init;
             paramanager.getintparaloc(current_asmdata.CurrAsmList,pd,1,paraloc1);
-            hlcg.a_load_reg_cgpara(current_asmdata.CurrAsmList,left.resultdef,location.reference.base,paraloc1);
+            hlcg.a_loadaddr_ref_cgpara(current_asmdata.CurrAsmList,left.resultdef,location.reference,paraloc1);
             paramanager.freecgpara(current_asmdata.CurrAsmList,paraloc1);
             paraloc1.done;
             hlcg.allocallcpuregisters(current_asmdata.CurrAsmList);
@@ -344,6 +342,7 @@ implementation
         pd : tprocdef;
         sym : tsym;
         st : tsymtable;
+        hreg : TRegister;
       begin
          sym:=nil;
          secondpass(left);
@@ -356,8 +355,10 @@ implementation
              if (not is_managed_type(left.resultdef)) or
                 (target_info.system in systems_garbage_collected_managed_types) then
                begin
-                 { the contents of a class are aligned to a sizeof(pointer) }
-                 location_reset_ref(location,LOC_REFERENCE,def_cgsize(resultdef),voidpointertype.size);
+                 { take care of the alignment of the fields }
+                 if not(left.resultdef is tabstractrecorddef) then
+                   Internalerror(2018021601);
+                 location_reset_ref(location,LOC_REFERENCE,def_cgsize(resultdef),newalignment(tabstractrecordsymtable(tabstractrecorddef(left.resultdef).symtable).recordalignment,vs.fieldoffset),[]);
                  case left.location.loc of
                     LOC_CREGISTER,
                     LOC_REGISTER:
@@ -371,7 +372,7 @@ implementation
                           end
                         else
                       {$endif}
-                          hlcg.reference_reset_base(location.reference,left.resultdef,left.location.register,0,location.reference.alignment);
+                          hlcg.reference_reset_base(location.reference,left.resultdef,left.location.register,0,ctempposinvalid,location.reference.alignment,location.reference.volatility);
                       end;
                     LOC_CREFERENCE,
                     LOC_REFERENCE,
@@ -382,7 +383,7 @@ implementation
                     LOC_CSUBSETREF:
                       begin
                          hlcg.reference_reset_base(location.reference,left.resultdef,
-                           hlcg.getaddressregister(current_asmdata.CurrAsmList,left.resultdef),0,location.reference.alignment);
+                           hlcg.getaddressregister(current_asmdata.CurrAsmList,left.resultdef),0,ctempposinvalid,location.reference.alignment,location.reference.volatility);
                          hlcg.a_load_loc_reg(current_asmdata.CurrAsmList,left.resultdef,left.resultdef,left.location,location.reference.base);
                       end;
                     LOC_CONSTANT:
@@ -403,7 +404,7 @@ implementation
                       internalerror(2012010602);
                     pd:=tprocdef(tprocsym(sym).ProcdefList[0]);
                     paramanager.getintparaloc(current_asmdata.CurrAsmList,pd,1,paraloc1);
-                    hlcg.a_load_reg_cgpara(current_asmdata.CurrAsmList,left.resultdef,location.reference.base,paraloc1);
+                    hlcg.a_loadaddr_ref_cgpara(current_asmdata.CurrAsmList,left.resultdef,location.reference,paraloc1);
                     paramanager.freecgpara(current_asmdata.CurrAsmList,paraloc1);
                     hlcg.allocallcpuregisters(current_asmdata.CurrAsmList);
                     hlcg.a_call_name(current_asmdata.CurrAsmList,pd,'FPC_CHECKPOINTER',[@paraloc1],nil,false);
@@ -449,7 +450,7 @@ implementation
                         memory as well }
                       ((left.location.size in [OS_PAIR,OS_SPAIR]) and
                        (vs.fieldoffset div sizeof(aword)<>(vs.fieldoffset+vs.getsize-1) div sizeof(aword))) or
-                      (location.loc in [LOC_MMREGISTER,LOC_FPUREGISTER,LOC_CMMREGISTER,LOC_CFPUREGISTER,
+                      (location.loc in [LOC_FPUREGISTER,LOC_CFPUREGISTER,
                         { actually, we should be able to "subscript" a constant, but this would require some code
                           which enables dumping and reading constants from a temporary memory buffer. This
                           must be done a CPU dependent way, so it is not easy and probably not worth the effort (FK)
@@ -458,6 +459,20 @@ implementation
                      hlcg.location_force_mem(current_asmdata.CurrAsmList,location,left.resultdef)
                    else
                      begin
+                       if (location.loc in [LOC_MMREGISTER,LOC_CMMREGISTER]) then
+                         if (tcgsize2size[location.size]<=tcgsize2size[OS_INT]) then
+                           begin
+                             hreg:=cg.getintregister(current_asmdata.CurrAsmList,location.size);
+                             cg.a_loadmm_reg_intreg(current_asmdata.CurrAsmList,reg_cgsize(left.location.register),location.size,
+                               left.location.register,hreg,mms_movescalar);
+                             location_reset(left.location,LOC_REGISTER,int_cgsize(tcgsize2size[left.location.size]));
+                             left.location.register:=hreg;
+                             { copy again, we changed left.location }
+                             location_copy(location,left.location);
+                           end
+                         else
+                           hlcg.location_force_mem(current_asmdata.CurrAsmList,location,left.resultdef);
+
                        if (left.location.loc = LOC_REGISTER) then
                          location.loc := LOC_SUBSETREG
                        else
@@ -544,7 +559,7 @@ implementation
                earlier versions)
              }
              asmsym:=current_asmdata.RefAsmSymbol(vs.mangledname,AT_DATA);
-             reference_reset_symbol(tmpref,asmsym,0,voidpointertype.alignment);
+             reference_reset_symbol(tmpref,asmsym,0,voidpointertype.alignment,[]);
              hlcg.g_ptrtypecast_ref(current_asmdata.CurrAsmList,left.resultdef,cpointerdef.getreusable(resultdef),location.reference);
              location.reference.index:=hlcg.getintregister(current_asmdata.CurrAsmList,ptruinttype);
              hlcg.a_load_ref_reg(current_asmdata.CurrAsmList,ptruinttype,ptruinttype,tmpref,location.reference.index);
@@ -609,7 +624,7 @@ implementation
                             TCGVECNODE
 *****************************************************************************}
 
-     function tcgvecnode.get_mul_size : aint;
+     function tcgvecnode.get_mul_size : asizeint;
        begin
          if nf_memindex in flags then
           get_mul_size:=1
@@ -652,7 +667,7 @@ implementation
           begin
             hreg:=cg.getaddressregister(current_asmdata.CurrAsmList);
             cg.a_loadaddr_ref_reg(current_asmdata.CurrAsmList,location.reference,hreg);
-            reference_reset_base(location.reference,hreg,0,location.reference.alignment);
+            reference_reset_base(location.reference,hreg,0,location.reference.temppos,location.reference.alignment,location.reference.volatility);
             { insert new index register }
             location.reference.index:=maybe_const_reg;
           end;
@@ -734,7 +749,7 @@ implementation
        end;
 
 
-     procedure tcgvecnode.update_reference_offset(var ref: treference; index, mulsize: aint);
+     procedure tcgvecnode.update_reference_offset(var ref: treference; index, mulsize: ASizeInt);
        begin
          inc(ref.offset,index*mulsize);
        end;
@@ -851,7 +866,7 @@ implementation
          rightp      : pnode;
          newsize  : tcgsize;
          mulsize,
-         bytemulsize,
+         bytemulsize : ASizeInt;
          alignpow : aint;
          paraloc1,
          paraloc2 : tcgpara;
@@ -870,9 +885,9 @@ implementation
          newsize:=def_cgsize(resultdef);
          secondpass(left);
          if left.location.loc in [LOC_CREFERENCE,LOC_REFERENCE] then
-           location_reset_ref(location,left.location.loc,newsize,left.location.reference.alignment)
+           location_reset_ref(location,left.location.loc,newsize,left.location.reference.alignment,left.location.reference.volatility)
          else
-           location_reset_ref(location,LOC_REFERENCE,newsize,resultdef.alignment);
+           location_reset_ref(location,LOC_REFERENCE,newsize,resultdef.alignment,[]);
 
          { an ansistring needs to be dereferenced }
          if is_ansistring(left.resultdef) or
@@ -886,17 +901,17 @@ implementation
                 LOC_REGISTER,
                 LOC_CREGISTER :
                   begin
-                    hlcg.reference_reset_base(location.reference,left.resultdef,left.location.register,0,location.reference.alignment);
+                    hlcg.reference_reset_base(location.reference,left.resultdef,left.location.register,0,ctempposinvalid,location.reference.alignment,[]);
                   end;
                 LOC_CREFERENCE,
                 LOC_REFERENCE :
                   begin
-                    hlcg.reference_reset_base(location.reference,left.resultdef,hlcg.getaddressregister(current_asmdata.CurrAsmList,left.resultdef),0,location.reference.alignment);
+                    hlcg.reference_reset_base(location.reference,left.resultdef,hlcg.getaddressregister(current_asmdata.CurrAsmList,left.resultdef),0,ctempposinvalid,location.reference.alignment,[]);
                     hlcg.a_load_ref_reg(current_asmdata.CurrAsmList,left.resultdef,left.resultdef,left.location.reference,location.reference.base);
                   end;
                 LOC_CONSTANT:
                   begin
-                    hlcg.reference_reset_base(location.reference,left.resultdef,NR_NO,left.location.value,location.reference.alignment);
+                    hlcg.reference_reset_base(location.reference,left.resultdef,NR_NO,left.location.value,ctempposinvalid,location.reference.alignment,[]);
                   end;
                 else
                   internalerror(2002032218);
@@ -907,6 +922,7 @@ implementation
               else
                 offsetdec:=2;
               location.reference.alignment:=offsetdec;
+              location.reference.volatility:=[];
 
               { in ansistrings/widestrings S[1] is p<w>char(S)[0] }
               if not(cs_zerobasedstrings in current_settings.localswitches) then
@@ -917,11 +933,11 @@ implementation
               case left.location.loc of
                 LOC_REGISTER,
                 LOC_CREGISTER :
-                  hlcg.reference_reset_base(location.reference,left.resultdef,left.location.register,0,location.reference.alignment);
+                  hlcg.reference_reset_base(location.reference,left.resultdef,left.location.register,0,ctempposinvalid,location.reference.alignment,[]);
                 LOC_REFERENCE,
                 LOC_CREFERENCE :
                   begin
-                     hlcg.reference_reset_base(location.reference,left.resultdef,hlcg.getaddressregister(current_asmdata.CurrAsmList,left.resultdef),0,location.reference.alignment);
+                     hlcg.reference_reset_base(location.reference,left.resultdef,hlcg.getaddressregister(current_asmdata.CurrAsmList,left.resultdef),0,ctempposinvalid,location.reference.alignment,[]);
                      hlcg.a_load_ref_reg(current_asmdata.CurrAsmList,left.resultdef,left.resultdef,
                       left.location.reference,location.reference.base);
                   end;
@@ -933,6 +949,7 @@ implementation
                 pointer size
               }
               location.reference.alignment:=voidpointertype.size;
+              location.reference.volatility:=[];
            end
          else
            begin

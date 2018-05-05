@@ -56,6 +56,7 @@ interface
           { parts explicitely in the code generator (JM)    }
           function first_addstring: tnode; virtual;
           function first_addset: tnode; virtual;
+          function first_adddynarray : tnode; virtual;
           { only implements "muln" nodes, the rest always has to be done in }
           { the code generator for performance reasons (JM)                 }
           function first_add64bitint: tnode; virtual;
@@ -72,6 +73,12 @@ interface
           { override and return false if code generator can handle }
           { full 64 bit multiplies.                                }
           function use_generic_mul64bit: boolean; virtual;
+
+{$ifdef cpuneedsmulhelper}
+          { override to customize to decide if the code generator }
+          { can handle a given multiply node directly, or it needs helpers }
+          function use_mul_helper: boolean; virtual;
+{$endif cpuneedsmulhelper}
 
           { shall be overriden if the target cpu supports
             an fma instruction
@@ -118,7 +125,7 @@ implementation
 {$ELSE}
       fksysutl,
 {$ENDIF}
-      globtype,systems,constexp,
+      globtype,systems,constexp,compinnr,
       cutils,verbose,globals,widestr,
       symconst,symdef,symsym,symcpu,symtable,defutil,defcmp,
       cgbase,
@@ -127,7 +134,7 @@ implementation
       {$ifdef state_tracking}
       nstate,
       {$endif}
-      cpuinfo,procinfo;
+      cpuinfo;
 
 
 {*****************************************************************************
@@ -560,6 +567,7 @@ implementation
                else
                  internalerror(2008022101);
              end;
+             include(t.flags,nf_internal);
              result:=t;
              exit;
           end
@@ -588,7 +596,9 @@ implementation
                   addn,subn,orn,xorn:
                    result := left.getcopy;
                   andn,muln:
-                   result:=cordconstnode.create(0,resultdef,true);
+                   if (cs_opt_level4 in current_settings.optimizerswitches) or
+                       not might_have_sideeffects(left) then
+                     result:=cordconstnode.create(0,resultdef,true);
                 end;
               end
             else if tordconstnode(right).value = 1 then
@@ -618,7 +628,9 @@ implementation
                   subn:
                    result := cunaryminusnode.create(right.getcopy);
                   andn,muln:
-                   result:=cordconstnode.create(0,right.resultdef,true);
+                   if (cs_opt_level4 in current_settings.optimizerswitches) or
+                       not might_have_sideeffects(right) then
+                     result:=cordconstnode.create(0,resultdef,true);
                 end;
               end
             else if tordconstnode(left).value = 1 then
@@ -687,7 +699,7 @@ implementation
              result:=t;
              exit;
           end;
-{$if FPC_FULLVERSION>20700}
+{$if (FPC_FULLVERSION>20700) and not defined(FPC_SOFT_FPUX80)}
         { bestrealrec is 2.7.1+ only }
 
         { replace .../const by a multiplication, but only if fastmath is enabled or
@@ -907,22 +919,75 @@ implementation
              exit;
           end;
 
+        { in case of expressions having no side effect, we can simplify boolean expressions
+          containing constants }
+        if is_boolean(left.resultdef) and is_boolean(right.resultdef) then
+          begin
+            if is_constboolnode(left) and not(might_have_sideeffects(right)) then
+              begin
+                if ((nodetype=andn) and (tordconstnode(left).value<>0)) or
+                  ((nodetype=orn) and (tordconstnode(left).value=0)) or
+                  ((nodetype=xorn) and (tordconstnode(left).value=0)) then
+                  begin
+                    result:=right;
+                    right:=nil;
+                    exit;
+                  end
+                else if ((nodetype=orn) and (tordconstnode(left).value<>0)) or
+                  ((nodetype=andn) and (tordconstnode(left).value=0)) then
+                  begin
+                    result:=left;
+                    left:=nil;
+                    exit;
+                  end
+                else if ((nodetype=xorn) and (tordconstnode(left).value<>0)) then
+                  begin
+                    result:=cnotnode.create(right);
+                    right:=nil;
+                    exit;
+                  end
+              end
+            else if is_constboolnode(right) and not(might_have_sideeffects(left)) then
+              begin
+                if ((nodetype=andn) and (tordconstnode(right).value<>0)) or
+                  ((nodetype=orn) and (tordconstnode(right).value=0)) or
+                  ((nodetype=xorn) and (tordconstnode(right).value=0)) then
+                  begin
+                    result:=left;
+                    left:=nil;
+                    exit;
+                  end
+                else if ((nodetype=orn) and (tordconstnode(right).value<>0)) or
+                  ((nodetype=andn) and (tordconstnode(right).value=0)) then
+                  begin
+                    result:=right;
+                    right:=nil;
+                    exit;
+                  end
+                else if ((nodetype=xorn) and (tordconstnode(right).value<>0)) then
+                  begin
+                    result:=cnotnode.create(left);
+                    left:=nil;
+                    exit;
+                  end
+              end;
+          end;
+
         { slow simplifications }
-        if (cs_opt_level2 in current_settings.optimizerswitches) then
+        if cs_opt_level2 in current_settings.optimizerswitches then
           begin
             { the comparison is might be expensive and the nodes are usually only
               equal if some previous optimizations were done so don't check
               this simplification always
             }
-            if is_boolean(left.resultdef) and is_boolean(right.resultdef) and
-               { even when short circuit boolean evaluation is active, this
-                 optimization cannot be performed in case the node has
-                 side effects, because this can change the result (e.g., in an
-                 or-node that calls the same function twice and first returns
-                 false and then true because of a global state change }
-               not might_have_sideeffects(left) then
+            if is_boolean(left.resultdef) and is_boolean(right.resultdef) then
               begin
-                if left.isequal(right) then
+                { even when short circuit boolean evaluation is active, this
+                  optimization cannot be performed in case the node has
+                  side effects, because this can change the result (e.g., in an
+                  or-node that calls the same function twice and first returns
+                  false and then true because of a global state change }
+                if left.isequal(right) and not might_have_sideeffects(left) then
                   begin
                     case nodetype of
                       andn,orn:
@@ -938,6 +1003,55 @@ implementation
                           exit;
                         end;
                       }
+                    end;
+                  end
+                { short to full boolean evalution possible and useful? }
+                else if not(might_have_sideeffects(right)) and not(cs_full_boolean_eval in localswitches) then
+                  begin
+                    case nodetype of
+                      andn,orn:
+                        { full boolean evaluation is only useful if the nodes are not too complex and if no flags/jumps must be converted,
+                          further, we need to know the expectloc }
+                        if (node_complexity(right)<=2) and
+                          not(left.expectloc in [LOC_FLAGS,LOC_JUMP,LOC_INVALID]) and not(right.expectloc in [LOC_FLAGS,LOC_JUMP,LOC_INVALID]) then
+                          begin
+                            { we need to copy the whole tree to force another pass_1 }
+                            include(localswitches,cs_full_boolean_eval);
+                            result:=getcopy;
+                            exit;
+                          end;
+                    end;
+                  end
+              end;
+
+            if is_integer(left.resultdef) and is_integer(right.resultdef) then
+              begin
+                if (cs_opt_level3 in current_settings.optimizerswitches) and
+                   left.isequal(right) and not might_have_sideeffects(left) then
+                  begin
+                    case nodetype of
+                      andn,orn:
+                        begin
+                          result:=left;
+                          left:=nil;
+                          exit;
+                        end;
+                      xorn,
+                      subn,
+                      unequaln,
+                      ltn,
+                      gtn:
+                        begin
+                          result:=cordconstnode.create(0,resultdef,true);
+                          exit;
+                        end;
+                      equaln,
+                      lten,
+                      gten:
+                        begin
+                          result:=cordconstnode.create(1,resultdef,true);
+                          exit;
+                        end;
                     end;
                   end;
               end;
@@ -961,6 +1075,9 @@ implementation
 {$ifdef cpurox}
             { optimize (i shl x) or (i shr (bitsizeof(i)-x)) into rol(x,i) (and different flavours with shl/shr swapped etc.) }
             if (nodetype=orn)
+{$ifdef m68k}
+               and (CPUM68K_HAS_ROLROR in cpu_capabilities[current_settings.cputype])
+{$endif m68k}
 {$ifndef cpu64bitalu}
                and (left.resultdef.typ=orddef) and
                not(torddef(left.resultdef).ordtype in [s64bit,u64bit,scurrency])
@@ -975,8 +1092,9 @@ implementation
                    tshlshrnode(left).left.isequal(tshlshrnode(right).left) and
                    not(might_have_sideeffects(tshlshrnode(left).left)) then
                    begin
-                     if tordconstnode(tshlshrnode(left).right).value=
-                       tshlshrnode(left).left.resultdef.size*8-tordconstnode(tshlshrnode(right).right).value then
+                     if (tordconstnode(tshlshrnode(left).right).value=
+                       tshlshrnode(left).left.resultdef.size*8-tordconstnode(tshlshrnode(right).right).value)
+                        then
                        begin
                          result:=cinlinenode.create(in_ror_x_y,false,
                            ccallparanode.create(tshlshrnode(left).right,
@@ -985,8 +1103,9 @@ implementation
                          tshlshrnode(left).right:=nil;
                          exit;
                        end
-                     else if tordconstnode(tshlshrnode(right).right).value=
-                       tshlshrnode(left).left.resultdef.size*8-tordconstnode(tshlshrnode(left).right).value then
+                     else if (tordconstnode(tshlshrnode(right).right).value=
+                       tshlshrnode(left).left.resultdef.size*8-tordconstnode(tshlshrnode(left).right).value)
+                        then
                        begin
                          result:=cinlinenode.create(in_rol_x_y,false,
                            ccallparanode.create(tshlshrnode(right).right,
@@ -1004,8 +1123,9 @@ implementation
                    tshlshrnode(left).left.isequal(tshlshrnode(right).left) and
                    not(might_have_sideeffects(tshlshrnode(left).left)) then
                    begin
-                     if tordconstnode(tshlshrnode(left).right).value=
-                       tshlshrnode(left).left.resultdef.size*8-tordconstnode(tshlshrnode(right).right).value then
+                     if (tordconstnode(tshlshrnode(left).right).value=
+                       tshlshrnode(left).left.resultdef.size*8-tordconstnode(tshlshrnode(right).right).value)
+                        then
                        begin
                          result:=cinlinenode.create(in_rol_x_y,false,
                            ccallparanode.create(tshlshrnode(left).right,
@@ -1014,8 +1134,9 @@ implementation
                          tshlshrnode(left).right:=nil;
                          exit;
                        end
-                     else if tordconstnode(tshlshrnode(right).right).value=
-                       tshlshrnode(left).left.resultdef.size*8-tordconstnode(tshlshrnode(left).right).value then
+                     else if (tordconstnode(tshlshrnode(right).right).value=
+                       tshlshrnode(left).left.resultdef.size*8-tordconstnode(tshlshrnode(left).right).value)
+                        then
                        begin
                          result:=cinlinenode.create(in_ror_x_y,false,
                            ccallparanode.create(tshlshrnode(right).right,
@@ -1116,12 +1237,12 @@ implementation
 
          { convert array constructors to sets, because there is no other operator
            possible for array constructors }
-         if is_array_constructor(left.resultdef) then
+         if not(is_dynamic_array(right.resultdef)) and is_array_constructor(left.resultdef) then
           begin
             arrayconstructor_to_set(left);
             typecheckpass(left);
           end;
-         if is_array_constructor(right.resultdef) then
+         if not(is_dynamic_array(left.resultdef)) and is_array_constructor(right.resultdef) then
           begin
             arrayconstructor_to_set(right);
             typecheckpass(right);
@@ -1146,7 +1267,6 @@ implementation
                exit;
              end 
            end;
-
          { Stop checking when an error was found in the operator checking }
          if codegenerror then
            begin
@@ -2013,7 +2133,16 @@ implementation
               inserttypeconv_explicit(right,left.resultdef)
           end
 
-       { support dynamicarray=nil,dynamicarray<>nil }
+         { <dyn. array>+<dyn. array> ? }
+         else if (nodetype=addn) and (is_dynamic_array(ld) or is_dynamic_array(rd)) then
+           begin
+              if not(is_dynamic_array(ld)) then
+                inserttypeconv(left,rd);
+              if not(is_dynamic_array(rd)) then
+                inserttypeconv(right,ld);
+           end
+
+        { support dynamicarray=nil,dynamicarray<>nil }
          else if (is_dynamic_array(ld) and (rt=niln)) or
                  (is_dynamic_array(rd) and (lt=niln)) or
                  (is_dynamic_array(ld) and is_dynamic_array(rd)) then
@@ -2238,11 +2367,49 @@ implementation
                 end;
               muln :
                 begin
+                  hp:=nil;
                   if s64currencytype.typ=floatdef then
-                    hp:=caddnode.create(slashn,getcopy,crealconstnode.create(10000.0,s64currencytype))
+                    begin
+{$ifndef VER3_0}
+                      { if left is a currency integer constant, we can get rid of the factor 10000 }
+                      { int64(...) causes a cast on currency, so it is the currency value multiplied by 10000 }
+                      if (left.nodetype=realconstn) and (is_currency(left.resultdef)) and ((int64(trealconstnode(left).value_currency) mod 10000)=0) then
+                        begin
+                          { trealconstnode expects that value_real and value_currency contain valid values }
+                          trealconstnode(left).value_currency:=trealconstnode(left).value_currency {$ifdef FPC_CURRENCY_IS_INT64}div{$else}/{$endif} 10000;
+                          trealconstnode(left).value_real:=trealconstnode(left).value_real/10000;
+                        end
+                      { or if right is an integer constant, we can get rid of its factor 10000 }
+                      else if (right.nodetype=realconstn) and (is_currency(right.resultdef)) and ((int64(trealconstnode(right).value_currency) mod 10000)=0) then
+                        begin
+                          { trealconstnode expects that value and value_currency contain valid values }
+                          trealconstnode(right).value_currency:=trealconstnode(right).value_currency {$ifdef FPC_CURRENCY_IS_INT64}div{$else}/{$endif} 10000;
+                          trealconstnode(right).value_real:=trealconstnode(right).value_real/10000;
+                        end
+                      else
+{$endif VER3_0}
+                        begin
+                          hp:=caddnode.create(slashn,getcopy,crealconstnode.create(10000.0,s64currencytype));
+                          include(hp.flags,nf_is_currency);
+                        end;
+                    end
                   else
-                    hp:=cmoddivnode.create(divn,getcopy,cordconstnode.create(10000,s64currencytype,false));
-                  include(hp.flags,nf_is_currency);
+                    begin
+{$ifndef VER3_0}
+                      { if left is a currency integer constant, we can get rid of the factor 10000 }
+                      if (left.nodetype=ordconstn) and (is_currency(left.resultdef)) and ((tordconstnode(left).value mod 10000)=0) then
+                        tordconstnode(left).value:=tordconstnode(left).value div 10000
+                      { or if right is an integer constant, we can get rid of its factor 10000 }
+                      else if (right.nodetype=ordconstn) and (is_currency(right.resultdef)) and ((tordconstnode(right).value mod 10000)=0) then
+                        tordconstnode(right).value:=tordconstnode(right).value div 10000
+                      else
+{$endif VER3_0}
+                        begin
+                          hp:=cmoddivnode.create(divn,getcopy,cordconstnode.create(10000,s64currencytype,false));
+                          include(hp.flags,nf_is_currency);
+                        end
+                    end;
+
                   result:=hp
                 end;
             end;
@@ -2622,6 +2789,104 @@ implementation
         end;
       end;
 
+    function taddnode.first_adddynarray : tnode;
+      var
+        p: tnode;
+        newstatement : tstatementnode;
+        tempnode (*,tempnode2*) : ttempcreatenode;
+        cmpfuncname: string;
+        para: tcallparanode;
+      begin
+        result:=nil;
+        { when we get here, we are sure that both the left and the right }
+        { node are both strings of the same stringtype (JM)              }
+        case nodetype of
+          addn:
+            begin
+              if (left.nodetype=arrayconstructorn) and (tarrayconstructornode(left).isempty) then
+                begin
+                  result:=right;
+                  left.free;
+                  left:=nil;
+                  right:=nil;
+                  exit;
+                end;
+              if (right.nodetype=arrayconstructorn) and (tarrayconstructornode(right).isempty) then
+                begin
+                  result:=left;
+                  left:=nil;
+                  right.free;
+                  right:=nil;
+                  exit;
+                end;
+              { create the call to the concat routine both strings as arguments }
+              if assigned(aktassignmentnode) and
+                  (aktassignmentnode.right=self) and
+                  (aktassignmentnode.left.resultdef=resultdef) and
+                  valid_for_var(aktassignmentnode.left,false) then
+                begin
+                  para:=ccallparanode.create(
+                          ctypeconvnode.create_internal(right,voidcodepointertype),
+                        ccallparanode.create(
+                          ctypeconvnode.create_internal(left,voidcodepointertype),
+                        ccallparanode.create(
+                          caddrnode.create_internal(crttinode.create(tstoreddef(resultdef),initrtti,rdt_normal)),
+                        ccallparanode.create(
+                          ctypeconvnode.create_internal(aktassignmentnode.left.getcopy,voidcodepointertype),nil)
+                        )));
+                  result:=ccallnode.createintern(
+                            'fpc_dynarray_concat',
+                            para
+                          );
+                  include(aktassignmentnode.flags,nf_assign_done_in_right);
+                  firstpass(result);
+                end
+              else
+                begin
+                  result:=internalstatements(newstatement);
+                  tempnode:=ctempcreatenode.create(resultdef,resultdef.size,tt_persistent,true);
+                  addstatement(newstatement,tempnode);
+                  { initialize the temp, since it will be passed to a
+                    var-parameter (and finalization, which is performed by the
+                    ttempcreate node and which takes care of the initialization
+                    on native targets, is a noop on managed VM targets) }
+                  if (target_info.system in systems_managed_vm) and
+                     is_managed_type(resultdef) then
+                    addstatement(newstatement,cinlinenode.create(in_setlength_x,
+                      false,
+                      ccallparanode.create(genintconstnode(0),
+                        ccallparanode.create(ctemprefnode.create(tempnode),nil))));
+                  para:=ccallparanode.create(
+                          ctypeconvnode.create_internal(right,voidcodepointertype),
+                        ccallparanode.create(
+                          ctypeconvnode.create_internal(left,voidcodepointertype),
+                        ccallparanode.create(
+                          caddrnode.create_internal(crttinode.create(tstoreddef(resultdef),initrtti,rdt_normal)),
+                        ccallparanode.create(
+                          ctypeconvnode.create_internal(ctemprefnode.create(tempnode),voidcodepointertype),nil)
+                        )));
+                  addstatement(
+                    newstatement,
+                    ccallnode.createintern(
+                      'fpc_dynarray_concat',
+                      para
+                    )
+                  );
+                  addstatement(newstatement,ctempdeletenode.create_normal_temp(tempnode));
+                  addstatement(newstatement,ctemprefnode.create(tempnode));
+                end;
+              { we reused the arguments }
+              left := nil;
+              right := nil;
+            end;
+          unequaln,equaln:
+            { nothing to do }
+            ;
+          else
+            Internalerror(2018030301);
+          end;
+      end;
+
 
     function taddnode.use_generic_mul32to64: boolean;
       begin
@@ -2637,16 +2902,20 @@ implementation
 
     function taddnode.try_make_mul32to64: boolean;
 
-      function canbe32bitint(v: tconstexprint): boolean;
+      function canbe32bitint(v: tconstexprint; out canbesignedconst, canbeunsignedconst: boolean): boolean;
         begin
           result := ((v >= int64(low(longint))) and (v <= int64(high(longint)))) or
-                    ((v >= qword(low(cardinal))) and (v <= qword(high(cardinal))))
+                    ((v >= qword(low(cardinal))) and (v <= qword(high(cardinal))));
+          canbesignedconst:=v<=int64(high(longint));
+          canbeunsignedconst:=v>=0;
         end;
 
-      function is_32bitordconst(n: tnode): boolean;
+      function is_32bitordconst(n: tnode; out canbesignedconst, canbeunsignedconst: boolean): boolean;
         begin
+          canbesignedconst:=false;
+          canbeunsignedconst:=false;
           result := (n.nodetype = ordconstn) and
-                    canbe32bitint(tordconstnode(n).value);
+                    canbe32bitint(tordconstnode(n).value, canbesignedconst, canbeunsignedconst);
         end;
 
       function is_32to64typeconv(n: tnode): boolean;
@@ -2658,40 +2927,47 @@ implementation
 
       var
         temp: tnode;
+        leftoriginallysigned,
+        canbesignedconst, canbeunsignedconst: boolean;
       begin
         result := false;
-        if is_32to64typeconv(left) and
-           (is_32bitordconst(right) or
-            is_32to64typeconv(right) and
-             ((is_signed(ttypeconvnode(left).left.resultdef) =
-               is_signed(ttypeconvnode(right).left.resultdef)) or
-              (is_signed(ttypeconvnode(left).left.resultdef) and
-               (torddef(ttypeconvnode(right).left.resultdef).ordtype in [u8bit,u16bit])))) then
+        if is_32to64typeconv(left) then
           begin
-            temp := ttypeconvnode(left).left;
-            ttypeconvnode(left).left := nil;
-            left.free;
-            left := temp;
-            if (right.nodetype = typeconvn) then
+            leftoriginallysigned:=is_signed(ttypeconvnode(left).left.resultdef);
+            if ((is_32bitordconst(right,canbesignedconst, canbeunsignedconst) and
+                 ((leftoriginallysigned and canbesignedconst) or
+                  (not leftoriginallysigned and canbeunsignedconst))) or
+                (is_32to64typeconv(right) and
+                  ((leftoriginallysigned =
+                    is_signed(ttypeconvnode(right).left.resultdef)) or
+                   (leftoriginallysigned and
+                    (torddef(ttypeconvnode(right).left.resultdef).ordtype in [u8bit,u16bit]))))) then
               begin
-                temp := ttypeconvnode(right).left;
-                ttypeconvnode(right).left := nil;
-                right.free;
-                right := temp;
+                temp := ttypeconvnode(left).left;
+                ttypeconvnode(left).left := nil;
+                left.free;
+                left := temp;
+                if (right.nodetype = typeconvn) then
+                  begin
+                    temp := ttypeconvnode(right).left;
+                    ttypeconvnode(right).left := nil;
+                    right.free;
+                    right := temp;
+                  end;
+                if (is_signed(left.resultdef)) then
+                  begin
+                    inserttypeconv_internal(left,s32inttype);
+                    inserttypeconv_internal(right,s32inttype);
+                  end
+                else
+                  begin
+                    inserttypeconv_internal(left,u32inttype);
+                    inserttypeconv_internal(right,u32inttype);
+                  end;
+                firstpass(left);
+                firstpass(right);
+                result := true;
               end;
-            if (is_signed(left.resultdef)) then
-              begin
-                inserttypeconv_internal(left,s32inttype);
-                inserttypeconv_internal(right,s32inttype);
-              end
-            else
-              begin
-                inserttypeconv_internal(left,u32inttype);
-                inserttypeconv_internal(right,u32inttype);
-              end;
-            firstpass(left);
-            firstpass(right);
-            result := true;
           end;
       end;
 
@@ -2704,7 +2980,7 @@ implementation
 
     function taddnode.try_fma(ld,rd : tdef) : tnode;
       var
-        inlinennr : Integer;
+        inlinennr : tinlinenumber;
       begin
         result:=nil;
         if (cs_opt_fastmath in current_settings.optimizerswitches) and
@@ -2885,9 +3161,7 @@ implementation
               end;
 
             { otherwise, create the parameters for the helper }
-            right := ccallparanode.create(
-              cordconstnode.create(ord(cs_check_overflow in current_settings.localswitches),pasbool8type,true),
-              ccallparanode.create(right,ccallparanode.create(left,nil)));
+            right :=   ccallparanode.create(right,ccallparanode.create(left,nil));
             left := nil;
             { only qword needs the unsigned code, the
               signed code is also used for currency }
@@ -2895,6 +3169,9 @@ implementation
               procname := 'fpc_mul_int64'
             else
               procname := 'fpc_mul_qword';
+            if cs_check_overflow in current_settings.localswitches then
+              procname := procname + '_checkoverflow';
+
             result := ccallnode.createintern(procname,right);
             right := nil;
           end;
@@ -3057,7 +3334,23 @@ implementation
       end;
 
 
+{$ifdef cpuneedsmulhelper}
+    function taddnode.use_mul_helper: boolean;
+      begin
+        result:=(nodetype=muln) and
+                not(torddef(resultdef).ordtype in [u8bit,s8bit
+                {$if defined(cpu16bitalu) or defined(avr)},u16bit,s16bit{$endif}]);
+      end;
+{$endif cpuneedsmulhelper}
+
+
     function taddnode.pass_1 : tnode;
+
+      function isconstsetfewelements(p : tnode) : boolean;
+        begin
+          result:=(p.nodetype=setconstn) and (tsetconstnode(p).elements<=4);
+        end;
+
       var
 {$ifdef addstringopt}
          hp      : tnode;
@@ -3068,6 +3361,10 @@ implementation
 {$ifdef cpuneedsmulhelper}
          procname : string[32];
 {$endif cpuneedsmulhelper}
+        tempn,varsetnode: tnode;
+        mulnode : taddnode;
+        constsetnode : tsetconstnode;
+        trycreateinnodes : Boolean;
       begin
          result:=nil;
          { Can we optimize multiple string additions into a single call?
@@ -3078,6 +3375,70 @@ implementation
              result:=genmultistringadd(self);
              exit;
            end;
+
+         { Can we optimize multiple dyn. array additions into a single call?
+           This need to be done on a complete tree to detect the multiple
+           add nodes and is therefor done before the subtrees are processed }
+         if canbemultidynarrayadd(self) then
+           begin
+             result:=genmultidynarrayadd(self);
+             exit;
+           end;
+
+         { typical set tests like (s*[const. set])<>/=[] can be converted into an or'ed chain of in tests
+           for var sets if const. set contains only a few elements }
+         if (cs_opt_level1 in current_settings.optimizerswitches) and (nodetype in [unequaln,equaln]) and (left.resultdef.typ=setdef) and not(is_smallset(left.resultdef)) then
+           begin
+             trycreateinnodes:=false;
+             mulnode:=nil;
+             if (is_emptyset(right) and (left.nodetype=muln) and
+                 (isconstsetfewelements(taddnode(left).right) or isconstsetfewelements(taddnode(left).left))) then
+               begin
+                 trycreateinnodes:=true;
+                 mulnode:=taddnode(left);
+               end
+             else if (is_emptyset(left) and (right.nodetype=muln) and
+               (isconstsetfewelements(taddnode(right).right) or isconstsetfewelements(taddnode(right).left))) then
+               begin
+                 trycreateinnodes:=true;
+                 mulnode:=taddnode(right);
+               end;
+
+             if trycreateinnodes then
+               begin
+                 constsetnode:=nil;
+                 varsetnode:=nil;
+                 if isconstsetfewelements(mulnode.right) then
+                   begin
+                     constsetnode:=tsetconstnode(mulnode.right);
+                     varsetnode:=mulnode.left;
+                   end
+                 else
+                   begin
+                     constsetnode:=tsetconstnode(mulnode.left);
+                     varsetnode:=mulnode.right;
+                   end;
+                 { the node is copied so it might have no side effects, if the complexity is too, cse should fix it, so
+                   do not check complexity }
+                 if not(might_have_sideeffects(varsetnode)) then
+                   begin
+                     result:=nil;
+                     for i:=low(tconstset) to high(tconstset) do
+                       if i in constsetnode.value_set^ then
+                         begin
+                           tempn:=cinnode.create(cordconstnode.create(i,tsetdef(constsetnode.resultdef).elementdef,false),varsetnode.getcopy);
+                           if assigned(result) then
+                             result:=caddnode.create_internal(orn,result,tempn)
+                           else
+                             result:=tempn;
+                         end;
+                     if nodetype=equaln then
+                       result:=cnotnode.create(result);
+                     exit;
+                   end;
+               end;
+           end;
+
          { first do the two subtrees }
          firstpass(left);
          firstpass(right);
@@ -3178,8 +3539,7 @@ implementation
              else
                begin
 {$ifdef cpuneedsmulhelper}
-                 if (nodetype=muln) and not(torddef(resultdef).ordtype in [u8bit,s8bit
-                   {$if defined(cpu16bitalu) or defined(avr)},u16bit,s16bit{$endif}]) then
+                 if use_mul_helper then
                    begin
                      result := nil;
 
@@ -3195,10 +3555,11 @@ implementation
                        else
                          internalerror(2011022301);
                      end;
+                     if cs_check_overflow in current_settings.localswitches then
+                       procname:=procname+'_checkoverflow';
                      result := ccallnode.createintern(procname,
-                       ccallparanode.create(cordconstnode.create(ord(cs_check_overflow in current_settings.localswitches),pasbool8type,false),
                        ccallparanode.create(right,
-                       ccallparanode.create(left,nil))));
+                       ccallparanode.create(left,nil)));
                      left := nil;
                      right := nil;
                      firstpass(result);
@@ -3387,6 +3748,11 @@ implementation
             end
 {$endif SUPPORT_MMX}
 
+         else if is_dynamic_array(ld) or is_dynamic_array(rd) then
+           begin
+             result:=first_adddynarray;
+             exit;
+           end
          { the general solution is to convert to 32 bit int }
          else
            begin

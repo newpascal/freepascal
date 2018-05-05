@@ -174,10 +174,27 @@ interface
        { Has relocations with explicit addends (ELF-specific) }
        oso_rela_relocs,
        { Supports bss-like allocation of data, even though it is written in file (i.e. also has oso_Data) }
-       oso_sparse_data
+       oso_sparse_data,
+       { Section to support the resolution of multiple symbols with the same name }
+       oso_comdat
      );
 
      TObjSectionOptions = set of TObjSectionOption;
+
+     TObjSectionComdatSelection = (
+       { Section is not a COMDAT section }
+       oscs_none,
+       { Select any of the symbols }
+       oscs_any,
+       { Select any symbol, but abort if they differ in size }
+       oscs_same_size,
+       { Select any symbol, but abort if they differ in size or content }
+       oscs_exact_match,
+       { Select the symbol only if the associated symbol is linked as well }
+       oscs_associative,
+       { Select the largest symbol }
+       oscs_largest
+     );
 
      TObjSectionGroup = class;
 
@@ -250,6 +267,7 @@ interface
      private
        FData       : TDynamicArray;
        FSecOptions : TObjSectionOptions;
+       FComdatSelection : TObjSectionComdatSelection;
        FCachedFullName : pshortstring;
        procedure SetSecOptions(Aoptions:TObjSectionOptions);
        procedure SectionTooLargeError;
@@ -257,12 +275,14 @@ interface
        ObjData    : TObjData;
        index      : longword;  { index of section in section headers }
        SecSymIdx  : longint;   { index for the section in symtab }
-       SecAlign   : shortint;   { alignment of the section }
+       SecAlign   : longint;   { alignment of the section }
        { section Data }
        Size,
        DataPos    : PUInt;
        MemPos     : qword;
        Group      : TObjSectionGroup;
+       AssociativeSection : TObjSection;
+       ComdatSelection : TObjSectionComdatSelection;
        DataAlignBytes : shortint;
        { Relocations (=references) to other sections }
        ObjRelocations : TFPObjectList;
@@ -270,7 +290,7 @@ interface
        ExeSection  : TExeSection;
        USed        : Boolean;
        VTRefList : TFPObjectList;
-       constructor create(AList:TFPHashObjectList;const Aname:string;Aalign:shortint;Aoptions:TObjSectionOptions);virtual;
+       constructor create(AList:TFPHashObjectList;const Aname:string;Aalign:longint;Aoptions:TObjSectionOptions);virtual;
        destructor  destroy;override;
        function  write(const d;l:PUInt):PUInt;
        { writes string plus zero byte }
@@ -349,9 +369,9 @@ interface
        { Sections }
        function  sectionname(atype:TAsmSectiontype;const aname:string;aorder:TAsmSectionOrder):string;virtual;abstract;
        function  sectiontype2options(atype:TAsmSectiontype):TObjSectionOptions;virtual;
-       function  sectiontype2align(atype:TAsmSectiontype):shortint;virtual;
+       function  sectiontype2align(atype:TAsmSectiontype):longint;virtual;
        function  createsection(atype:TAsmSectionType;const aname:string='';aorder:TAsmSectionOrder=secorder_default):TObjSection;virtual;
-       function  createsection(const aname:string;aalign:shortint;aoptions:TObjSectionOptions;DiscardDuplicate:boolean=true):TObjSection;virtual;
+       function  createsection(const aname:string;aalign:longint;aoptions:TObjSectionOptions;DiscardDuplicate:boolean=true):TObjSection;virtual;
        function  createsectiongroup(const aname:string):TObjSectionGroup;
        procedure CreateDebugSections;virtual;
        function  findsection(const aname:string):TObjSection;
@@ -365,7 +385,7 @@ interface
        procedure ResetCachedAsmSymbols;
        { Allocation }
        procedure alloc(len:aword);
-       procedure allocalign(len:shortint);
+       procedure allocalign(len:longint);
        procedure writebytes(const Data;len:aword);
        procedure writeReloc(Data:TRelocDataInt;len:aword;p:TObjSymbol;Reloctype:TObjRelocationType);virtual;abstract;
        procedure beforealloc;virtual;
@@ -487,7 +507,7 @@ interface
         Size,
         DataPos,
         MemPos     : qword;
-        SecAlign   : shortint;
+        SecAlign   : longint;
         Disabled   : boolean;
         SecOptions : TObjSectionOptions;
         constructor create(AList:TFPHashObjectList;const AName:string);virtual;
@@ -679,7 +699,7 @@ implementation
 
     uses
       SysUtils,
-      globals,verbose,fmodule,ogmap;
+      globals,verbose,ogmap;
 
     const
       SectionDataMaxGrow = 4096;
@@ -881,7 +901,7 @@ implementation
                               TObjSection
 ****************************************************************************}
 
-    constructor TObjSection.create(AList:TFPHashObjectList;const Aname:string;Aalign:shortint;Aoptions:TObjSectionOptions);
+    constructor TObjSection.create(AList:TFPHashObjectList;const Aname:string;Aalign:longint;Aoptions:TObjSectionOptions);
       begin
         inherited Create(AList,Aname);
         { Data }
@@ -1217,7 +1237,7 @@ implementation
       end;
 
 
-    function TObjData.sectiontype2align(atype:TAsmSectiontype):shortint;
+    function TObjData.sectiontype2align(atype:TAsmSectiontype):longint;
       begin
         case atype of
           sec_stabstr,sec_debug_info,sec_debug_line,sec_debug_abbrev,sec_debug_aranges,sec_debug_ranges:
@@ -1246,7 +1266,7 @@ implementation
       end;
 
 
-    function TObjData.createsection(const aname:string;aalign:shortint;aoptions:TObjSectionOptions;DiscardDuplicate:boolean):TObjSection;
+    function TObjData.createsection(const aname:string;aalign:longint;aoptions:TObjSectionOptions;DiscardDuplicate:boolean):TObjSection;
       begin
         if DiscardDuplicate then
           result:=TObjSection(FObjSectionList.Find(aname))
@@ -1395,7 +1415,7 @@ implementation
       end;
 
 
-    procedure TObjData.allocalign(len:shortint);
+    procedure TObjData.allocalign(len:longint);
       begin
         if not assigned(CurrObjSec) then
           internalerror(200402253);
@@ -2493,7 +2513,44 @@ implementation
                         exesym.State:=symstate_defined;
                       end
                     else
-                      Comment(V_Error,'Multiple defined symbol '+objsym.name);
+                      if (oso_comdat in exesym.ObjSymbol.objsection.SecOptions) and
+                         (oso_comdat in objsym.objsection.SecOptions) then
+                        begin
+                          if exesym.ObjSymbol.objsection.ComdatSelection=objsym.objsection.ComdatSelection then
+                            begin
+                              case objsym.objsection.ComdatSelection of
+                                oscs_none:
+                                  Message1(link_e_duplicate_symbol,objsym.name);
+                                oscs_any:
+                                  Message1(link_d_comdat_discard_any,objsym.name);
+                                oscs_same_size:
+                                  if exesym.ObjSymbol.size<>objsym.size then
+                                    Message1(link_e_comdat_size_differs,objsym.name)
+                                  else
+                                    Message1(link_d_comdat_discard_size,objsym.name);
+                                oscs_exact_match:
+                                  if (exesym.ObjSymbol.size<>objsym.size) and not exesym.ObjSymbol.objsection.Data.equal(objsym.objsection.Data) then
+                                    Message1(link_e_comdat_content_differs,objsym.name)
+                                  else
+                                    Message1(link_d_comdat_discard_content,objsym.name);
+                                oscs_associative:
+                                  { this is handled in a different way }
+                                  Message1(link_e_duplicate_symbol,objsym.name);
+                                oscs_largest:
+                                  if objsym.size>exesym.ObjSymbol.size then
+                                    begin
+                                      Message1(link_d_comdat_replace_size,objsym.name);
+                                      exesym.ObjSymbol.exesymbol:=nil;
+                                      exesym.ObjSymbol:=objsym;
+                                    end;
+                              end;
+                            end
+                          else
+                            Message1(link_e_comdat_selection_differs,objsym.name);
+                        end
+                      else
+                        { specific error if ComDat flags are different? }
+                        Message1(link_e_duplicate_symbol,objsym.name);
                   end;
                 AB_EXTERNAL :
                   begin

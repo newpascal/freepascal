@@ -43,11 +43,11 @@ implementation
     uses
       globtype,systems,
       cutils,verbose,globals,
-      symconst,symtype,symbase,symsym,symcpu,symtable,defutil,paramgr,parabase,
+      symconst,symbase,symsym,symcpu,symtable,defutil,paramgr,parabase,
       cgbase,pass_2,
       cpuinfo,cpubase,aasmbase,aasmtai,aasmdata,aasmcpu,
       nmem,nld,ncnv,
-      ncgutil,cgutils,cgobj,tgobj,regvars,rgobj,rgcpu,
+      ncgutil,cgutils,cgobj,tgobj,rgobj,rgcpu,
       cg64f32,cgcpu,cpupi,procinfo;
 
     procedure tppccallnode.gen_syscall_para(para: tcallparanode);
@@ -83,45 +83,23 @@ implementation
 
       var
         tmpref: treference;
-        libparaloc: pcgparalocation;
-        hsym: tsym;
       begin
         case target_info.system of
           system_powerpc_amiga:
             begin
               { one syscall convention for AmigaOS/PowerPC
-                which is very similar to basesysv on MorphOS }
-              reference_reset_base(tmpref,NR_R3,tprocdef(procdefinition).extnumber,sizeof(pint));
+                which is very similar to basesysv (a.k.a basefirst) on MorphOS }
+              reference_reset_base(tmpref,NR_R3,tprocdef(procdefinition).extnumber,ctempposinvalid,sizeof(pint),[]);
               do_call_ref(tmpref);
             end;
           system_powerpc_morphos:
             begin
               { all conventions but legacy }
-              if ([po_syscall_basesysv,po_syscall_sysv,
-                   po_syscall_sysvbase,po_syscall_r12base] * tprocdef(procdefinition).procoptions) <> [] then
+              if ([po_syscall_basefirst,po_syscall_basenone,
+                   po_syscall_baselast,po_syscall_basereg] * tprocdef(procdefinition).procoptions) <> [] then
                 begin
                   cg.getcpuregister(current_asmdata.CurrAsmList,NR_R12);
-
-                  hsym:=tsym(procdefinition.parast.Find('syscalllib'));
-                  if not assigned(hsym) then
-                    internalerror(2016090501);
-                  libparaloc:=tparavarsym(hsym).paraloc[callerside].location;
-                  if not assigned(libparaloc) then
-                    internalerror(2016090502);
-
-                  case libparaloc^.loc of
-                    LOC_REGISTER:
-                      reference_reset_base(tmpref,libparaloc^.register,-tprocdef(procdefinition).extnumber,sizeof(pint));
-                    LOC_REFERENCE:
-                      begin
-                        { this can happen for sysvbase; if we run out of regs, the libbase will be passed on the stack }
-                        reference_reset_base(tmpref,libparaloc^.reference.index,libparaloc^.reference.offset,sizeof(pint));
-                        cg.a_load_ref_reg(current_asmdata.CurrAsmList,OS_ADDR,OS_ADDR,tmpref,NR_R12);
-                        reference_reset_base(tmpref,NR_R12,-tprocdef(procdefinition).extnumber,sizeof(pint));
-                      end;
-                    else
-                      internalerror(2016090202);
-                  end;
+                  get_syscall_call_ref(tmpref,NR_R12);
 
                   do_call_ref(tmpref);
                   cg.ungetcpuregister(current_asmdata.CurrAsmList,NR_R12);
@@ -132,7 +110,7 @@ implementation
 
                   { R3 must contain the call offset }
                   current_asmdata.CurrAsmList.concat(taicpu.op_reg_const(A_LI,NR_R3,-tprocdef(procdefinition).extnumber));
-                  reference_reset_base(tmpref,NR_R2,100,4); { 100 ($64) is EmulDirectCallOS offset }
+                  reference_reset_base(tmpref,NR_R2,100,ctempposinvalid,4,[]); { 100 ($64) is EmulDirectCallOS offset }
 
                   do_call_ref(tmpref);
                   cg.ungetcpuregister(current_asmdata.CurrAsmList,NR_R3);

@@ -35,6 +35,7 @@ unit cpupara;
        tcpuparamanager = class(tparamanager)
           function get_volatile_registers_int(calloption : tproccalloption):tcpuregisterset;override;
           function get_volatile_registers_fpu(calloption : tproccalloption):tcpuregisterset;override;
+          function get_saved_registers_int(calloption : tproccalloption):tcpuregisterarray;override;
           function push_addr_param(varspez:tvarspez;def : tdef;calloption : tproccalloption) : boolean;override;
 
           procedure getintparaloc(list: TAsmList; pd : tabstractprocdef; nr : longint; var cgpara : tcgpara);override;
@@ -75,6 +76,18 @@ unit cpupara;
           else
             internalerror(2003091401);
         end;
+      end;
+
+
+    function tcpuparamanager.get_saved_registers_int(calloption : tproccalloption):tcpuregisterarray;
+      const
+        saved_regs : array[0..18] of tsuperregister = (
+          RS_R13,RS_R14,RS_R15,RS_R16,RS_R17,RS_R18,RS_R19,
+          RS_R20,RS_R21,RS_R22,RS_R23,RS_R24,RS_R25,RS_R26,RS_R27,RS_R28,RS_R29,
+          RS_R30,RS_R31
+        );
+      begin
+        result:=saved_regs;
       end;
 
 
@@ -220,7 +233,7 @@ unit cpupara;
               not(target_info.abi in [abi_powerpc_aix,abi_powerpc_darwin]) or
               ((varspez = vs_const) and
                ((calloption = pocall_mwpascal) or
-                (not (calloption in [pocall_cdecl,pocall_cppdecl]) and
+                (not (calloption in cdecl_pocalls) and
                  (def.size > 8)
                 )
                )
@@ -584,7 +597,7 @@ unit cpupara;
                            { create_paraloc_info_intern might be also called when being outside of
                              code generation so current_procinfo might be not set }
                            if assigned(current_procinfo) then
-                             tppcprocinfo(current_procinfo).needs_frame_pointer := true;
+                             tcpuprocinfo(current_procinfo).needs_frame_pointer := true;
                          end;
 
                        if not((target_info.system in systems_aix) and
@@ -687,9 +700,9 @@ unit cpupara;
               { convert d0-d7/a0-a6 virtual 68k reg patterns into offsets }
               if length(s) = 2 then
                 begin
-                  if (s[1] = 'D') and (s[2] in ['0'..'7']) then
+                  if (lowercase(s[1]) = 'd') and (s[2] in ['0'..'7']) then
                     offset:=(ord(s[2]) - ord('0')) * sizeof(pint)
-                  else if (s[1] = 'A') and (s[2] in ['0'..'6']) then
+                  else if (lowercase(s[1]) = 'a') and (s[2] in ['0'..'6']) then
                     offset:=(ord(s[2]) - ord('0') + 8) * sizeof(pint);
 
                   if offset < 0 then
@@ -699,9 +712,9 @@ unit cpupara;
                   paraloc^.reference.index:=newreg(R_INTREGISTER,RS_R2,R_SUBWHOLE);
                   paraloc^.reference.offset:=offset;
                 end
-              { 'R12' is special, used internally to support r12base and sysv
+              { 'R12' is special, used internally to support regbase and nobase
                 calling convention }
-              else if s='R12' then
+              else if lowercase(s)='r12' then
                 begin
                   paraloc^.loc:=LOC_REGISTER;
                   paraloc^.register:=NR_R12;

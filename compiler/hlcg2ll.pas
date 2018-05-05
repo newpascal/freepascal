@@ -34,10 +34,10 @@ unit hlcg2ll;
   interface
 
     uses
-       cclasses,globtype,constexp,
+       globtype,constexp,
        cpubase,cgbase,cgutils,parabase,
        aasmbase,aasmtai,aasmdata,aasmcpu,
-       symconst,symtype,symdef,rgobj,
+       symconst,symtype,symdef,
        node,hlcgobj
        ;
 
@@ -329,9 +329,9 @@ unit hlcg2ll;
 implementation
 
     uses
-       globals,options,systems,
-       verbose,defutil,paramgr,symsym,
-       cgobj,tgobj,cutils,procinfo,
+       globals,systems,
+       verbose,defutil,
+       cgobj,tgobj,cutils,
        ncgutil;
 
   { thlcg2ll }
@@ -1216,7 +1216,7 @@ implementation
               record "size" parameters }
             tg.gethltemp(list,size,size.size,tt_normal,r);
             cg.a_loadfpu_reg_ref(list,l.size,l.size,l.register,r);
-            location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment);
+            location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment,[]);
             l.reference:=r;
           end;
         LOC_MMREGISTER,
@@ -1224,7 +1224,7 @@ implementation
           begin
             tg.gethltemp(list,size,size.size,tt_normal,r);
             cg.a_loadmm_reg_ref(list,l.size,l.size,l.register,r,mms_movescalar);
-            location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment);
+            location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment,[]);
             l.reference:=r;
           end;
         LOC_CONSTANT,
@@ -1242,7 +1242,7 @@ implementation
             else
 {$endif cpu64bitalu}
               a_load_loc_ref(list,size,size,l,r);
-            location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment);
+            location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment,[]);
             l.reference:=r;
           end;
         else
@@ -1264,7 +1264,7 @@ implementation
             begin
               tg.GetTemp(list,tcgsize2size[l.size],tcgsize2size[l.size],tt_normal,href);
               cg.a_loadfpu_reg_ref(list,l.size,l.size,l.register,href);
-              location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment);
+              location_reset_ref(l,LOC_REFERENCE,l.size,size.alignment,[]);
               l.reference:=href;
             end;
 {$ifndef cpu64bitalu}
@@ -1538,6 +1538,8 @@ implementation
               result:=OS_F32;
             OS_64:
               result:=OS_F64;
+            OS_128:
+              result:=OS_M128;
           end;
         end;
     end;

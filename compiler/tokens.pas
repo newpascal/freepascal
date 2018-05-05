@@ -57,9 +57,9 @@ type
     _OP_EXPLICIT,
     _OP_ENUMERATOR,
     _OP_INITIALIZE,
-    _OP_FINALIZE,    
+    _OP_FINALIZE,
+    _OP_ADDREF,
     _OP_COPY,
-    _OP_CLONE,
     _OP_INC,
     _OP_DEC,
     { special chars }
@@ -158,7 +158,6 @@ type
     _BREAK,
     _CDECL,
     _CLASS,
-    _CLONE,
     _CONST,
     _EQUAL,
     _FAR16,
@@ -170,6 +169,7 @@ type
     _UNTIL,
     _WHILE,
     _WRITE,
+    _ADDREF,
     _DISPID,
     _DIVIDE,
     _DOWNTO,
@@ -195,10 +195,10 @@ type
     _SYSTEM,
     _WINAPI,
     _ASMNAME,
+    _BASEREG,
     _CPPDECL,
     _DEFAULT,
     _DYNAMIC,
-    _EAXBASE,
     _EXPORTS,
     _FINALLY,
     _FORWARD,
@@ -219,6 +219,8 @@ type
     _VIRTUAL,
     _ABSOLUTE,
     _ABSTRACT,
+    _BASELAST,
+    _BASENONE,
     _BASESYSV,
     _CONSTREF,
     _CONTAINS,
@@ -252,6 +254,7 @@ type
     _SUBTRACT,
     _SYSVBASE,
     _ASSEMBLER,
+    _BASEFIRST,
     _BITPACKED,
     _BITWISEOR,
     _HARDFLOAT,
@@ -269,7 +272,6 @@ type
     _PUBLISHED,
     _REFERENCE,
     _SOFTFLOAT,
-    _STACKBASE,
     _THREADVAR,
     _WRITEONLY,
     _BITWISEAND,
@@ -287,6 +289,7 @@ type
     _OPENSTRING,
     _RIGHTSHIFT,
     _SPECIALIZE,
+    _VECTORCALL,
     _CONSTRUCTOR,
     _GREATERTHAN,
     _INTERNCONST,
@@ -295,6 +298,7 @@ type
     _COMPILERPROC,
     _EXPERIMENTAL,
     _FINALIZATION,
+    _MS_ABI_CDECL,
     _NOSTACKFRAME,
     _OBJCCATEGORY,
     _OBJCPROTOCOL,
@@ -303,8 +307,11 @@ type
     _UNIMPLEMENTED,
     _IMPLEMENTATION,
     _INITIALIZATION,
+    _MS_ABI_DEFAULT,
     _RESOURCESTRING,
+    _SYSV_ABI_CDECL,
     _LESSTHANOREQUAL,
+    _SYSV_ABI_DEFAULT,
     _GREATERTHANOREQUAL
   );
 
@@ -329,7 +336,7 @@ const
   last_overloaded  = _OP_DEC;
   last_operator = _GENERICSPECIALTOKEN;
   first_managment_operator = _OP_INITIALIZE;
-  last_managment_operator = _OP_CLONE;
+  last_managment_operator = _OP_COPY;
 
   highest_precedence = oppower;
 
@@ -391,8 +398,8 @@ const
       (str:'enumerator'    ;special:true ;keyword:[m_none];op:NOTOKEN),
       (str:'initialize'    ;special:true ;keyword:[m_none];op:NOTOKEN),
       (str:'finalize'      ;special:true ;keyword:[m_none];op:NOTOKEN),
+      (str:'addref'        ;special:true ;keyword:[m_none];op:NOTOKEN),
       (str:'copy'          ;special:true ;keyword:[m_none];op:NOTOKEN),
-      (str:'clone'          ;special:true ;keyword:[m_none];op:NOTOKEN),
       (str:'inc'           ;special:true ;keyword:[m_none];op:NOTOKEN),
       (str:'dec'           ;special:true ;keyword:[m_none];op:NOTOKEN),
     { Special chars }
@@ -491,7 +498,6 @@ const
       (str:'BREAK'         ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'CDECL'         ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'CLASS'         ;special:false;keyword:[m_class];op:NOTOKEN),
-      (str:'CLONE'        ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'CONST'         ;special:false;keyword:alllanguagemodes;op:NOTOKEN),
       (str:'EQUAL'         ;special:false;keyword:[m_none];op:NOTOKEN), { delphi operator name }
       (str:'FAR16'         ;special:false;keyword:[m_none];op:NOTOKEN),
@@ -503,6 +509,7 @@ const
       (str:'UNTIL'         ;special:false;keyword:alllanguagemodes;op:NOTOKEN),
       (str:'WHILE'         ;special:false;keyword:alllanguagemodes;op:NOTOKEN),
       (str:'WRITE'         ;special:false;keyword:[m_none];op:NOTOKEN),
+      (str:'ADDREF'        ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'DISPID'        ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'DIVIDE'        ;special:false;keyword:[m_none];op:NOTOKEN), { delphi operator name }
       (str:'DOWNTO'        ;special:false;keyword:alllanguagemodes;op:NOTOKEN),
@@ -528,10 +535,10 @@ const
       (str:'SYSTEM'        ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'WINAPI'        ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'ASMNAME'       ;special:false;keyword:[m_none];op:NOTOKEN),
+      (str:'BASEREG'       ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on Amiga-likes }
       (str:'CPPDECL'       ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'DEFAULT'       ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'DYNAMIC'       ;special:false;keyword:[m_none];op:NOTOKEN),
-      (str:'EAXBASE'       ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on AROS }
       (str:'EXPORTS'       ;special:false;keyword:alllanguagemodes-[m_iso,m_extpas];op:NOTOKEN),
       (str:'FINALLY'       ;special:false;keyword:[m_except];op:NOTOKEN),
       (str:'FORWARD'       ;special:false;keyword:[m_none];op:NOTOKEN),
@@ -552,6 +559,8 @@ const
       (str:'VIRTUAL'       ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'ABSOLUTE'      ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'ABSTRACT'      ;special:false;keyword:[m_none];op:NOTOKEN),
+      (str:'BASELAST'      ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on Amiga-likes }
+      (str:'BASENONE'      ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on Amiga-likes }
       (str:'BASESYSV'      ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on MorphOS }
       (str:'CONSTREF'      ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'CONTAINS'      ;special:false;keyword:[m_none];op:NOTOKEN),
@@ -585,6 +594,7 @@ const
       (str:'SUBTRACT'      ;special:false;keyword:[m_none];op:NOTOKEN), { delphi operator name }
       (str:'SYSVBASE'      ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on MorphOS }
       (str:'ASSEMBLER'     ;special:false;keyword:[m_none];op:NOTOKEN),
+      (str:'BASEFIRST'     ;special:false;keyword:[m_none];op:NOTOKEN),   { Syscall variation on Amiga-likes }
       (str:'BITPACKED'     ;special:false;keyword:alllanguagemodes-[m_iso,m_extpas];op:NOTOKEN),
       (str:'BITWISEOR'     ;special:false;keyword:[m_none];op:NOTOKEN), { delphi operator name }
       (str:'HARDFLOAT'     ;special:false;keyword:[m_none];op:NOTOKEN),
@@ -602,7 +612,6 @@ const
       (str:'PUBLISHED'     ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'REFERENCE'     ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'SOFTFLOAT'     ;special:false;keyword:[m_none];op:NOTOKEN),
-      (str:'STACKBASE'     ;special:false;keyword:[m_none];op:NOTOKEN), { Syscall variation on AROS }
       (str:'THREADVAR'     ;special:false;keyword:alllanguagemodes-[m_iso,m_extpas];op:NOTOKEN),
       (str:'WRITEONLY'     ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'BITWISEAND'    ;special:false;keyword:[m_none];op:NOTOKEN), { delphi operator name }
@@ -620,6 +629,7 @@ const
       (str:'OPENSTRING'    ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'RIGHTSHIFT'    ;special:false;keyword:[m_none];op:NOTOKEN), { delphi operator name }
       (str:'SPECIALIZE'    ;special:false;keyword:[m_none];op:NOTOKEN),
+      (str:'VECTORCALL'    ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'CONSTRUCTOR'   ;special:false;keyword:alllanguagemodes-[m_iso,m_extpas];op:NOTOKEN),
       (str:'GREATERTHAN'   ;special:false;keyword:[m_none];op:NOTOKEN), { delphi operator name }
       (str:'INTERNCONST'   ;special:false;keyword:[m_none];op:NOTOKEN),
@@ -628,6 +638,7 @@ const
       (str:'COMPILERPROC'  ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'EXPERIMENTAL'  ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'FINALIZATION'  ;special:false;keyword:[m_initfinal];op:NOTOKEN),
+      (str:'MS_ABI_CDECL'  ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'NOSTACKFRAME'  ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'OBJCCATEGORY'  ;special:false;keyword:[m_objectivec1];op:NOTOKEN), { Objective-C category }
       (str:'OBJCPROTOCOL'  ;special:false;keyword:[m_objectivec1];op:NOTOKEN), { Objective-C protocol }
@@ -636,8 +647,11 @@ const
       (str:'UNIMPLEMENTED' ;special:false;keyword:[m_none];op:NOTOKEN),
       (str:'IMPLEMENTATION';special:false;keyword:alllanguagemodes-[m_iso,m_extpas];op:NOTOKEN),
       (str:'INITIALIZATION';special:false;keyword:[m_initfinal];op:NOTOKEN),
+      (str:'MS_ABI_DEFAULT';special:false;keyword:[m_none];op:NOTOKEN),
       (str:'RESOURCESTRING';special:false;keyword:alllanguagemodes-[m_iso,m_extpas];op:NOTOKEN),
+      (str:'SYSV_ABI_CDECL';special:false;keyword:[m_none];op:NOTOKEN),
       (str:'LESSTHANOREQUAL';special:false;keyword:[m_none];op:NOTOKEN),    { delphi operator name }
+      (str:'SYSV_ABI_DEFAULT';special:false;keyword:[m_none];op:NOTOKEN),
       (str:'GREATERTHANOREQUAL';special:false;keyword:[m_none];op:NOTOKEN)  { delphi operator name }
   );
 

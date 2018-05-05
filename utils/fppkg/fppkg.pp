@@ -24,6 +24,7 @@ uses
 {$if (defined(unix) and not defined(android)) or defined(windows)}
   ,pkgwget
   ,pkglnet
+  ,pkgfphttp
 {$endif}
   ;
 
@@ -287,6 +288,7 @@ var
   SL     : TStringList;
   Repo: TFPRepository;
   InstPackages: TFPCurrentDirectoryPackagesStructure;
+  ArchivePackages: TFPArchiveFilenamePackagesStructure;
 begin
   OldCurrDir:=GetCurrentDir;
   Try
@@ -332,7 +334,7 @@ begin
     if not FileExists(GFPpkg.Options.GlobalSection.LocalPackagesFile) then
       begin
         try
-          pkghandler.ExecuteAction('','update');
+          pkghandler.ExecuteAction('','update', GFPpkg);
         except
           on E: Exception do
             pkgglobals.Log(llWarning,E.Message);
@@ -370,11 +372,13 @@ begin
             Repo.RepositoryType := fprtAvailable;
             Repo.RepositoryName := 'CurrentDirectory';
             Repo.Description := 'Package in current directory';
-            InstPackages := TFPCurrentDirectoryPackagesStructure.Create(GFPpkg, OldCurrDir, GFPpkg.CompilerOptions);
+            InstPackages := TFPCurrentDirectoryPackagesStructure.Create(GFPpkg);
+            InstPackages.InitializeWithOptions(nil, GFPpkg.Options, GFPpkg.CompilerOptions);
+            InstPackages.Path := OldCurrDir;
             InstPackages.AddPackagesToRepository(Repo);
             Repo.DefaultPackagesStructure := InstPackages;
           end;
-        pkghandler.ExecuteAction(CurrentDirPackageName,ParaAction);
+        pkghandler.ExecuteAction(CurrentDirPackageName,ParaAction,GFPpkg);
       end
     else
       begin
@@ -383,19 +387,31 @@ begin
           begin
             if sametext(ExtractFileExt(ParaPackages[i]),'.zip') and FileExists(ParaPackages[i]) then
               begin
-                pkghandler.ExecuteAction(CmdLinePackageName,ParaAction);
+                Repo := TFPRepository.Create(GFPpkg);
+                GFPpkg.RepositoryList.Add(Repo);
+                Repo.RepositoryType := fprtAvailable;
+                Repo.RepositoryName := 'ArchiveFile';
+                Repo.Description := 'Package in archive-file';
+                ArchivePackages := TFPArchiveFilenamePackagesStructure.Create(GFPpkg);
+                ArchivePackages.InitializeWithOptions(nil, GFPpkg.Options, GFPpkg.CompilerOptions);
+                ArchivePackages.ArchiveFileName := ParaPackages[i];
+                ArchivePackages.AddPackagesToRepository(Repo);
+                Repo.DefaultPackagesStructure := ArchivePackages;
+
+                pkgglobals.Log(llDebug,SLogCommandLineAction,['['+CmdLinePackageName+']',ParaAction]);
+                pkghandler.ExecuteAction(CmdLinePackageName,ParaAction,GFPpkg);
               end
             else
               begin
                 pkgglobals.Log(llDebug,SLogCommandLineAction,['['+ParaPackages[i]+']',ParaAction]);
-                pkghandler.ExecuteAction(ParaPackages[i],ParaAction);
+                pkghandler.ExecuteAction(ParaPackages[i],ParaAction,GFPpkg);
               end;
           end;
       end;
 
     // Recompile all packages dependent on this package
     if (ParaAction='install') and not GFPpkg.Options.CommandLineSection.SkipFixBrokenAfterInstall then
-      pkghandler.ExecuteAction('','fixbroken');
+      pkghandler.ExecuteAction('','fixbroken',GFPpkg);
 
     Terminate;
 

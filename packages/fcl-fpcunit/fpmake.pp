@@ -30,7 +30,7 @@ begin
     P.Email := '';
     P.Description := 'Unit testing system inspired by JUnit of Free Component Libraries (FCL), FPC''s OOP library.';
     P.NeedLibC:= false;
-    P.OSes := P.OSes - [embedded,nativent,msdos,win16,atari];
+    P.OSes := P.OSes - [embedded,nativent,msdos,win16,macos,palmos];
 
     P.SourcePath.Add('src');
     P.IncludePath.Add('src');
@@ -111,6 +111,13 @@ begin
           AddUnit('testutils');
           AddUnit('xmltestreport');
           AddUnit('latextestreport');
+          AddUnit('plaintestreport');
+        end;
+    T:=P.Targets.AddUnit('simpletestrunner.pas');
+      with T.Dependencies do
+        begin
+          AddUnit('fpcunit');
+          AddUnit('fpcunitreport');
           AddUnit('plaintestreport');
         end;
 

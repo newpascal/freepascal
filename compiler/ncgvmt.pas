@@ -108,18 +108,18 @@ implementation
 
     uses
       cutils,cclasses,
+      fpccrc,
       globtype,globals,verbose,constexp,
       systems,fmodule,
-      symsym,symtable,symcreat,defutil,
+      symsym,symtable,symcreat,
 {$ifdef cpuhighleveltarget}
       pparautl,
 {$endif cpuhighleveltarget}
       aasmtai,
       wpobase,
-      nobj,
       cgbase,parabase,paramgr,
 {$ifndef cpuhighleveltarget}
-      cgobj,cgcpu,hlcgobj,hlcgcpu,
+      hlcgobj,hlcgcpu,dbgbase,
 {$endif not cpuhighleveltarget}
       ncgrtti;
 
@@ -244,7 +244,7 @@ implementation
       begin
          if assigned(p^.l) then
            writenames(tcb,p^.l);
-         tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata_norel,'',datatcb,p^.nl);
+         tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,_class.vmt_mangledname,datatcb,p^.nl);
          len:=length(p^.data.messageinf.str^);
          datatcb.maybe_begin_aggregate(carraydef.getreusable(cansichartype,len+1));
          datatcb.emit_tai(tai_const.create_8bit(len),cansichartype);
@@ -292,7 +292,7 @@ implementation
            writenames(tcb,root);
 
          { now start writing the message string table }
-         tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,'',datatcb,lab);
+         tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,_class.vmt_mangledname,datatcb,lab);
          {
            TStringMessageTable = record
               count : longint;
@@ -363,7 +363,7 @@ implementation
                 msgs : array[0..0] of TMsgIntTable;
              end;
          }
-         tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,'',datatcb,lab);
+         tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,_class.vmt_mangledname,datatcb,lab);
          gettabledef(itp_vmt_msgint_table_entries,s32inttype,msginttabledef,count,0,msgintdef,msgintarrdef);
          datatcb.maybe_begin_aggregate(msgintdef);
          datatcb.emit_tai(Tai_const.Create_32bit(count),s32inttype);
@@ -509,7 +509,7 @@ implementation
                (pd.visibility=vis_published) then
               begin
                 { l: name_of_method }
-                lists^.pubmethodstcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata_norel,'',datatcb,l);
+                lists^.pubmethodstcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,_class.vmt_mangledname,datatcb,l);
                 namedef:=datatcb.emit_shortstring_const(tsym(p).realname);
                 lists^.pubmethodstcb.finish_internal_data_builder(datatcb,l,namedef,sizeof(pint));
                 { the tmethodnamerec }
@@ -556,7 +556,7 @@ implementation
                     entries : packed array[0..0] of tmethodnamerec;
                   end;
                }
-              tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,'',lists.pubmethodstcb,lab);
+              tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,_class.vmt_mangledname,lists.pubmethodstcb,lab);
               gettabledef(itp_vmt_intern_tmethodnametable,u32inttype,lists.methodnamerec,count,1,pubmethodsdef,pubmethodsarraydef);
               { begin tmethodnametable }
               lists.pubmethodstcb.maybe_begin_aggregate(pubmethodsdef);
@@ -620,7 +620,7 @@ implementation
               packrecords:=1;
 
             { generate the class table }
-            tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,'',datatcb,classtable);
+            tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,_class.vmt_mangledname,datatcb,classtable);
             datatcb.begin_anonymous_record('$fpc_intern_classtable_'+tostr(classtablelist.Count-1),
               packrecords,1,
               targetinfos[target_info.system]^.alignment.recordalignmin,
@@ -633,7 +633,7 @@ implementation
                 datatcb.queue_init(voidpointertype);
                 { reference to the vmt }
                 datatcb.queue_emit_asmsym(
-                  current_asmdata.RefAsmSymbol(classdef.vmt_mangledname,AT_DATA),
+                  current_asmdata.RefAsmSymbol(classdef.vmt_mangledname,AT_DATA,true),
                   tfieldvarsym(classdef.vmt_field).vardef);
               end;
             classtabledef:=datatcb.end_anonymous_record;
@@ -651,7 +651,7 @@ implementation
                 Fields: array[0..0] of TFieldInfo
               end;
             }
-            tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,'',datatcb,lab);
+            tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,_class.vmt_mangledname,datatcb,lab);
             { can't easily specify a name here for reuse of the constructed def,
               since it's full of variable length shortstrings (-> all of those
               lengths and their order would have to incorporated in the name,
@@ -709,6 +709,25 @@ implementation
            Interface tables
 **************************************}
 
+    function CreateWrapperName(_class : tobjectdef;AImplIntf : TImplementedInterface;i : longint;pd : tprocdef) : string;
+      var
+        tmpstr : AnsiString;
+        hs : string;
+        crc : DWord;
+      begin
+        tmpstr:=_class.objname^+'_$_'+AImplIntf.IntfDef.objname^+'_$_'+tostr(i)+'_$_'+pd.mangledname;
+        if length(tmpstr)>100 then
+          begin
+            crc:=0;
+            crc:=UpdateCrc32(crc,tmpstr[101],length(tmpstr)-100);
+            hs:=copy(tmpstr,1,100)+'$CRC'+hexstr(crc,8);
+          end
+        else
+          hs:=tmpstr;
+        result:=make_mangledname('WRPR',_class.owner,hs);
+      end;
+
+
     procedure TVMTWriter.intf_create_vtbl(tcb: ttai_typedconstbuilder; AImplIntf: TImplementedInterface; intfindex: longint);
       var
         datatcb : ttai_typedconstbuilder;
@@ -725,8 +744,7 @@ implementation
             for i:=0 to AImplIntf.procdefs.count-1 do
               begin
                 pd:=tprocdef(AImplIntf.procdefs[i]);
-                hs:=make_mangledname('WRPR',_class.owner,_class.objname^+'_$_'+AImplIntf.IntfDef.objname^+'_$_'+
-                                     tostr(i)+'_$_'+pd.mangledname);
+                hs:=CreateWrapperName(_Class,AImplIntf,i,pd);
                 { create reference }
                 datatcb.emit_tai(Tai_const.Createname(hs,AT_FUNCTION,0),cprocvardef.getreusableprocaddr(pd));
               end;
@@ -838,7 +856,7 @@ implementation
               fintfvtablelabels[i]:=fintfvtablelabels[_class.ImplementedInterfaces.IndexOf(ImplIntf.VtblImplIntf)];
           end;
 
-        tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,'',datatcb,lab);
+        tcb.start_internal_data_builder(current_asmdata.AsmLists[al_const],sec_rodata,_class.vmt_mangledname,datatcb,lab);
         datatcb.begin_anonymous_record('',default_settings.packrecords,1,
           targetinfos[target_info.system]^.alignment.recordalignmin,
           targetinfos[target_info.system]^.alignment.maxCrecordalign);
@@ -886,7 +904,7 @@ implementation
         fields.add(countdef);
         if count>0 then
           begin
-            arrdef:=carraydef.create(0,count-1,ptruinttype);
+            arrdef:=carraydef.create(0,count-1,sizeuinttype);
             arrdef.elementdef:=elementdef;
             fields.add(arrdef);
           end
@@ -931,9 +949,9 @@ implementation
       if assigned(_class.iidguid) then
         begin
           s:=make_mangledname('IID',_class.owner,_class.objname^);
-          tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
+          tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable,tcalo_data_force_indirect]);
           tcb.emit_guid_const(_class.iidguid^);
-          sym:=current_asmdata.DefineAsmSymbol(s,AB_GLOBAL,AT_DATA_FORCEINDIRECT,rec_tguid);
+          sym:=current_asmdata.DefineAsmSymbol(s,AB_GLOBAL,AT_DATA_NOINDIRECT,rec_tguid);
           list.concatlist(tcb.get_final_asmlist(
             sym,
             rec_tguid,
@@ -944,9 +962,9 @@ implementation
           current_module.add_public_asmsym(sym);
         end;
       s:=make_mangledname('IIDSTR',_class.owner,_class.objname^);
-      tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
+      tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable,tcalo_data_force_indirect]);
       def:=tcb.emit_shortstring_const(_class.iidstr^);
-      sym:=current_asmdata.DefineAsmSymbol(s,AB_GLOBAL,AT_DATA_FORCEINDIRECT,def);
+      sym:=current_asmdata.DefineAsmSymbol(s,AB_GLOBAL,AT_DATA_NOINDIRECT,def);
       list.concatlist(tcb.get_final_asmlist(
         sym,
         def,
@@ -1106,14 +1124,14 @@ implementation
          intmessagetabledef:=nil;
 
          { generate VMT }
-         tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable]);
+         tcb:=ctai_typedconstbuilder.create([tcalo_make_dead_strippable,tcalo_data_force_indirect]);
 
          { write tables for classes, this must be done before the actual
            class is written, because we need the labels defined }
          if is_class(_class) then
           begin
             { write class name }
-            tcb.start_internal_data_builder(current_asmdata.asmlists[al_const],sec_rodata_norel,'',datatcb,classnamelabel);
+            tcb.start_internal_data_builder(current_asmdata.asmlists[al_const],sec_rodata,_class.vmt_mangledname,datatcb,classnamelabel);
             classnamedef:=datatcb.emit_shortstring_const(_class.RttiName);
             tcb.finish_internal_data_builder(datatcb,classnamelabel,classnamedef,sizeof(pint));
 
@@ -1240,7 +1258,7 @@ implementation
 
          tcb.maybe_end_aggregate(vmtdef);
 
-         sym:=current_asmdata.DefineAsmSymbol(_class.vmt_mangledname,AB_GLOBAL,AT_DATA_FORCEINDIRECT,vmtdef);
+         sym:=current_asmdata.DefineAsmSymbol(_class.vmt_mangledname,AB_GLOBAL,AT_DATA_NOINDIRECT,vmtdef);
          current_module.add_public_asmsym(sym);
 
          { concatenate the VMT to the asmlist }
@@ -1273,6 +1291,9 @@ implementation
 {$ifdef cpuhighleveltarget}
         wrapperpd: tprocdef;
         wrapperinfo: pskpara_interface_wrapper;
+{$else}
+       tmplist: tasmlist;
+       oldfileposinfo: tfileposinfo;
 {$endif cpuhighleveltarget}
       begin
         for i:=0 to _class.ImplementedInterfaces.count-1 do
@@ -1290,35 +1311,43 @@ implementation
                     if (po_virtualmethod in pd.procoptions) and
                        not is_objectpascal_helper(tprocdef(pd).struct) then
                       tobjectdef(tprocdef(pd).struct).register_vmt_call(tprocdef(pd).extnumber);
-                    tmps:=make_mangledname('WRPR',_class.owner,_class.objname^+'_$_'+
-                      ImplIntf.IntfDef.objname^+'_$_'+tostr(j)+'_$_'+pd.mangledname);
+                    tmps:=CreateWrapperName(_Class,ImplIntf,j,pd);
 {$ifdef cpuhighleveltarget}
-                    { bare copy so we don't copy the aliasnames }
-                    wrapperpd:=tprocdef(pd.getcopyas(procdef,pc_bareproc));
-                    { set the mangled name to the wrapper name }
-                    wrapperpd.setmangledname(tmps);
-                    { insert the wrapper procdef in the current unit's local
-                      symbol table, but set the owning "struct" to the current
-                      class (so self will have the correct type) }
-                    finish_copied_procdef(wrapperpd,tmps,current_module.localsymtable,_class);
-                    { now insert self/vmt }
-                    insert_self_and_vmt_para(wrapperpd);
-                    { and the function result }
-                    insert_funcret_para(wrapperpd);
-                    { recalculate the parameters now that we've added the above }
-                    wrapperpd.calcparas;
-                    { set the info required to generate the implementation }
-                    wrapperpd.synthetickind:=tsk_interface_wrapper;
                     new(wrapperinfo);
                     wrapperinfo^.pd:=pd;
                     wrapperinfo^.offset:=ImplIntf.ioffset;
-                    wrapperpd.skpara:=wrapperinfo;
+                    { insert the wrapper procdef in the current unit's local
+                      symbol table, but set the owning "struct" to the current
+                      class (so self will have the correct type) }
+                    wrapperpd:=create_procdef_alias(pd,tmps,tmps,
+                      current_module.localsymtable,_class,
+                      tsk_interface_wrapper,wrapperinfo);
+                    include(wrapperpd.procoptions,po_noreturn);
 {$else cpuhighleveltarget}
+                    oldfileposinfo:=current_filepos;
+                    if pd.owner.iscurrentunit then
+                      current_filepos:=pd.fileinfo
+                    else
+                      begin
+                        current_filepos.moduleindex:=current_module.unit_index;
+                        current_filepos.fileindex:=1;
+                        current_filepos.line:=1;
+                        current_filepos.column:=1;
+                      end;
                     { create wrapper code }
-                    new_section(list,sec_code,tmps,target_info.alignment.procalign);
+                    tmplist:=tasmlist.create;
+                    new_section(tmplist,sec_code,tmps,target_info.alignment.procalign);
+                    tmplist.Concat(tai_function_name.create(tmps));
                     hlcg.init_register_allocators;
-                    hlcg.g_intf_wrapper(list,pd,tmps,ImplIntf.ioffset);
+                    hlcg.g_intf_wrapper(tmplist,pd,tmps,ImplIntf.ioffset);
                     hlcg.done_register_allocators;
+                    if ((cs_debuginfo in current_settings.moduleswitches) or
+                       (cs_use_lineinfo in current_settings.globalswitches)) and
+                       (target_dbg.id<>dbg_stabx) then
+                         current_debuginfo.insertlineinfo(tmplist);
+                    list.concatlist(tmplist);
+                    tmplist.Free;
+                    current_filepos:=oldfileposinfo;
 {$endif cpuhighleveltarget}
                   end;
               end;
@@ -1359,7 +1388,7 @@ implementation
                       include(def.defstates,ds_vmt_written);
                     end;
                   if is_class(def) then
-                    gen_intf_wrapper(current_asmdata.asmlists[al_globals],tobjectdef(def));
+                    gen_intf_wrapper(current_asmdata.asmlists[al_procedures],tobjectdef(def));
                 end;
               procdef :
                 begin

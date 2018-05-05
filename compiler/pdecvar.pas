@@ -61,15 +61,12 @@ implementation
        fmodule,htypechk,
        { pass 1 }
        node,pass_1,aasmbase,aasmdata,
-       ncon,nmat,nadd,ncal,nset,ncnv,ninl,nld,nflw,nmem,nutils,
+       ncon,nset,ncnv,nld,nutils,
        { codegen }
-       ncgutil,ngenutil,
+       ngenutil,
        { parser }
        scanner,
-       pbase,pexpr,ptype,ptconst,pdecsub,
-       { link }
-       import
-       ;
+       pbase,pexpr,ptype,ptconst,pdecsub;
 
 
     function read_property_dec(is_classproperty:boolean;astruct:tabstractrecorddef):tpropertysym;
@@ -178,7 +175,7 @@ implementation
                      begin
                        consume(_LECKKLAMMER);
                        repeat
-                         if def.typ=arraydef then
+                         if assigned(def) and (def.typ=arraydef) then
                           begin
                             idx:=0;
                             p:=comp_expr([ef_accept_equal]);
@@ -223,6 +220,15 @@ implementation
                Message(parser_e_ill_property_access_sym);
                result:=false;
              end;
+          end;
+
+          function has_implicit_default(p : tpropertysym) : boolean;
+
+          begin
+             has_implicit_default:=
+               (is_string(p.propdef) or
+               is_real(p.propdef) or
+               is_pointer(p.propdef));
           end;
 
           function allow_default_property(p : tpropertysym) : boolean;
@@ -408,7 +414,8 @@ implementation
                       begin
                         consume(_OF);
                         { define range and type of range }
-                        hdef:=carraydef.create(0,-1,s32inttype);
+                        hdef:=carraydef.create_openarray;
+                        hdef.owner:=astruct.symtable;
                         { define field type }
                         single_type(arraytype,[]);
                         tarraydef(hdef).elementdef:=arraytype;
@@ -501,8 +508,12 @@ implementation
                   message(parser_e_no_property_found_to_override);
                 end;
            end;
+         { ignore is_publishable for interfaces (related to $M+ directive).
+           $M has effect on visibility of default section for classes. 
+           Interface has always only public section (fix for problem in tb0631.pp) }
          if ((p.visibility=vis_published) or is_dispinterface(astruct)) and
-            (not(p.propdef.is_publishable) or (sp_static in p.symoptions)) then
+            ((not(p.propdef.is_publishable) and not is_interface(astruct)) or
+             (sp_static in p.symoptions)) then
            begin
              Message(parser_e_cant_publish_that_property);
              p.visibility:=vis_public;
@@ -654,6 +665,10 @@ implementation
                      end;
                   end;
               end;
+           end;
+         if has_implicit_default(p) then
+           begin
+              p.default:=0;
            end;
          if not is_record(astruct) and try_to_consume(_DEFAULT) then
            begin
@@ -870,6 +885,7 @@ implementation
     procedure read_public_and_external(vs: tabstractvarsym);
     var
       is_dll,
+      is_far,
       is_cdecl,
       is_external_var,
       is_weak_external,
@@ -886,6 +902,7 @@ implementation
         end;
       { defaults }
       is_dll:=false;
+      is_far:=false;
       is_cdecl:=false;
       is_external_var:=false;
       is_public_var:=false;
@@ -921,6 +938,14 @@ implementation
          try_to_consume(_EXTERNAL) then
         begin
           is_external_var:=true;
+          { near/far? }
+          if target_info.system in systems_allow_external_far_var then
+            begin
+              if try_to_consume(_FAR) then
+                is_far:=true
+              else if try_to_consume(_NEAR) then
+                is_far:=false;
+            end;
           if (idtoken<>_NAME) and (token<>_SEMICOLON) then
             begin
               is_dll:=true;
@@ -987,6 +1012,8 @@ implementation
           if vo_is_typed_const in vs.varoptions then
             Message(parser_e_initialized_not_for_external);
           include(vs.varoptions,vo_is_external);
+          if is_far then
+            include(vs.varoptions,vo_is_far);
           if (is_weak_external) then
             begin
               if not(target_info.system in systems_weak_linking) then
@@ -1239,7 +1266,7 @@ implementation
               if (hp.nodetype=loadn) then
                 begin
                   { we should check the result type of loadn }
-                  if not (tloadnode(hp).symtableentry.typ in [fieldvarsym,staticvarsym,localvarsym,paravarsym]) then
+                  if not (tloadnode(hp).symtableentry.typ in [fieldvarsym,staticvarsym,localvarsym,paravarsym,absolutevarsym]) then
                     Message(parser_e_absolute_only_to_var_or_const);
                   abssym:=cabsolutevarsym.create(vs.realname,vs.vardef);
                   abssym.fileinfo:=vs.fileinfo;
@@ -1348,7 +1375,6 @@ implementation
                else
                  begin
                    vs.register_sym;
-                   symtablestack.top.insert(vs);
                    if isgeneric then
                      begin
                        { ensure correct error position }
@@ -1356,7 +1382,9 @@ implementation
                        current_filepos:=tmp_filepos;
                        symtablestack.top.insert(vs);
                        current_filepos:=old_current_filepos;
-                     end;
+                     end
+                   else
+                     symtablestack.top.insert(vs);
                  end;
              until not try_to_consume(_COMMA);
 

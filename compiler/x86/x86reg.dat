@@ -91,7 +91,18 @@ NR_DS,$05000003,ds,%ds,ds,ds,-1,-1,-1,OT_REG_DESS,3
 NR_FS,$05000004,fs,%fs,fs,fs,-1,-1,-1,OT_REG_FSGS,4
 NR_GS,$05000005,gs,%gs,gs,gs,-1,-1,-1,OT_REG_FSGS,5
 
-NR_FLAGS,$05000006,flags,%flags,flags,flags,-1,-1,-1,OT_NONE,0
+NR_FLAGS,$05030006,flags,%flags,flags,flags,-1,-1,-1,OT_NONE,0
+NR_EFLAGS,$05040006,eflags,%eflags,eflags,eflags,-1,-1,-1,OT_NONE,0
+NR_RFLAGS,$05050006,rflags,%rflags,rflags,rflags,-1,-1,-1,OT_NONE,0,64
+NR_CARRYFLAG,$050f0006,carryflag,%carryflag,carryflag,carryflag,-1,-1,-1,OT_NONE,0
+NR_PARITYFLAG,$05100006,parityflag,%parityflag,parityflag,parityflag,-1,-1,-1,OT_NONE,0
+NR_AUXILIARYFLAG,$05110006,auxiliaryflag,%auxiliaryflag,auxiliaryflag,auxiliaryflag,-1,-1,-1,OT_NONE,0
+NR_ZEROFLAG,$05120006,zeroflag,%zeroflag,zeroflag,zeroflag,-1,-1,-1,OT_NONE,0
+NR_SIGNFLAG,$05130006,signflag,%signflag,signflag,signflag,-1,-1,-1,OT_NONE,0
+NR_OVERFLOWFLAG,$05140006,overflowflag,%overflowflag,overflowflag,overflowflag,-1,-1,-1,OT_NONE,0
+NR_INTERRUPTFLAG,$05150006,interruptflag,%interruptflag,interruptflag,interruptflag,-1,-1,-1,OT_NONE,0
+NR_DIRECTIONFLAG,$05160006,directionflag,%directionflag,directionflag,directionflag,-1,-1,-1,OT_NONE,0
+
 ; EIP is needed for DWARF call frame info return address (RA)
 NR_RIP,$05050007,rip,%rip,rip,rip,-1,8,16,OT_NONE,0,64
 NR_EIP,$05040007,eip,%eip,eip,eip,-1,8,16,OT_NONE,0
@@ -100,8 +111,8 @@ NR_DR0,$05000008,dr0,%dr0,dr0,dr0,-1,-1,-1,OT_REG_DREG,0
 NR_DR1,$05000009,dr1,%dr1,dr1,dr1,-1,-1,-1,OT_REG_DREG,1
 NR_DR2,$0500000a,dr2,%dr2,dr2,dr2,-1,-1,-1,OT_REG_DREG,2
 NR_DR3,$0500000b,dr3,%dr3,dr3,dr3,-1,-1,-1,OT_REG_DREG,3
-NR_DR6,$0500000d,dr6,%dr6,dr6,dr6,-1,-1,-1,OT_REG_DREG,6
-NR_DR7,$0500000e,dr7,%dr7,dr7,dr7,-1,-1,-1,OT_REG_DREG,7
+NR_DR6,$0500000e,dr6,%dr6,dr6,dr6,-1,-1,-1,OT_REG_DREG,6
+NR_DR7,$0500000f,dr7,%dr7,dr7,dr7,-1,-1,-1,OT_REG_DREG,7
 NR_CR0,$05000010,cr0,%cr0,cr0,cr0,-1,-1,-1,OT_REG_CREG,0
 NR_CR2,$05000012,cr2,%cr2,cr2,cr2,-1,-1,-1,OT_REG_CREG,2
 NR_CR3,$05000013,cr3,%cr3,cr3,cr3,-1,-1,-1,OT_REG_CREG,3

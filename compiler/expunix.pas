@@ -27,10 +27,10 @@ unit expunix;
 interface
 
 uses
-  cutils,cclasses,
+  cclasses,
   systems,
   export,
-  symtype,symdef,symsym,
+  symdef,symsym,
   aasmbase;
 
 type
@@ -55,15 +55,14 @@ implementation
 
 uses
   symconst,
-  globtype,globals,
-  aasmdata,aasmtai,aasmcpu,
+  globals,
+  aasmdata,aasmtai,
   fmodule,
-  cgbase,cgutils,cpubase,cgobj,
-  cgcpu,hlcgobj,hlcgcpu,
-{$ifdef llvm}
-  hlcgllvm,
-{$endif llvm}
-  ncgutil,
+  {$ifdef cpuhighleveltarget}
+  symcreat,
+  {$endif}
+  cgbase,
+  hlcgobj,hlcgcpu,
   verbose;
 
 
@@ -89,6 +88,12 @@ end;
 procedure texportlibunix.exportprocedure(hp : texported_item);
 var
   hp2 : texported_item;
+{$ifdef cpuhighleveltarget}
+  pd,
+  wrapperpd: tprocdef;
+  i: longint;
+  anyhasalias: boolean;
+{$endif cpuhighleveltarget}
 begin
   { first test the index value }
   if eo_index in hp.options then
@@ -120,6 +125,36 @@ begin
     end
   else
     current_module._exports.concat(hp);
+{$ifdef cpuhighleveltarget}
+  { in case of a high level target create a stub procedure at the node/def
+    level instead of via hlcg.g_external_wrapper() later on, because it's
+    hard to manually create a fake procedure there (and it requires a def
+    anyway) }
+
+  { in case of eo_name there is no sym, and this routine is also called from
+    exportvar() so the sym doesn't have to be a procsym }
+  if assigned(hp.sym) and
+     (hp.sym.typ=procsym) then
+    begin
+      anyhasalias:=false;
+      { if the procedure has the exported name as one of its aliases, we don't
+        need a separate stub }
+      for i:=0 to tprocsym(hp.sym).procdeflist.count-1 do
+        begin
+          pd:=tprocdef(tprocsym(hp.sym).procdeflist[i]);
+          anyhasalias:=pd.has_alias_name(hp.name^);
+          if anyhasalias then
+            break;
+        end;
+      if not anyhasalias then
+        begin
+          { avoid name clashes for the identifier }
+          wrapperpd:=create_procdef_alias(pd,'$fpc_exported$'+hp.name^,hp.name^,
+            current_module.localsymtable,nil,
+            tsk_callthrough,pd);
+        end;
+    end;
+{$endif cpuhighleveltarget}
 end;
 
 
@@ -147,6 +182,7 @@ begin
         assigned(hp2.sym) and
         (hp2.sym.typ=procsym) then
       begin
+{$ifndef cpuhighleveltarget}
         { the manglednames can already be the same when the procedure
           is declared with cdecl }
         { note: for "exports" sections we only allow non overloaded procsyms,
@@ -155,12 +191,13 @@ begin
         for i:=0 to tprocsym(hp2.sym).procdeflist.count-1 do
           begin
             pd:=tprocdef(tprocsym(hp2.sym).procdeflist[i]);
-            anyhasalias:=has_alias_name(pd,hp2.name^);
+            anyhasalias:=pd.has_alias_name(hp2.name^);
             if anyhasalias then
               break;
           end;
         if not anyhasalias then
           hlcg.g_external_wrapper(current_asmdata.asmlists[al_procedures],pd,hp2.name^,pd.mangledname,true);
+{$endif cpuhighleveltarget}
         exportedsymnames.insert(hp2.name^);
       end
      else

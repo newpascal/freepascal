@@ -23,8 +23,6 @@
 
 {$checkpointer off}
 
-{$mode objfpc}
-
 unit exeinfo;
 interface
 
@@ -105,9 +103,17 @@ uses
 
 {$else windows}
 
+{$ifdef morphos}
+  procedure startsymbol; external name '_start';
+{$endif}
+
   procedure GetModuleByAddr(addr: pointer; var baseaddr: pointer; var filename: string);
     begin
+{$ifdef morphos}
+      baseaddr:= @startsymbol;
+{$else}
       baseaddr:= nil;
+{$endif}
 {$ifdef FPC_HAS_FEATURE_COMMANDARGS}
       filename:=ParamStr(0);
 {$else FPC_HAS_FEATURE_COMMANDARGS}
@@ -130,6 +136,10 @@ uses
     {$define ELF32}
     {$define FIND_BASEADDR_ELF}
   {$endif}
+{$endif}
+
+{$if defined(morphos)}
+  {$define ELF32}
 {$endif}
 
 {$if defined(win32) or defined(wince)}
@@ -806,12 +816,6 @@ type
 {$if defined(ELF32) or defined(ELF64) or defined(BEOS)}
 
 {$ifdef FIND_BASEADDR_ELF}
-{$ifndef SOLARIS}
-  { Solaris has envp variable in system unit interface,
-    so we directly use system envp variable in that case }
-var
-  envp : ppchar external name 'operatingsystem_parameter_envp';
-{$endif not SOLARIS}
 var
   LocalJmpBuf : Jmp_Buf;  
 procedure LocalError;
