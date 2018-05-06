@@ -49,6 +49,7 @@ uses
     procedure maybe_insert_generic_rename_symbol(const name:tidstring;genericlist:tfphashobjectlist);
     function generate_generic_name(const name:tidstring;specializename:ansistring;owner_hierarchy:string):tidstring;
     procedure split_generic_name(const name:tidstring;out nongeneric:string;out count:longint);
+    procedure add_generic_dummysym(sym:tsym);
     function resolve_generic_dummysym(const name:tidstring):tsym;
     function could_be_generic(const name:tidstring):boolean;inline;
 
@@ -69,9 +70,7 @@ uses
   symconst,symsym,symtable,defcmp,procinfo,
   { modules }
   fmodule,
-  { pass 1 }
-  htypechk,
-  node,nobj,nmem,
+  node,nobj,
   { parser }
   scanner,
   pbase,pexpr,pdecsub,ptype,psub;
@@ -144,6 +143,24 @@ uses
               begin
                 case formaldef.typ of
                   recorddef:
+                    { delphi has own fantasy about record constraint
+                      (almost non-nullable/non-nilable value type) }
+                    {NEWPASCAL_MOD
+                    if m_delphi in current_settings.modeswitches then
+                      case paradef.typ of
+                        floatdef,enumdef,orddef:
+                          continue;
+                        objectdef:
+                          if tobjectdef(paradef).objecttype=odt_object then
+                            continue
+                          else
+                            MessagePos(filepos,type_e_record_type_expected);
+                        else
+                          MessagePos(filepos,type_e_record_type_expected);
+                      end
+                    else
+                      MessagePos(filepos,type_e_record_type_expected);
+                    }
                     case paradef.typ of
                       floatdef,enumdef,orddef,stringdef,setdef,variantdef,filedef:
                         continue;
@@ -1018,7 +1035,7 @@ uses
                           pd.procsym:=psym
                         else
                           pd.procsym:=srsym;
-                        parse_proc_dec_finish(pd,po_classmethod in tprocdef(genericdef).procoptions);
+                        parse_proc_dec_finish(pd,po_classmethod in tprocdef(genericdef).procoptions,tprocdef(genericdef).struct);
                       end;
                     result:=pd;
                   end
@@ -1501,6 +1518,50 @@ uses
             end;
         nongeneric:=name;
         count:=0;
+      end;
+
+
+    procedure add_generic_dummysym(sym:tsym);
+      var
+        list: TFPObjectList;
+        srsym : tsym;
+        srsymtable : tsymtable;
+        entry : tgenericdummyentry;
+      begin
+        if sp_generic_dummy in sym.symoptions then
+          begin
+            { did we already search for a generic with that name? }
+            list:=tfpobjectlist(current_module.genericdummysyms.find(sym.name));
+            if not assigned(list) then
+              begin
+                list:=tfpobjectlist.create(true);
+                current_module.genericdummysyms.add(sym.name,list);
+              end;
+            { is the dummy sym still "dummy"? }
+            if (sym.typ=typesym) and
+                (
+                  { dummy sym defined in mode Delphi }
+                  (ttypesym(sym).typedef.typ=undefineddef) or
+                  { dummy sym defined in non-Delphi mode }
+                  (tstoreddef(ttypesym(sym).typedef).is_generic)
+                ) then
+              begin
+                { do we have a non-generic type of the same name
+                  available? }
+                if not searchsym_with_flags(sym.name,srsym,srsymtable,[ssf_no_addsymref]) then
+                  srsym:=nil;
+              end
+            else
+              { dummy symbol is already not so dummy anymore }
+              srsym:=nil;
+            if assigned(srsym) then
+              begin
+                entry:=tgenericdummyentry.create;
+                entry.resolvedsym:=srsym;
+                entry.dummysym:=sym;
+                list.add(entry);
+              end;
+          end;
       end;
 
 

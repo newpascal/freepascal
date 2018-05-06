@@ -60,6 +60,8 @@
   add_ldap(ADirectory+IncludeTrailingPathDelimiter('ldap'));
   add_libc(ADirectory+IncludeTrailingPathDelimiter('libc'));
   add_libcurl(ADirectory+IncludeTrailingPathDelimiter('libcurl'));
+  add_libcups(ADirectory+IncludeTrailingPathDelimiter('libcups'));
+  add_libffi(ADirectory+IncludeTrailingPathDelimiter('libffi'));
   add_libmicrohttpd(ADirectory+IncludeTrailingPathDelimiter('libmicrohttpd'));
   add_libgbafpc(ADirectory+IncludeTrailingPathDelimiter('libgbafpc'));
   add_libgd(ADirectory+IncludeTrailingPathDelimiter('libgd'));
@@ -68,6 +70,7 @@
   add_libpng(ADirectory+IncludeTrailingPathDelimiter('libpng'));
   add_librsvg(ADirectory+IncludeTrailingPathDelimiter('librsvg'));
   add_libsee(ADirectory+IncludeTrailingPathDelimiter('libsee'));
+  add_libusb(ADirectory+IncludeTrailingPathDelimiter('libusb'));
   add_libtar(ADirectory+IncludeTrailingPathDelimiter('libtar'));
   add_libvlc(ADirectory+IncludeTrailingPathDelimiter('libvlc'));
   add_libxml(ADirectory+IncludeTrailingPathDelimiter('libxml'));
@@ -131,4 +134,9 @@
   add_Google(ADirectory+IncludeTrailingPathDelimiter('googleapi'));
   add_fcl_pdf(ADirectory+IncludeTrailingPathDelimiter('fcl-pdf'));
   add_odata(ADirectory+IncludeTrailingPathDelimiter('odata'));
+  add_pastojs(ADirectory+IncludeTrailingPathDelimiter('pastojs'));
+  add_libgc(ADirectory+IncludeTrailingPathDelimiter('libgc'));
+  add_libfontconfig(ADirectory+IncludeTrailingPathDelimiter('libfontconfig'));
+  add_fcl_report(ADirectory+IncludeTrailingPathDelimiter('fcl-report'));
+  add_ide(ADirectory+IncludeTrailingPathDelimiter('ide'));
   

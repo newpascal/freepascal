@@ -12,7 +12,7 @@ Const
   // in workable state atm.
   UnixLikes = AllUnixOSes -[QNX]; // qnx never was active in 2.x afaik
 
-  ClocaleOSes   = UnixLikes -[beos,android];
+  ClocaleOSes   = UnixLikes -[android];
   CLocaleIncOSes= [Aix,freebsd,netbsd,openbsd,solaris,darwin,iphonesim,dragonfly];
 
   IPCOSes       = UnixLikes-[aix,android,beos,haiku];
@@ -21,12 +21,12 @@ Const
 
   PrinterOSes   = [go32v2,msdos,os2,win32,win64]+unixlikes-[beos,haiku,morphos];
   SerialOSes    = [android,linux,netbsd,openbsd,win32,win64];
-  UComplexOSes  = [atari,emx,gba,go32v2,msdos,nativent,nds,netware,netwlibc,os2,watcom,wii,wince,win32,win64]+UnixLikes+AllAmigaLikeOSes;
-  MatrixOSes    = [atari,emx,gba,go32v2,msdos,nativent,nds,netware,netwlibc,os2,wii,win32,win64,wince]+UnixLikes+AllAmigaLikeOSes;
-  ObjectsOSes   = [atari,emx,gba,go32v2,msdos,nds,netware,netwlibc,os2,win32,win64,wince]+UnixLikes+AllAmigaLikeOSes;
+  UComplexOSes  = [atari,embedded,emx,gba,go32v2,msdos,nativent,nds,netware,netwlibc,os2,symbian,watcom,wii,wince,win32,win64]+UnixLikes+AllAmigaLikeOSes;
+  MatrixOSes    = [atari,embedded,emx,gba,go32v2,msdos,nativent,nds,netware,netwlibc,os2,symbian,watcom,wii,win32,win64,wince]+UnixLikes+AllAmigaLikeOSes;
+  ObjectsOSes   = [atari,embedded,emx,gba,go32v2,macos,msdos,nds,netware,netwlibc,os2,symbian,watcom,wii,win16,win32,win64,wince]+UnixLikes+AllAmigaLikeOSes;
   WinsockOSes   = [win32,win64,wince,os2,emx,netware,netwlibc];
   WinSock2OSes  = [win32,win64,wince];
-  SocketsOSes   = UnixLikes+AllAmigaLikeOSes+[netware,netwlibc,os2,wince,win32,win64];
+  SocketsOSes   = UnixLikes+AllAmigaLikeOSes+[netware,netwlibc,os2,emx,wince,win32,win64];
   Socksyscall   = [beos,freebsd,haiku,linux,netbsd,openbsd,dragonfly];
   Socklibc  = unixlikes-socksyscall;
   gpmOSes = [Linux,Android];
@@ -83,7 +83,8 @@ begin
 
     // Add clocale for Android first in order to compile the source file
     // from the 'android' dir, not the 'unix' dir.
-    T:=P.Targets.AddUnit('real48utils.pp',AllTargetsextra-[msdos]);  { msdos excluded temporarily, until bitpacked records containing longints on 16-bit targets are fixed }
+    T:=P.Targets.AddUnit('real48utils.pp',AllTargetsextra-[msdos,win16]  { msdos,win16 excluded temporarily, until bitpacked records containing longints on 16-bit targets are fixed }
+                                                         -[embedded]);   { at least avr has no floats }
     T:=P.Targets.AddUnit('clocale.pp',[android]);
 
     T:=P.Targets.AddUnit('ucomplex.pp',UComplexOSes);

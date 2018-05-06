@@ -65,10 +65,10 @@ Unit raarmgas;
       globtype,globals,verbose,
       systems,aasmbase,aasmtai,aasmdata,aasmcpu,
       { symtable }
-      symconst,symsym,
+      symconst,symsym,symdef,
       procinfo,
       rabase,rautils,
-      cgbase,cgutils;
+      cgbase,cgutils,paramgr;
 
 
     function tarmunifiedattreader.is_unified: boolean;
@@ -163,7 +163,7 @@ Unit raarmgas;
     procedure tarmattreader.ReadSym(oper : tarmoperand);
       var
          tempstr, mangledname : string;
-         typesize,l,k : longint;
+         typesize,l,k : tcgint;
       begin
         tempstr:=actasmpattern;
         Consume(AS_ID);
@@ -310,7 +310,7 @@ Unit raarmgas;
       procedure read_index(require_rbracket : boolean);
         var
           recname : string;
-          o_int,s_int : aint;
+          o_int,s_int : tcgint;
         begin
           case actasmtoken of
             AS_REGISTER :
@@ -576,7 +576,7 @@ Unit raarmgas;
     Procedure tarmattreader.BuildOperand(oper : tarmoperand);
       var
         expr : string;
-        typesize,l : longint;
+        typesize,l : tcgint;
 
 
         procedure AddLabelOperand(hl:tasmlabel);
@@ -607,7 +607,7 @@ Unit raarmgas;
             hasdot  : boolean;
             l,
             toffset,
-            tsize   : longint;
+            tsize   : tcgint;
           begin
             if not(actasmtoken in [AS_DOT,AS_PLUS,AS_MINUS]) then
              exit;
@@ -634,10 +634,8 @@ Unit raarmgas;
                   { don't allow direct access to fields of parameters, because that
                     will generate buggy code. Allow it only for explicit typecasting }
                   if hasdot and
-                     (not oper.hastype) and
-                     (tabstractnormalvarsym(oper.opr.localsym).owner.symtabletype=parasymtable) and
-                     (current_procinfo.procdef.proccalloption<>pocall_register) then
-                    Message(asmr_e_cannot_access_field_directly_for_parameters);
+                     (not oper.hastype) then
+                     checklocalsubscript(oper.opr.localsym);
                   inc(oper.opr.localsymofs,l)
                 end;
               OPR_CONSTANT :
@@ -803,7 +801,7 @@ Unit raarmgas;
           var
             symtype: TAsmsymtype;
             sym: string;
-            val: aint;
+            val: tcgint;
           begin
             case actasmtoken of
               AS_INTNUM,
@@ -1434,7 +1432,7 @@ Unit raarmgas;
       var
         symname,
         symval  : String;
-        val     : aint;
+        val     : tcgint;
         symtyp  : TAsmsymtype;
       begin
         case actasmpattern of

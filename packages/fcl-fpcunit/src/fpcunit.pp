@@ -244,11 +244,14 @@ type
 
   TTestSuite = class(TTest)
   private
+    FOwnsTests: Boolean;
     FTests: TFPList;
     FName: string;
     FTestSuiteName: string;
     FEnableIgnores: boolean;
+    procedure SetOwnsTests(AValue: Boolean);
   protected
+    Procedure SetOwnTestOnTests(AValue: Boolean);
     Function DoAddTest(ATest : TTest) : Integer;
     function GetTestName: string; override;
     function GetTestSuiteName: string; override;
@@ -256,6 +259,7 @@ type
     procedure SetTestSuiteName(const aName: string); override;
     procedure SetTestName(const Value: string); virtual;
     procedure SetEnableIgnores(Value: boolean); override;
+    property OwnsTests : Boolean Read FOwnsTests Write SetOwnsTests;
   public
     constructor Create(AClass: TClass; AName: string); reintroduce; overload; virtual;
     constructor Create(AClass: TClass); reintroduce; overload; virtual;
@@ -685,13 +689,13 @@ end;
 
 class procedure TAssert.AssertEquals(const AMessage: string; Expected, Actual: string);
 begin
-  AssertTrue(ComparisonMsg(AMessage ,Expected, Actual), AnsiCompareStr(Expected, Actual) = 0,CallerAddr);
+  AssertTrue(ComparisonMsg(AMessage ,Expected, Actual), Expected=Actual,CallerAddr);
 end;
 
 
 class procedure TAssert.AssertEquals(Expected, Actual: string);
 begin
-  AssertTrue(ComparisonMsg(Expected, Actual), AnsiCompareStr(Expected, Actual) = 0,CallerAddr);
+  AssertTrue(ComparisonMsg(Expected, Actual), Expected=Actual,CallerAddr);
 end;
 
 {$IFDEF UNICODE}
@@ -957,7 +961,7 @@ begin
         FailMsg:=ComparisonMsg(SExceptionHelpContextCompare,IntToStr(AExceptionContext),IntToStr(E.HelpContext))
       end;
   end;
-  AssertTrue(AMessage + FailMsg, FailMsg='', AErrorAddr);
+  AssertTrue(AMessage + ': '+FailMsg, FailMsg='', AErrorAddr);
 end;
 
 
@@ -1252,6 +1256,7 @@ constructor TTestSuite.Create;
 begin
   inherited Create;
   FTests := TFPList.Create;
+  FOwnsTests:=True;
   FEnableIgnores := True;
 end;
 
@@ -1274,9 +1279,31 @@ begin
   Result:=FTests.Count;
 end;
 
-function TTestSuite.DoAddTest(ATest: TTest): Integer;
+procedure TTestSuite.SetOwnsTests(AValue: Boolean);
 begin
-  Result:=FTests.Add(TTestItem.Create(ATest));
+  if FOwnsTests=AValue then Exit;
+  FOwnsTests:=AValue;
+  SetOwnTestOnTests(AValue);
+end;
+
+procedure TTestSuite.SetOwnTestOnTests(AValue: Boolean);
+Var
+  I : Integer;
+
+begin
+  For I:=0 to FTests.Count-1 do
+    TTestItem(FTests[i]).OwnsTest:=AValue;
+end;
+
+function TTestSuite.DoAddTest(ATest: TTest): Integer;
+
+Var
+  I : TTestItem;
+
+begin
+  I:=TTestItem.Create(ATest);
+  I.OwnsTest:=OwnsTests;
+  Result:=FTests.Add(I);
   if ATest.TestSuiteName = '' then
     ATest.TestSuiteName := Self.TestName;
   ATest.EnableIgnores := Self.EnableIgnores;

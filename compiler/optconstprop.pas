@@ -55,8 +55,7 @@ unit optconstprop;
   implementation
 
     uses
-      fmodule,
-      pass_1,procinfo,
+      pass_1,procinfo,compinnr,
       symsym, symconst,
       nutils, nbas, ncnv, nld, nflw, ncal, ninl;
 
@@ -197,8 +196,9 @@ unit optconstprop;
             { constant inc'ed/dec'ed? }
             if (tinlinenode(n).inlinenumber=in_dec_x) or (tinlinenode(n).inlinenumber=in_inc_x) then
               begin
-                if not(assigned(tcallparanode(tinlinenode(n).left).right)) and
-                  tnode(tassignmentnode(arg).left).isequal(tcallparanode(tinlinenode(n).left).left) then
+                if tnode(tassignmentnode(arg).left).isequal(tcallparanode(tinlinenode(n).left).left) and
+                   (not(assigned(tcallparanode(tinlinenode(n).left).right)) or
+                       (tcallparanode(tcallparanode(tinlinenode(n).left).right).left.nodetype=ordconstn)) then
                   begin
                     { if the node just being searched is inc'ed/dec'ed then replace the inc/dec
                       by add/sub and force a second replacement pass }

@@ -56,13 +56,15 @@ interface
          maxCrecordalign : longint;
        end;
 
-       tasmflags = (af_none,
-         af_outputbinary,
-         af_needar,af_smartlink_sections,
-         af_labelprefix_only_inside_procedure,
-         af_supports_dwarf,
-         af_no_debug,
-         af_stabs_use_function_absolute_addresses
+       tasmflags = (af_none
+         ,af_outputbinary
+         ,af_needar
+         ,af_smartlink_sections
+         ,af_labelprefix_only_inside_procedure
+         ,af_supports_dwarf
+         ,af_no_debug
+         ,af_stabs_use_function_absolute_addresses
+         ,af_no_stabs
        );
 
        pasminfo = ^tasminfo;
@@ -229,7 +231,7 @@ interface
        systems_wince = [system_arm_wince,system_i386_wince];
        systems_android = [system_arm_android, system_i386_android, system_mipsel_android];
        systems_linux = [system_i386_linux,system_x86_64_linux,system_powerpc_linux,system_powerpc64_linux,
-                       system_arm_linux,system_sparc_linux,system_m68k_linux,
+                       system_arm_linux,system_sparc_linux,system_sparc64_linux,system_m68k_linux,
                        system_x86_6432_linux,system_mipseb_linux,system_mipsel_linux,system_aarch64_linux];
        systems_dragonfly = [system_x86_64_dragonfly];
        systems_freebsd = [system_i386_freebsd,
@@ -237,9 +239,9 @@ interface
        systems_netbsd  = [system_i386_netbsd,
                           system_m68k_netbsd,
                           system_powerpc_netbsd,
-                          system_x86_64_netbsd];
+                          system_x86_64_netbsd,
+                          system_arm_netbsd];
        systems_openbsd = [system_i386_openbsd,
-                          system_m68k_openbsd,
                           system_x86_64_openbsd];
 
        systems_bsd = systems_freebsd + systems_netbsd + systems_openbsd + systems_dragonfly;
@@ -262,13 +264,13 @@ interface
 
        {all solaris systems }
        systems_solaris = [system_sparc_solaris, system_i386_solaris,
-			  system_x86_64_solaris];
+                          system_x86_64_solaris];
 
        { all embedded systems }
        systems_embedded = [system_i386_embedded,system_m68k_embedded,
                            system_powerpc_embedded,
-                           system_sparc_embedded,system_vm_embedded,
-                           system_iA64_embedded,system_x86_64_embedded,
+                           system_sparc_embedded,obsolete_system_vm_embedded,
+                           obsolete_system_ia64_embedded,system_x86_64_embedded,
                            system_mips_embedded,system_arm_embedded,
                            system_powerpc64_embedded,system_avr_embedded,
                            system_jvm_java32,system_mipseb_embedded,system_mipsel_embedded,
@@ -286,18 +288,21 @@ interface
 {$endif not DISABLE_TLS_DIRECTORY}
        ;
 
+       { systems that allow external far variables }
+       systems_allow_external_far_var = [system_i8086_msdos,system_i8086_win16,system_i8086_embedded];
+
        { all symbian systems }
        systems_symbian = [system_i386_symbian,system_arm_symbian];
 
        { all classic Mac OS targets }
-       systems_macos = [system_m68k_Mac,system_powerpc_Macos];
+       systems_macos = [system_m68k_macos,system_powerpc_macos];
 
        { all OS/2 targets }
        systems_os2 = [system_i386_OS2,system_i386_emx];
-       
+
        { AROS systems }
        systems_aros = [system_i386_aros,system_x86_64_aros,system_arm_aros];
-       
+
        { all amiga like systems }
        systems_amigalike = [system_m68k_amiga,system_powerpc_morphos,system_powerpc_amiga]+systems_aros;
 
@@ -326,13 +331,15 @@ interface
        systems_indirect_var_imports = systems_all_windows+[system_i386_nativent];
 
        { all systems that support indirect entry information }
-       systems_indirect_entry_information = systems_darwin+[system_i386_win32,system_x86_64_win64];
+       systems_indirect_entry_information = systems_darwin+[system_i386_win32,system_x86_64_win64,system_x86_64_linux];
 
        { all systems for which weak linking has been tested/is supported }
        systems_weak_linking = systems_darwin + systems_solaris + systems_linux + systems_android;
 
-       systems_internal_sysinit = [system_i386_linux,system_i386_win32,system_x86_64_win64,
-                                   system_powerpc64_linux,system_m68k_atari]+systems_darwin+systems_amigalike;
+       systems_internal_sysinit = [system_i386_win32,system_x86_64_win64,
+                                   system_i386_linux,system_powerpc64_linux,system_sparc64_linux,system_x86_64_linux,
+                                   system_m68k_atari,system_m68k_palmos
+                                  ]+systems_darwin+systems_amigalike;
 
        { all systems that use garbage collection for reference-counted types }
        systems_garbage_collected_managed_types = [
@@ -390,7 +397,7 @@ interface
        cpu2str : array[TSystemCpu] of string[10] =
             ('','i386','m68k','alpha','powerpc','sparc','vm','ia64','x86_64',
              'mips','arm', 'powerpc64', 'avr', 'mipsel','jvm', 'i8086',
-             'aarch64');
+             'aarch64', 'wasm', 'sparc64');
 
        abiinfo : array[tabi] of tabiinfo = (
          (name: 'DEFAULT'; supported: true),
@@ -459,6 +466,21 @@ implementation
 {$ifdef FreeBSD}
 function GetOSRelDate:Longint;
 
+{ FPSysCtl first argument was of type pchar
+  up to commit 35566 from 2017/03/11 
+  and corrected to pcint in that commit.
+  But the following code needs to work with
+  both old 3.0.X definition and new definition using pcint type.
+  Problem solved using a special type called
+  FPSysCtlFirstArgType. }
+{$if defined(VER3_0_0) or defined(VER3_0_2)}  
+type
+  FPSysCtlFirstArgType = PChar;
+{$else}
+type
+  FPSysCtlFirstArgType = pcint;
+{$endif}  
+
 var
         mib  : array[0..1] of cint;
         rval : cint;
@@ -475,8 +497,8 @@ Begin
         mib[1] := KERN_OSRELDATE;
         len    := 4;
         oerrno:= fpgeterrno;
-        if (FPsysctl(pChar(@mib), 2, pchar(@v), @len, NIL, 0) = -1) Then
-           Begin
+        if (FPsysctl(FPSysCtlFirstArgType(@mib), 2, pchar(@v), @len, NIL, 0) = -1) Then
+             Begin
                 if (fpgeterrno = ESysENOMEM) Then
                         fpseterrno(oerrno);
                 GetOSRelDate:=0;
@@ -791,6 +813,10 @@ begin
     default_target(system_i386_openbsd);
     {$define default_target_set}
    {$endif}
+   {$ifdef netbsd}
+    default_target(system_i386_netbsd);
+    {$define default_target_set}
+   {$endif}
    {$ifdef darwin}
     default_target(system_i386_darwin);
     {$define default_target_set}
@@ -923,6 +949,20 @@ begin
   {$endif cpusparc}
 {$endif sparc}
 
+{$ifdef sparc64}
+  {$ifdef cpusparc64}
+    default_target(source_info.system);
+  {$else cpusparc64}
+   {$ifdef solaris}
+    {$define default_target_set}
+    default_target(system_sparc64_solaris);
+   {$endif}
+    {$ifndef default_target_set}
+    default_target(system_sparc64_linux);
+    {$endif ndef default_target_set}
+  {$endif cpusparc64}
+{$endif sparc64}
+
 {$ifdef arm}
   {$ifdef cpuarm}
     default_target(source_info.system);
@@ -934,6 +974,10 @@ begin
     {$ifdef linux}
       {$define default_target_set}
       default_target(system_arm_linux);
+    {$endif}
+    {$ifdef netbsd}
+      {$define default_target_set}
+      default_target(system_arm_netbsd);
     {$endif}
     {$ifdef android}
       {$define default_target_set}
@@ -988,6 +1032,10 @@ begin
     {$endif}
   {$endif cpuaarch64}
 {$endif aarch64}
+
+{$ifdef wasm}
+  default_target(system_wasm_wasm32);
+{$endif}
 end;
 
 

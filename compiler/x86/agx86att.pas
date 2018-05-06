@@ -28,9 +28,9 @@ unit agx86att;
 interface
 
     uses
-      cclasses,cpubase,systems,
-      globals,globtype,cgutils,
-      aasmbase,aasmtai,aasmdata,assemble,aggas;
+      cpubase,systems,
+      globtype,cgutils,
+      aasmtai,assemble,aggas;
 
     type
       Tx86ATTAssembler=class(TGNUassembler)
@@ -192,20 +192,10 @@ interface
              owner.writer.AsmWrite('0');
            if (index<>NR_NO) and (base=NR_NO) then
             begin
-              if scalefactor in [0,1] then
-                { Switching index to base position gives shorter
-                  assembler instructions }
-                begin
-                  owner.writer.AsmWrite('('+gas_regname(index)+')');
-                end
-              else
-                begin
-                  owner.writer.AsmWrite('(,'+gas_regname(index));
-                  if scalefactor<>0 then
-                   owner.writer.AsmWrite(','+tostr(scalefactor)+')')
-                  else
-                   owner.writer.AsmWrite(')');
-                end;
+              owner.writer.AsmWrite('(,'+gas_regname(index));
+              if scalefactor<>0 then
+                owner.writer.AsmWrite(','+tostr(scalefactor));
+              owner.writer.AsmWrite(')');
             end
            else
             if (index=NR_NO) and (base<>NR_NO) then
@@ -322,6 +312,9 @@ interface
           are (xmm) arguments }
         if (op=A_MOVSD) and (taicpu(hp).ops>0) then
           owner.writer.AsmWrite('movsd')
+        { the same applies to cmpsd as well }
+        else if (op=A_CMPSD) and (taicpu(hp).ops>0) then
+          owner.writer.AsmWrite('cmpsd')
         else
           owner.writer.AsmWrite(gas_op2str[op]);
         owner.writer.AsmWrite(cond2str[taicpu(hp).condition]);
@@ -458,7 +451,7 @@ interface
             asmbin : 'clang';
             asmcmd : '-c -o $OBJ $EXTRAOPT -arch x86_64 $DARWINVERSION -x assembler $ASM';
             supported_targets : [system_x86_64_darwin,system_x86_64_iphonesim];
-            flags : [af_needar,af_smartlink_sections,af_supports_dwarf];
+            flags : [af_needar,af_smartlink_sections,af_supports_dwarf,af_no_stabs];
             labelprefix : 'L';
             comment : '# ';
             dollarsign: '$';
@@ -472,7 +465,7 @@ interface
             asmbin : 'as';
             asmcmd : '--32 -o $OBJ $BIGOBJ $EXTRAOPT $ASM';
             supported_targets : [system_i386_GO32V2,system_i386_linux,system_i386_Win32,system_i386_freebsd,system_i386_solaris,system_i386_beos,
-                                system_i386_netbsd,system_i386_Netware,system_i386_qnx,system_i386_wdosx,system_i386_openbsd,
+                                system_i386_netbsd,system_i386_Netware,system_i386_wdosx,system_i386_openbsd,
                                 system_i386_netwlibc,system_i386_wince,system_i386_embedded,system_i386_symbian,system_i386_haiku,system_x86_6432_linux,
                                 system_i386_nativent,system_i386_android,system_i386_aros];
             flags : [af_needar,af_smartlink_sections,af_supports_dwarf];
@@ -488,7 +481,7 @@ interface
             asmbin : 'yasm';
             asmcmd : '-a x86 -p gas -f $FORMAT -o $OBJ $EXTRAOPT $ASM';
             supported_targets : [system_i386_GO32V2,system_i386_linux,system_i386_Win32,system_i386_freebsd,system_i386_solaris,system_i386_beos,
-                                system_i386_netbsd,system_i386_Netware,system_i386_qnx,system_i386_wdosx,system_i386_openbsd,
+                                system_i386_netbsd,system_i386_Netware,system_i386_wdosx,system_i386_openbsd,
                                 system_i386_netwlibc,system_i386_wince,system_i386_embedded,system_i386_symbian,system_i386_haiku,system_x86_6432_linux,
                                 system_i386_nativent];
             flags : [af_needar,af_smartlink_sections,af_supports_dwarf];
@@ -532,7 +525,7 @@ interface
             asmbin : 'clang';
             asmcmd : '-c -o $OBJ $EXTRAOPT -arch i386 $DARWINVERSION -x assembler $ASM';
             supported_targets : [system_i386_darwin,system_i386_iphonesim];
-            flags : [af_needar,af_smartlink_sections,af_supports_dwarf];
+            flags : [af_needar,af_smartlink_sections,af_supports_dwarf,af_no_stabs];
             labelprefix : 'L';
             comment : '# ';
             dollarsign: '$';
@@ -545,7 +538,7 @@ interface
             asmbin : 'gas';
             asmcmd : '--32 -o $OBJ $EXTRAOPT $ASM';
             supported_targets : [system_i386_GO32V2,system_i386_linux,system_i386_Win32,system_i386_freebsd,system_i386_solaris,system_i386_beos,
-                                system_i386_netbsd,system_i386_Netware,system_i386_qnx,system_i386_wdosx,system_i386_openbsd,
+                                system_i386_netbsd,system_i386_Netware,system_i386_wdosx,system_i386_openbsd,
                                 system_i386_netwlibc,system_i386_wince,system_i386_embedded,system_i386_symbian,system_i386_haiku,
                                 system_x86_6432_linux,system_i386_android];
             flags : [af_needar,af_smartlink_sections,af_supports_dwarf];

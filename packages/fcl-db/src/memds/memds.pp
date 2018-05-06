@@ -401,12 +401,13 @@ end;
 
 destructor TMemDataset.Destroy;
 begin
-  FStream.Free;
+//  FStream.Free;
   FreeMem(FFieldOffsets);
   FreeMem(FFieldSizes);
   FBlobs.Clear;
   FBlobs.Free;
   inherited Destroy;
+  FStream.Free;
 end;
 
 function TMemDataset.BookmarkValid(ABookmark: TBookmark): Boolean;
@@ -652,7 +653,7 @@ end;
 procedure TMemDataset.InternalOpen;
 
 begin
-  If (FFileName<>'') then
+  If (FFileName<>'') and FileExists(FFileName) then
     FOpenStream:=TFileStream.Create(FFileName,fmOpenRead);
   Try
     InternalInitFieldDefs;
@@ -1159,19 +1160,22 @@ begin
               begin
               F1:=TField(L1[i]);
               F2:=TField(L2[I]);
-              Case F1.DataType of
-                ftFixedChar,
-                ftString   : F1.AsString:=F2.AsString;
-                ftBoolean  : F1.AsBoolean:=F2.AsBoolean;
-                ftFloat    : F1.AsFloat:=F2.AsFloat;
-                ftLargeInt : F1.AsInteger:=F2.AsInteger;
-                ftSmallInt : F1.AsInteger:=F2.AsInteger;
-                ftInteger  : F1.AsInteger:=F2.AsInteger;
-                ftDate     : F1.AsDateTime:=F2.AsDateTime;
-                ftTime     : F1.AsDateTime:=F2.AsDateTime;
-                ftDateTime : F1.AsDateTime:=F2.AsDateTime;
-                else         F1.AsString:=F2.AsString;
-              end;
+              if F2.IsNull then
+                F1.Clear
+              else
+                Case F1.DataType of
+                  ftFixedChar,
+                  ftString   : F1.AsString:=F2.AsString;
+                  ftBoolean  : F1.AsBoolean:=F2.AsBoolean;
+                  ftFloat    : F1.AsFloat:=F2.AsFloat;
+                  ftLargeInt : F1.AsLargeInt:=F2.AsLargeInt;
+                  ftSmallInt : F1.AsInteger:=F2.AsInteger;
+                  ftInteger  : F1.AsInteger:=F2.AsInteger;
+                  ftDate     : F1.AsDateTime:=F2.AsDateTime;
+                  ftTime     : F1.AsDateTime:=F2.AsDateTime;
+                  ftDateTime : F1.AsDateTime:=F2.AsDateTime;
+                  else         F1.AsString:=F2.AsString;
+                end;
               end;
             Try
               Post;

@@ -5247,7 +5247,7 @@ Const
           dwSize : DWORD;
           dwFlags : DWORD;
           dwHelpContext : DWORD;
-          lpData : LONG_PTR;
+          lData : LONG_PTR;
           hIcon : HICON;
           szName : array[0..31] of AnsiCHAR;
           szInfo : array[0..63] of AnsiCHAR;
@@ -8065,9 +8065,9 @@ Const
      TNETCONNECTINFOSTRUCT = NETCONNECTINFOSTRUCT;
      PNETCONNECTINFOSTRUCT = ^NETCONNECTINFOSTRUCT;
 
-     ENUMMETAFILEPROC = function (_para1:HDC; _para2:HANDLETABLE; _para3:METARECORD; _para4:longint; _para5:LPARAM):longint;stdcall;
+     ENUMMETAFILEPROC = function (_para1:HDC; _para2:LPHANDLETABLE; _para3:LPMETARECORD; _para4:longint; _para5:LPARAM):longint;stdcall;
 
-     ENHMETAFILEPROC = function (_para1:HDC; _para2:HANDLETABLE; _para3:ENHMETARECORD; _para4:longint; _para5:LPARAM):longint;stdcall;
+     ENHMETAFILEPROC = function (_para1:HDC; _para2:LPHANDLETABLE; _para3:LPENHMETARECORD; _para4:longint; _para5:LPARAM):longint;stdcall;
 
      ENUMFONTSPROC = function (_para1:LPLOGFONT; _para2:LPTEXTMETRIC; _para3:DWORD; _para4:LPARAM):longint;stdcall;
      ENUMFONTSPROCA= function (_para1:LPLOGFONTA; _para2:LPTEXTMETRICA; _para3:DWORD; _para4:LPARAM):longint;stdcall;
@@ -9090,7 +9090,7 @@ type
 
 // Menubar information
 type
-     tagMENUBARINFO = packed record
+     tagMENUBARINFO = record
        cbSize:DWORD;
        rcBar:Windows.RECT; // rect of bar, popup, item
        _hmenu:HMENU;       // real menu handle of bar, popup
@@ -9308,6 +9308,70 @@ type
     RAWINPUTDEVICELIST = tagRAWINPUTDEVICELIST;
     PRAWINPUTDEVICELIST = ^tagRAWINPUTDEVICELIST;
 //#endif /* _WIN32_WINNT >= 0x0501 */
+
+// Wincon.h  
+
+    _CONSOLE_SCREEN_BUFFER_INFOEX = record
+        cbSize : ULONG;
+        dwSize : COORD;
+        dwCursorPosition : COORD;
+        wAttributes : WORD;
+        srWindow : SMALL_RECT;
+        dwMaximumWindowSize : COORD;
+        wPopupAttributes : WORD;
+        bFullscreenSupported : BOOL;
+        ColorTable : array[0..15] of COLORREF;
+      end;
+    CONSOLE_SCREEN_BUFFER_INFOEX = _CONSOLE_SCREEN_BUFFER_INFOEX;
+    PCONSOLE_SCREEN_BUFFER_INFOEX = ^_CONSOLE_SCREEN_BUFFER_INFOEX;
+
+    
+    _CONSOLE_FONT_INFO = record
+        nFont : DWORD;
+        dwFontSize : COORD;
+      end;
+    CONSOLE_FONT_INFO = _CONSOLE_FONT_INFO;
+    PCONSOLE_FONT_INFO = ^_CONSOLE_FONT_INFO;
+
+    _CONSOLE_FONT_INFOEX = record
+        cbSize : ULONG;
+        nFont : DWORD;
+        dwFontSize : COORD;
+        FontFamily : UINT;
+        FontWeight : UINT;
+        FaceName : array[0..(LF_FACESIZE)-1] of WCHAR;
+      end;
+    CONSOLE_FONT_INFOEX = _CONSOLE_FONT_INFOEX;
+    PCONSOLE_FONT_INFOEX = ^_CONSOLE_FONT_INFOEX;
+
+
+
+    _CONSOLE_HISTORY_INFO = record
+        cbSize : UINT;
+        HistoryBufferSize : UINT;
+        NumberOfHistoryBuffers : UINT;
+        dwFlags : DWORD;
+      end;
+    CONSOLE_HISTORY_INFO = _CONSOLE_HISTORY_INFO;
+    PCONSOLE_HISTORY_INFO = ^_CONSOLE_HISTORY_INFO;
+
+    _CONSOLE_SELECTION_INFO = record
+        dwFlags : DWORD;
+        dwSelectionAnchor : COORD;
+        srSelection : SMALL_RECT;
+      end;
+    CONSOLE_SELECTION_INFO = _CONSOLE_SELECTION_INFO;
+    PCONSOLE_SELECTION_INFO = ^_CONSOLE_SELECTION_INFO;
+
+    _CONSOLE_READCONSOLE_CONTROL = record
+        nLength : ULONG;
+        nInitialChars : ULONG;
+        dwCtrlWakeupMask : ULONG;
+        dwControlKeyState : ULONG;
+      end;
+    CONSOLE_READCONSOLE_CONTROL = _CONSOLE_READCONSOLE_CONTROL;
+    PCONSOLE_READCONSOLE_CONTROL = ^_CONSOLE_READCONSOLE_CONTROL;
+
 {$pop}
 {$endif read_interface}
 

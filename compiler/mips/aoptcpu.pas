@@ -25,6 +25,8 @@ unit aoptcpu;
 
 {$i fpcdefs.inc}
 
+{ $define DEBUG_AOPTCPU}
+
   Interface
 
     uses
@@ -44,6 +46,9 @@ unit aoptcpu;
         procedure PeepHoleOptPass2; override;
         function RegLoadedWithNewValue(reg : tregister; hp : tai) : boolean; override;
         function InstructionLoadsFromReg(const reg : TRegister; const hp : tai) : boolean; override;
+
+        { outputs a debug message into the assembler file }
+        procedure DebugMsg(const s: string; p: tai);
       End;
 
   Implementation
@@ -130,7 +135,19 @@ unit aoptcpu;
     end;
 
 
-  function TCpuAsmOptimizer.InstructionLoadsFromReg(const reg: TRegister; const hp: tai): boolean;
+{$ifdef DEBUG_AOPTCPU}
+  procedure TCpuAsmOptimizer.DebugMsg(const s: string;p : tai);
+    begin
+      asml.insertbefore(tai_comment.Create(strpnew(s)), p);
+    end;
+{$else DEBUG_AOPTCPU}
+  procedure TCpuAsmOptimizer.DebugMsg(const s: string;p : tai);inline;
+    begin
+    end;
+{$endif DEBUG_AOPTCPU}
+
+
+ function TCpuAsmOptimizer.InstructionLoadsFromReg(const reg: TRegister; const hp: tai): boolean;
     var
       p: taicpu;
       i: longint;
@@ -140,12 +157,12 @@ unit aoptcpu;
         exit;
       p:=taicpu(hp);
 
-      i:=1;
+      i:=0;
       while(i<p.ops) do
         begin
           case p.oper[I]^.typ of
             top_reg:
-              result:=(p.oper[I]^.reg=reg) and (I<2);
+              result:=(p.oper[I]^.reg=reg) and (p.spilling_get_operation_type(I)<>operand_write);
             top_ref:
               result:=
                 (p.oper[I]^.ref^.base=reg) or
@@ -258,6 +275,7 @@ unit aoptcpu;
 
               { finally get rid of the mov }
               taicpu(p).loadreg(0,taicpu(next).oper[0]^.reg);
+              DebugMsg('Peephole: Move removed 1',next);
               asml.remove(next);
               next.free;
               result:=true;
@@ -280,6 +298,7 @@ unit aoptcpu;
                  assigned(FindRegAlloc(taicpu(p).oper[0]^.reg,tai(p.next))) then
                 begin
                   taicpu(p).loadreg(0,taicpu(next).oper[0]^.reg);
+                  DebugMsg('Peephole: Move removed 2',next);
                   asml.remove(next);
                   next.free;
                   result:=true;
@@ -299,6 +318,7 @@ unit aoptcpu;
       if result then
         begin
           next.loadreg(0,taicpu(p).oper[1]^.reg);
+          DebugMsg('Peephole: Move removed 3',p);
           asml.remove(p);
           p.free;
           p:=next;
@@ -317,6 +337,7 @@ unit aoptcpu;
       if result then
         begin
           next.oper[1]^.ref^.base:=taicpu(p).oper[1]^.reg;
+          DebugMsg('Peephole: Move removed 4',p);
           asml.remove(p);
           p.free;
           p:=next;

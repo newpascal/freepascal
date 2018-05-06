@@ -1,4 +1,4 @@
-Unit registry;
+Unit Registry;
 
 {$mode objfpc}
 {$H+}
@@ -31,7 +31,8 @@ type
     FileTime: TDateTime;
   end;
 
-  TRegDataType = (rdUnknown, rdString, rdExpandString, rdBinary, rdInteger);
+  TRegDataType = (rdUnknown, rdString, rdExpandString, rdBinary, rdInteger, rdIntegerBigEndian,
+                  rdLink, rdMultiString, rdResourceList, rdFullResourceDescriptor,  rdResourceRequirementList);
 
   TRegDataInfo = record
     RegData: TRegDataType;
@@ -95,6 +96,7 @@ type
     function ReadFloat(const Name: string): Double;
     function ReadInteger(const Name: string): Integer;
     function ReadString(const Name: string): string;
+    procedure ReadStringList(const Name: string; AList: TStrings);
     function ReadTime(const Name: string): TDateTime;
     function RegistryConnect(const UNCName: string): Boolean;
     function ReplaceKey(const Key, FileName, BackUpFileName: string): Boolean;
@@ -118,6 +120,7 @@ type
     procedure WriteInteger(const Name: string; Value: Integer);
     procedure WriteString(const Name, Value: string);
     procedure WriteExpandString(const Name, Value: string);
+    procedure WriteStringList(const Name: string; List: TStrings);
     procedure WriteTime(const Name: string; Value: TDateTime);
 
     property Access: LongWord read fAccess write fAccess;
@@ -383,30 +386,65 @@ function TRegistry.ReadString(const Name: string): string;
 Var
   Info : TRegDataInfo;
   ReadDataSize: Integer;
+  u: UnicodeString;
 
 begin
+  Result:='';
+  GetDataInfo(Name,Info);
+  if info.datasize>0 then
+  begin
+    if Not (Info.RegData in [rdString,rdExpandString]) then
+      Raise ERegistryException.CreateFmt(SInvalidRegType, [Name]);
+    if Odd(Info.DataSize) then
+      SetLength(u,round((Info.DataSize+1)/SizeOf(UnicodeChar)))
+    else
+      SetLength(u,round(Info.DataSize/SizeOf(UnicodeChar)));
+    ReadDataSize := GetData(Name,@u[1],Info.DataSize,Info.RegData);
+    if ReadDataSize > 0 then
+    begin
+      // If the data has the REG_SZ, REG_MULTI_SZ or REG_EXPAND_SZ type,
+      // the size includes any terminating null character or characters
+      // unless the data was stored without them! (RegQueryValueEx @ MSDN)
+      if StringSizeIncludesNull and
+         (u[Length(u)] = WideChar(0)) then
+        SetLength(u,Length(u)-1);
+      Result:=UTF8Encode(u);
+    end;
+  end;
+end;
+
+procedure TRegistry.ReadStringList(const Name: string; AList: TStrings);
+
+Var
+  Info : TRegDataInfo;
+  ReadDataSize: Integer;
+  Data: string;
+
+begin
+  AList.Clear;
   GetDataInfo(Name,Info);
   if info.datasize>0 then
     begin
-     If Not (Info.RegData in [rdString,rdExpandString]) then
+     If Not (Info.RegData in [rdMultiString]) then
        Raise ERegistryException.CreateFmt(SInvalidRegType, [Name]);
-     SetLength(Result,Info.DataSize);
-     ReadDataSize := GetData(Name,PChar(Result),Info.DataSize,Info.RegData);
+     SetLength(Data,Info.DataSize);
+     ReadDataSize := GetData(Name,PChar(Data),Info.DataSize,Info.RegData);
      if ReadDataSize > 0 then
      begin
        // If the data has the REG_SZ, REG_MULTI_SZ or REG_EXPAND_SZ type,
        // the size includes any terminating null character or characters
        // unless the data was stored without them! (RegQueryValueEx @ MSDN)
-       if StringSizeIncludesNull then
-         if Result[ReadDataSize] = #0 then
+       if StringSizeIncludesNull then begin
+         if Data[ReadDataSize] = #0 then
            Dec(ReadDataSize);
-       SetLength(Result, ReadDataSize);
+         if Data[ReadDataSize] = #0 then
+           Dec(ReadDataSize);
+       end;
+       SetLength(Data, ReadDataSize);
+       Data := StringReplace(Data, #0, LineEnding, [rfReplaceAll]);
+       AList.Text := Data;
      end
-     else
-       Result := '';
    end
-  else
-    result:='';
 end;
 
 function TRegistry.ReadTime(const Name: string): TDateTime;
@@ -449,9 +487,22 @@ begin
 end;
 
 procedure TRegistry.WriteExpandString(const Name, Value: string);
+var
+  u: UnicodeString;
 
 begin
-  PutData(Name, PChar(Value), Length(Value),rdExpandString);
+  u:=UTF8Decode(Value);
+  PutData(Name, PWideChar(u), ByteLength(u), rdExpandString);
+end;
+
+procedure TRegistry.WriteStringList(const Name: string; List: TStrings);
+
+Var
+  Data: string;
+
+begin
+  Data := StringReplace(List.Text, LineEnding, #0, [rfReplaceAll]) + #0#0;
+  PutData(Name, PChar(Data), Length(Data),rdMultiString);
 end;
 
 procedure TRegistry.WriteFloat(const Name: string; Value: Double);
@@ -465,9 +516,12 @@ begin
 end;
 
 procedure TRegistry.WriteString(const Name, Value: string);
+var
+  u: UnicodeString;
 
 begin
-  PutData(Name, PChar(Value), Length(Value), rdString);
+  u:=UTF8Decode(Value);
+  PutData(Name, PWideChar(u), ByteLength(u), rdString);
 end;
 
 procedure TRegistry.MoveKey(const OldName, NewName: string; Delete: Boolean);

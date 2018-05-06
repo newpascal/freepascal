@@ -69,11 +69,9 @@ implementation
        { global }
        globals,tokens,verbose,constexp,
        systems,
-       { target }
-       paramgr,procinfo,
        { symtable }
        symconst,symsym,symtable,symcreat,
-       defutil,defcmp,objcdef,
+       defutil,defcmp,
 {$ifdef jvm}
        jvmdef,
 {$endif}
@@ -81,7 +79,7 @@ implementation
        fmodule,
        { pass 1 }
        node,
-       nmat,nadd,ncal,nset,ncnv,ninl,ncon,nld,nflw,
+       nset,ncnv,ncon,nld,
        { parser }
        scanner,
        pbase,pexpr,pdecsub,pdecvar,pdecobj,pdecl,pgenutil
@@ -378,7 +376,7 @@ implementation
            not_a_type:=false;
          { handle unit specification like System.Writeln }
          if allowunitsym then
-           is_unit_specific:=try_consume_unitsym(srsym,srsymtable,t,true,true,is_specialize)
+           is_unit_specific:=try_consume_unitsym(srsym,srsymtable,t,true,true,is_specialize,s)
          else
            begin
              t:=_ID;
@@ -1324,6 +1322,13 @@ implementation
                   else
                     Message1(parser_e_type_cant_be_used_in_array_index,def.typename);
                 end;
+              { generic parameter? }
+              undefineddef:
+                begin
+                  lowval:=0;
+                  highval:=1;
+                  indexdef:=def;
+                end;
               else
                 Message(sym_e_error_in_type_def);
             end;
@@ -1892,8 +1897,7 @@ implementation
                   _HELPER:
                     begin
                       if hadtypetoken and
-                         { don't allow "type helper" in mode delphi and require modeswitch typehelpers }
-                         ([m_delphi,m_type_helpers]*current_settings.modeswitches=[m_type_helpers]) then
+                         (m_type_helpers in current_settings.modeswitches) then
                         begin
                           { reset hadtypetoken, so that calling code knows that it should not be handled
                             as a "unique" type }

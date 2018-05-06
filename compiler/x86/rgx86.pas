@@ -28,9 +28,8 @@ unit rgx86;
   interface
 
     uses
-      cclasses,globtype,
-      cpubase,cpuinfo,cgbase,cgutils,
-      aasmbase,aasmtai,aasmdata,aasmsym,aasmcpu,
+      cpubase,cgbase,cgutils,
+      aasmtai,aasmdata,aasmsym,aasmcpu,
       rgobj;
 
     type
@@ -48,11 +47,6 @@ unit rgx86;
        tpushedsavedfpu = array[tsuperregister] of tpushedsavedloc;
 
        trgx86fpu = class
-          { The "usableregsxxx" contain all registers of type "xxx" that }
-          { aren't currently allocated to a regvar. The "unusedregsxxx"  }
-          { contain all registers of type "xxx" that aren't currently    }
-          { allocated                                                    }
-          unusedregsfpu,usableregsfpu : Tsuperregisterset;
           { these counters contain the number of elements in the }
           { unusedregsxxx/usableregsxxx sets                     }
           countunusedregsfpu : byte;
@@ -88,7 +82,6 @@ unit rgx86;
 implementation
 
     uses
-       systems,
        verbose;
 
     const
@@ -428,7 +421,6 @@ implementation
     constructor Trgx86fpu.create;
       begin
         used_in_proc:=[];
-        unusedregsfpu:=usableregsfpu;
       end;
 
 

@@ -26,8 +26,8 @@ unit htypechk;
 interface
 
     uses
-      cclasses,cmsgs,tokens,cpuinfo,
-      node,globtype,
+      cclasses,cmsgs,tokens,
+      node,globtype,compinnr,
       symconst,symtype,symdef,symsym,symbase,
       pgentype;
 
@@ -35,7 +35,7 @@ interface
       Ttok2nodeRec=record
         tok : ttoken;
         nod : tnodetype;
-        inr : integer; // inline number
+        inr : tinlinenumber;
         op_overloading_supported : boolean;
       end;
 
@@ -100,43 +100,45 @@ interface
       tregableinfoflag = (
          // can be put in a register if it's the address of a var/out/const parameter
          ra_addr_regable,
-         // orthogonal to above flag: the address of the node is taken and may
-         // possibly escape the block in which this node is declared (e.g. a
-         // local variable is passed as var parameter to another procedure)
-         ra_addr_taken);
+         { orthogonal to above flag: the address of the node is taken and may
+           possibly escape the block in which this node is declared (e.g. a
+           local variable is passed as var parameter to another procedure)
+         }
+         ra_addr_taken,
+         { variable is accessed in a different scope }
+         ra_different_scope);
       tregableinfoflags = set of tregableinfoflag;
 
-  {$i compinnr.inc}
     const
       tok2nodes=27;
       tok2node:array[1..tok2nodes] of ttok2noderec=(
-        (tok:_PLUS       ;nod:addn;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_MINUS      ;nod:subn;inr:-1;op_overloading_supported:true),      { binary and unary overloading supported }
-        (tok:_STAR       ;nod:muln;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_SLASH      ;nod:slashn;inr:-1;op_overloading_supported:true),    { binary overloading supported }
-        (tok:_EQ         ;nod:equaln;inr:-1;op_overloading_supported:true),    { binary overloading supported }
-        (tok:_GT         ;nod:gtn;inr:-1;op_overloading_supported:true),       { binary overloading supported }
-        (tok:_LT         ;nod:ltn;inr:-1;op_overloading_supported:true),       { binary overloading supported }
-        (tok:_GTE        ;nod:gten;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_LTE        ;nod:lten;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_SYMDIF     ;nod:symdifn;inr:-1;op_overloading_supported:true),   { binary overloading supported }
-        (tok:_STARSTAR   ;nod:starstarn;inr:-1;op_overloading_supported:true), { binary overloading supported }
-        (tok:_OP_AS      ;nod:asn;inr:-1;op_overloading_supported:false),      { binary overloading NOT supported }
-        (tok:_OP_IN      ;nod:inn;inr:-1;op_overloading_supported:true),       { binary overloading supported }
-        (tok:_OP_IS      ;nod:isn;inr:-1;op_overloading_supported:false),      { binary overloading NOT supported }
-        (tok:_OP_OR      ;nod:orn;inr:-1;op_overloading_supported:true),       { binary overloading supported }
-        (tok:_OP_AND     ;nod:andn;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_OP_DIV     ;nod:divn;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_OP_NOT     ;nod:notn;inr:-1;op_overloading_supported:true),      { unary overloading supported }
-        (tok:_OP_MOD     ;nod:modn;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_OP_SHL     ;nod:shln;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_OP_SHR     ;nod:shrn;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_OP_XOR     ;nod:xorn;inr:-1;op_overloading_supported:true),      { binary overloading supported }
-        (tok:_ASSIGNMENT ;nod:assignn;inr:-1;op_overloading_supported:true),   { unary overloading supported }
-        (tok:_OP_EXPLICIT;nod:assignn;inr:-1;op_overloading_supported:true),   { unary overloading supported }
-        (tok:_NE         ;nod:unequaln;inr:-1;op_overloading_supported:true),  { binary overloading supported }
-        (tok:_OP_INC     ;nod:inlinen;inr:in_inc_x;op_overloading_supported:true),{ unary overloading supported }
-        (tok:_OP_DEC     ;nod:inlinen;inr:in_dec_x;op_overloading_supported:true) { unary overloading supported }
+        (tok:_PLUS       ;nod:addn;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_MINUS      ;nod:subn;inr:in_none;op_overloading_supported:true),      { binary and unary overloading supported }
+        (tok:_STAR       ;nod:muln;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_SLASH      ;nod:slashn;inr:in_none;op_overloading_supported:true),    { binary overloading supported }
+        (tok:_EQ         ;nod:equaln;inr:in_none;op_overloading_supported:true),    { binary overloading supported }
+        (tok:_GT         ;nod:gtn;inr:in_none;op_overloading_supported:true),       { binary overloading supported }
+        (tok:_LT         ;nod:ltn;inr:in_none;op_overloading_supported:true),       { binary overloading supported }
+        (tok:_GTE        ;nod:gten;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_LTE        ;nod:lten;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_SYMDIF     ;nod:symdifn;inr:in_none;op_overloading_supported:true),   { binary overloading supported }
+        (tok:_STARSTAR   ;nod:starstarn;inr:in_none;op_overloading_supported:true), { binary overloading supported }
+        (tok:_OP_AS      ;nod:asn;inr:in_none;op_overloading_supported:false),      { binary overloading NOT supported }
+        (tok:_OP_IN      ;nod:inn;inr:in_none;op_overloading_supported:true),       { binary overloading supported }
+        (tok:_OP_IS      ;nod:isn;inr:in_none;op_overloading_supported:false),      { binary overloading NOT supported }
+        (tok:_OP_OR      ;nod:orn;inr:in_none;op_overloading_supported:true),       { binary overloading supported }
+        (tok:_OP_AND     ;nod:andn;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_OP_DIV     ;nod:divn;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_OP_NOT     ;nod:notn;inr:in_none;op_overloading_supported:true),      { unary overloading supported }
+        (tok:_OP_MOD     ;nod:modn;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_OP_SHL     ;nod:shln;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_OP_SHR     ;nod:shrn;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_OP_XOR     ;nod:xorn;inr:in_none;op_overloading_supported:true),      { binary overloading supported }
+        (tok:_ASSIGNMENT ;nod:assignn;inr:in_none;op_overloading_supported:true),   { unary overloading supported }
+        (tok:_OP_EXPLICIT;nod:assignn;inr:in_none;op_overloading_supported:true),   { unary overloading supported }
+        (tok:_NE         ;nod:unequaln;inr:in_none;op_overloading_supported:true),  { binary overloading supported }
+        (tok:_OP_INC     ;nod:inlinen;inr:in_inc_x;op_overloading_supported:true),  { unary overloading supported }
+        (tok:_OP_DEC     ;nod:inlinen;inr:in_dec_x;op_overloading_supported:true)   { unary overloading supported }
       );
 
       tok2ops=4;
@@ -146,9 +148,6 @@ interface
         (tok:_OP_ADDREF    ; managementoperator: mop_addref),
         (tok:_OP_COPY      ; managementoperator: mop_copy)
       );
-
-      { true, if we are parsing stuff which allows array constructors }
-      allow_array_constructor : boolean = false;
 
     function node2opstr(nt:tnodetype):string;
     function token2managementoperator(optoken:ttoken):tmanagementoperator;
@@ -505,6 +504,13 @@ implementation
                       exit;
                     end;
 
+                 { <dyn. array> + <dyn. array> is handled by the compiler }
+                 if (treetyp=addn) and (is_dynamic_array(ld) or is_dynamic_array(rd)) then
+                    begin
+                      allowed:=false;
+                      exit;
+                    end;
+
                 allowed:=true;
               end;
             objectdef :
@@ -548,7 +554,7 @@ implementation
       end;
 
 
-    function isunaryoperatoroverloadable(treetyp:tnodetype;inlinenumber:integer;ld:tdef) : boolean;
+    function isunaryoperatoroverloadable(treetyp:tnodetype;inlinenumber:tinlinenumber;ld:tdef) : boolean;
       begin
         result:=false;
         case treetyp of
@@ -709,8 +715,8 @@ implementation
         operpd  : tprocdef;
         ppn     : tcallparanode;
         candidates : tcallcandidates;
-        cand_cnt,
-        inlinenumber: integer;
+        cand_cnt : integer;
+        inlinenumber: tinlinenumber;
       begin
         result:=false;
         operpd:=nil;
@@ -722,7 +728,7 @@ implementation
         if t.nodetype=inlinen then
           inlinenumber:=tinlinenode(t).inlinenumber
         else
-          inlinenumber:=-1;
+          inlinenumber:=in_none;
 
         if not isunaryoperatoroverloadable(t.nodetype,inlinenumber,ld) then
           exit;
@@ -2238,7 +2244,12 @@ implementation
         while assigned(structdef) do
          begin
            { first search in helpers for this type }
-           if (is_class(structdef) or is_record(structdef))
+           if ((structdef.typ=recorddef) or
+                 (
+                   (structdef.typ=objectdef) and
+                   (tobjectdef(structdef).objecttype in objecttypes_with_helpers)
+                 )
+               )
                and searchhelpers then
              begin
                if search_last_objectpascal_helper(structdef,nil,helperdef) then
@@ -2276,7 +2287,13 @@ implementation
                  break;
              end;
            if is_objectpascal_helper(structdef) and
-              (tobjectdef(structdef).extendeddef.typ in [recorddef,objectdef]) then
+              (
+                (tobjectdef(structdef).extendeddef.typ=recorddef) or
+                (
+                  (tobjectdef(structdef).extendeddef.typ=objectdef) and
+                  (tobjectdef(tobjectdef(structdef).extendeddef).objecttype in objecttypes_with_helpers)
+                )
+              ) then
              begin
                { remember the first extendeddef of the hierarchy }
                if not assigned(extendeddef) then
@@ -2554,7 +2571,6 @@ implementation
       var
         pd:tprocdef;
         candidate:pcandidate;
-        objdef: tobjectdef;
         st: tsymtable;
       begin
         { Give a small penalty for overloaded methods not defined in the
@@ -3573,7 +3589,7 @@ implementation
           for i:=0 to def.symtable.symlist.count-1 do
             begin
               sym:=tsym(def.symtable.symlist[i]);
-              if sym.typ<>fieldvarsym then
+              if (sym.typ<>fieldvarsym) or (sp_static in sym.symoptions) then
                 continue;
               if not is_valid_for_default(tfieldvarsym(sym).vardef) then
                 begin

@@ -84,6 +84,7 @@ Const
      pocall_internproc,
      pocall_register,
      pocall_stdcall,
+     pocall_safecall,
      { the difference to stdcall is only the name mangling }
      pocall_cdecl,
      { the difference to stdcall is only the name mangling }
@@ -116,7 +117,8 @@ Const
      'cfv4e'
    );
 
-   fputypestr : array[tfputype] of string[8] = ('',
+   fputypestr : array[tfputype] of string[8] = (
+     'NONE',
      'SOFT',
      'LIBGCC',
      '68881',

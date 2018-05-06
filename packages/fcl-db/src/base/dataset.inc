@@ -542,23 +542,6 @@ end;
 procedure TDataSet.DataConvert(aField: TField; aSource, aDest: Pointer;
   aToNative: Boolean);
 
- // There seems to be no WStrCopy defined, this is a copy of
- // the generic StrCopy function, adapted for WideChar.
- Function WStrCopy(Dest, Source:PWideChar): PWideChar;
- var
-   counter : SizeInt;
- Begin
-   counter := 0;
-   while Source[counter] <> #0 do
-   begin
-     Dest[counter] := char(Source[counter]);
-     Inc(counter);
-   end;
-   { terminate the string }
-   Dest[counter] := #0;
-   WStrCopy := Dest;
- end;
-
 var
   DT : TFieldType;
 
@@ -574,7 +557,7 @@ begin
   // See notes from mantis bug-report 8204 for more information
   //    ftBytes                   : ;
   //    ftVarBytes                : ;
-      ftWideString              : WStrCopy(PWideChar(aDest), PWideChar(aSource));
+      ftWideString              : StrCopy(PWideChar(aDest), PWideChar(aSource));
       end
     end
   else
@@ -586,7 +569,7 @@ begin
       ftFMTBCD                  : TBcd(aDest^) := TBcd(aSource^);
   //    ftBytes                   : ;
   //    ftVarBytes                : ;
-      ftWideString              : WStrCopy(PWideChar(aDest), PWideChar(aSource));
+      ftWideString              : StrCopy(PWideChar(aDest), PWideChar(aSource));
       end
     end
 end;
@@ -771,20 +754,20 @@ begin
   If FRecordCount>0 Then SetCurrentRecord(FRecordCount-1);
   Result:=GetRecord(FBuffers[FBufferCount],gmNext,True)=grOK;
 
-  if result then
+  if Result then
     begin
       If FRecordCount=0 then ActivateBuffers;
       if FRecordCount=FBufferCount then
         ShiftBuffersBackward
       else
         begin
-          inc(FRecordCount);
+          Inc(FRecordCount);
           FCurrentRecord:=FRecordCount - 1;
           ExchangeBuffers(FBuffers[FCurrentRecord],FBuffers[FBufferCount]);
         end;
     end
   else
-    cursorposchanged;
+    CursorPosChanged;
 {$ifdef dsdebug}
   Writeln ('Result getting next record : ',Result);
 {$endif}
@@ -813,16 +796,16 @@ begin
   CheckBiDirectional;
   If FRecordCount>0 Then SetCurrentRecord(0);
   Result:=GetRecord(FBuffers[FBufferCount],gmPrior,True)=grOK;
-  if result then
+  if Result then
     begin
       If FRecordCount=0 then ActivateBuffers;
       ShiftBuffersForward;
 
       if FRecordCount<FBufferCount then
-        inc(FRecordCount);
+        Inc(FRecordCount);
     end
   else
-    cursorposchanged;
+    CursorPosChanged;
 {$ifdef dsdebug}
   Writeln ('Result getting prior record : ',Result);
 {$endif}
@@ -1156,7 +1139,7 @@ begin
     for j := 0 to TDataSource(FDataSources[i]).DataLinks.Count - 1 do
       begin
       DataLink:=TDataLink(TDataSource(FDataSources[i]).DataLinks[j]);
-      if DataLink.BufferCount>ABufferCount then
+      if ABufferCount<DataLink.BufferCount then
         ABufferCount:=DataLink.BufferCount;
       end;
 
@@ -1208,11 +1191,11 @@ begin
 {$ifdef dsdebug}
     Writeln ('   Reallocating memory :',(Value+1)*SizeOf(TRecordBuffer));
 {$endif}
-    ReAllocMem(FBuffers,(Value+1)*SizeOf(PChar));
+    ReAllocMem(FBuffers,(Value+1)*SizeOf(TRecordBuffer));
 {$ifdef dsdebug}
     Writeln ('   Filling memory :',(Value+1-FBufferCount)*SizeOf(TRecordBuffer));
 {$endif}
-    inc(FBufferCount); // Cause FBuffers[FBufferCount] is already allocated
+    Inc(FBufferCount); // Cause FBuffers[FBufferCount] is already allocated
     FillChar(FBuffers[FBufferCount],(Value+1-FBufferCount)*SizeOf(TRecordBuffer),#0);
 {$ifdef dsdebug}
     Writeln ('   Filled memory');
@@ -1294,7 +1277,7 @@ begin
       bfBOF : InternalFirst;
       bfEOF : InternalLast;
       end;
-    FCurrentRecord:=index;
+    FCurrentRecord:=Index;
     end;
 end;
 
@@ -1521,6 +1504,8 @@ procedure TDataSet.ClearFields;
 
 
 begin
+  if not (State in dsEditModes) then
+    DatabaseError(SNotEditing, Self);
   DataEvent(deCheckBrowseMode, 0);
   FreeFieldBuffers;
   InternalInitRecord(ActiveBuffer);
@@ -2150,8 +2135,6 @@ begin
 {$endif}
       // nothing found, invalidate buffer and bail out.
       ClearBuffers;
-      // Make sure that the active record is 'empty', ie: that all fields are null
-      InternalInitRecord(ActiveBuffer);
       DataEvent(deDatasetChange,0);
       exit;
       end;
@@ -2173,7 +2156,7 @@ begin
     inc(i);
   FActiveRecord := i;
 // Fill the rest of the buffer
-  getnextrecords;
+  GetNextRecords;
 // If the buffer is not full yet, try to fetch some more prior records
   if FRecordCount < FBufferCount then inc(FActiveRecord,getpriorrecords);
 // That's all folks!

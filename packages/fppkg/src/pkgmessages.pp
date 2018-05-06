@@ -9,6 +9,9 @@ Resourcestring
   SError                     = 'Error: ';
   SWarning                   = 'Warning: ';
   SDebug                     = 'Debug: ';
+  SProgress                  = 'Progress: ';
+  SInfo                      = 'Info: ';
+  SCommand                   = 'Command: ';
 
   SErrInValidArgument        = 'Invalid command-line argument at position %d : %s';
   SErrNeedArgument           = 'Option at position %d (%s) needs an argument';
@@ -20,10 +23,11 @@ Resourcestring
   SErrMissingCompilerConfig  = 'Could not find compiler configuration "%s"';
   SErrMissingInstallPackage  = 'Package "%s" is not installed';
   SErrMissingAvailablePackage= 'Package "%s" is not available';
-  SErrMissingPackage         = 'Could not fin package "%s"';
+  SErrMissingPackage         = 'Could not find package "%s"';
   SErrMissingInstallRepo     = 'Could not find repository "%s"';
   SErrNoPackageSpecified     = 'No package specified';
-  SErrNoPackageAvailable     = 'Package %s %s is not available';
+  SErrPackageNotAvailable    = 'Source of package %s is not available';
+  SErrNoPackageAvailable     = 'Package dependency %s %s is not available';
   SErrOnlyLocalDir           = 'The specified command "%s" works only on current dir, not on a (remote) package';
   SErrIllConfRepository      = 'Invalid configured repository "%s"';
   SErrExecutionFPMake        = 'Execution of FPMake %s failed';
@@ -58,6 +62,7 @@ Resourcestring
   SErrCannotModifyRepository = 'The repository of an TFPPackages-instance can not be changed.';
   SErrRepositoryNotAssigned  = 'Repository not assigned';
   SErrInstallationImpossible = 'It is not possible to install the package "%s" in repository "%s".';
+  SErrNoInstallRepoAvailable = 'There are no repositories configured to install packages into';
 
   SLogGeneratingFPMake       = 'Generating fpmake.pp';
   SLogNotCompilingFPMake     = 'Skipping compiling of fpmake.pp, fpmake executable already exists';
@@ -79,7 +84,10 @@ Resourcestring
   SLogLoadingPackagesFile    = 'Loading available packages from "%s"';
   SLogLoadingMirrorsFile     = 'Loading available mirrors from "%s"';
   SLogFindInstalledPackages  = 'Searching for installed packages in "%s"';
+  SLogFoundPackageInFile     = 'Found package "%s" in file "%s"';
+  SLogFailedLoadingPackage   = 'Failed to load package "%s" in file "%s". Package is skipped. Message: %s';
   SLogFoundFPMakeAddin       = 'Found FPMake-AddIn "%s"';
+  SLogUpdateFPMakeAddin      = 'FPMake-AddIn "%s" updated';
   SLogSavingStatusFile       = 'Saving local status to "%s"';
   SLogFPMKUnitDepVersion     = 'Checking for %s %s, installed %s, available %s';
   SLogFPMKUnitDepTooOld      = 'Minimum version of %s is not installed, using internal fpmkunit with limited functionality';
@@ -89,9 +97,15 @@ Resourcestring
   SLogOldConfigFileFormat    = 'Configuration file is in an old format';
   SLogPackageDependency      = 'Dependency on package %s %s, installed %s, available %s  (%s)';
   SLogPackageChecksumChanged = 'Package %s (%s) needs to be rebuild, dependency %s (%s) is modified';
+  SLogPackageDepBroken       = 'Package %s (%s) needs to be rebuild, dependency %s (%s) is broken';
   SLogCheckBrokenDependenvies= 'Checking for broken dependencies';
   SLogFailedToCreateManifest = 'Failed to create manifest from fpmake.pp-file (%s) while scanning for available packages: %s';
   SLogUseInternalFpmkunit    = 'Fpmkunit not available, fallback to internal version.';
+  SLogDetermineInstallRepo   = 'Determine in which repository package "%s" has to be installed';
+  SLogUseCommandLineRepo     = 'Use repository "%s" provided on the command-line';
+  SLogUseSourceRepoInstRepo  = 'Use the installation repository "%s" which is coupled to the source repository "%s"';
+  SLogUseConfigurationRepo   = 'Use repository "%s" provided in the configuration files';
+  SLogUseLastRepo            = 'Use the last repository "%s"';
 
   SLogCfgHeader                      = 'Settings from configuration-files:';
   SLogCfgSectionHeader               = ' %s-section:';
@@ -145,11 +159,19 @@ Resourcestring
   SDbgPackageMultipleLocations = 'Multiple installations found for package %s, using installation "%s"';
   SDbgPackageDependencyOtherTarget  = 'Dependency on package %s is not for %s';
   SDbgObsoleteDependency     = 'Package %s depends on package %s which is not installed anymore';
+  SDbgForcePackageInstall    = 'Installation of package "%s" forced';
+  SDbgPackageInstallRequired = 'Installation of package "%s" required for repository "%s"';
+
+  SWarnBrokenAfterReinstall  = 'Package %s is still broken, even after re-installation. (%s)';
 
   SProgrReinstallDependent   = 'Re-install packages which are dependent on just installed packages';
   SProgrInstallDependencies  = 'Install dependencies';
   SProgrDependenciesInstalled= 'Dependencies installed';
   SProgrDownloadPackage      = 'Downloading package %s version %s';
+
+  SInfoPackageDepBroken      = 'dependency %s in the %s repository is broken';
+  SInfoPackageChecksumChanged= 'dependency %s in the %s repository is modified';
+  SInfoObsoleteDependency    = 'depends on package %s which is not installed anymore';
 
 implementation
 

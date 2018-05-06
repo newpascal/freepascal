@@ -49,7 +49,7 @@ implementation
 
     uses
        sysutils,cutils,cfileutl,cclasses,aasmbase,
-       globtype,globals,systems,verbose,script,fmodule,i_atari;
+       globtype,globals,systems,verbose,cscript,fmodule,i_atari;
 
 
 constructor TLinkerAtari.Create;
@@ -230,7 +230,7 @@ begin
   if UseVLink then
     begin
       if create_smartlink_sections then
-        GCSectionsStr:='-gc-all -sc -sd';
+        GCSectionsStr:='-gc-all -sc';
     end;
 
   ExeName:=current_module.exefilename;

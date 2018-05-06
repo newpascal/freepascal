@@ -145,13 +145,14 @@ Type
   private
     FFlags: TJSElementFlags;
     FLine: Integer;
-    FRow: Integer;
+    FColumn: Integer;
     FSource: String;
   Public
-    Constructor Create(ALine,ARow : Integer; Const ASource : String = ''); virtual;
+    Constructor Create(ALine,AColumn : Integer; Const ASource : String = ''); virtual;
+    Procedure AssignPosition(El: TJSElement); virtual;
     Property Source : String Read FSource Write FSource;
-    Property Row : Integer Read FRow Write FRow;
     Property Line : Integer Read FLine Write FLine;
+    Property Column : Integer Read FColumn Write FColumn;
     Property Flags : TJSElementFlags Read FFlags Write FFlags;
   end;
   TJSElementClass = Class of TJSElement;
@@ -170,12 +171,12 @@ Type
   private
     FValue: TJSValue;
   Public
-    Constructor Create(ALine,ARow : Integer; Const ASource : String = ''); override;
+    Constructor Create(ALine,AColumn : Integer; Const ASource : String = ''); override;
     Destructor Destroy; override;
     Property Value : TJSValue Read FValue Write FValue;
   end;
 
-  { TJSRegularExpressionLiteral }
+  { TJSRegularExpressionLiteral - /Pattern/PatternFlags }
 
   TJSRegularExpressionLiteral = Class(TJSElement)
   private
@@ -185,7 +186,7 @@ Type
     function GetA(AIndex : integer): TJSValue;
     procedure SetA(AIndex : integer; const AValue: TJSValue);
   Public
-    Constructor Create(ALine,ARow : Integer; Const ASource : String = ''); override;
+    Constructor Create(ALine,AColumn : Integer; Const ASource : String = ''); override;
     Destructor Destroy; override;
     Property Pattern : TJSValue Read FPattern Write FPattern;
     Property PatternFlags : TJSValue Read FPatternFlags Write FPatternFlags;
@@ -210,11 +211,11 @@ Type
   TJSArrayLiteralElement = Class(TCollectionItem)
   private
     FExpr: TJSelement;
-    FFindex: Integer;
+    FElementIndex: Integer;
   Public
     Destructor Destroy; override;
-    Property Expr : TJSelement Read FExpr Write FExpr;
-    Property ElementIndex : Integer Read FFindex Write FFIndex;
+    Property Expr : TJSElement Read FExpr Write FExpr;
+    Property ElementIndex : Integer Read FElementIndex Write FElementIndex;
   end;
 
   { TJSArrayLiteralElements - Elements property of TJSArrayLiteral }
@@ -227,13 +228,14 @@ Type
     Property Elements[AIndex : Integer] : TJSArrayLiteralElement Read GetE ; default;
   end;
 
-  { TJSArrayLiteral }
+  { TJSArrayLiteral - [element1,...] }
 
   TJSArrayLiteral = Class(TJSElement)
   private
     FElements: TJSArrayLiteralElements;
   Public
-    Constructor Create(ALine,ARow : Integer; const ASource : String = ''); override;
+    Constructor Create(ALine,AColumn : Integer; const ASource : String = ''); override;
+    procedure AddElement(El: TJSElement);
     Destructor Destroy; override;
     Property Elements : TJSArrayLiteralElements Read FElements;
   end;
@@ -246,7 +248,7 @@ Type
     FName: TJSString;
   Public
     Destructor Destroy; override;
-    Property Expr : TJSelement Read FExpr Write FExpr;
+    Property Expr : TJSElement Read FExpr Write FExpr;
     Property Name : TJSString Read FName Write FName;
   end;
 
@@ -266,12 +268,12 @@ Type
   private
     FElements: TJSObjectLiteralElements;
   Public
-    Constructor Create(ALine,ARow : Integer; const ASource : String = ''); override;
+    Constructor Create(ALine,AColumn : Integer; const ASource : String = ''); override;
     Destructor Destroy; override;
     Property Elements : TJSObjectLiteralElements Read FElements;
   end;
 
-  { TJSArguments }
+  { TJSArguments - (element1,...) }
 
   TJSArguments = Class(TJSArrayLiteral);
 
@@ -292,6 +294,7 @@ Type
     FArgs: TJSArguments;
   Public
     Destructor Destroy; override;
+    procedure AddArg(El: TJSElement);
     Property Args : TJSArguments Read FArgs Write FArgs;
   end;
 
@@ -322,6 +325,7 @@ Type
     FExpr: TJSElement;
   Public
     Destructor Destroy; override;
+    procedure AddArg(El: TJSElement);
     Property Expr : TJSElement Read FExpr Write FExpr;
     Property Args : TJSArguments Read FArgs Write FArgs;
   end;
@@ -345,7 +349,7 @@ Type
 
   TJSVariableStatement = Class(TJSUnary);
 
-  { TJSExpressionStatement - ? }
+  { TJSExpressionStatement - A; }
 
   TJSExpressionStatement = Class(TJSUnary);
 
@@ -879,9 +883,9 @@ Type
     FCond: TJSelement;
     FDefault: TJSCaseElement;
   Public
-    Constructor Create(ALine,ARow : Integer; const ASource : String = ''); override;
+    Constructor Create(ALine,AColumn : Integer; const ASource : String = ''); override;
     Destructor Destroy; override;
-    Property Cond : TJSelement Read FCond Write FCond;
+    Property Cond : TJSElement Read FCond Write FCond;
     Property Cases : TJSCaseElements Read FCases;
     Property TheDefault : TJSCaseElement Read FDefault Write FDefault; // one of Cases
   end;
@@ -919,7 +923,7 @@ Type
   TJSTryFinallyStatement = Class(TJSTryStatement);
 
 
-  { TJSFunctionDeclarationStatement - as TJSFuncDef, except as a statement }
+  { TJSFunctionDeclarationStatement - same as TJSFuncDef, except as a TJSElement }
 
   TJSFunctionDeclarationStatement = Class(TJSElement)
   private
@@ -967,7 +971,7 @@ Type
     FStatements: TJSElementNodes;
     FVars: TJSElementNodes;
   Public
-    Constructor Create(ALine,ARow : Integer; const ASource : String = ''); override;
+    Constructor Create(ALine,AColumn : Integer; const ASource : String = ''); override;
     Destructor Destroy; override;
     Property Vars : TJSElementNodes Read FVars;
     Property Functions : TJSElementNodes Read FFunctions;
@@ -1500,11 +1504,18 @@ end;
 
 { TJSElement }
 
-constructor TJSElement.Create(ALine, ARow: Integer; const ASource: String);
+constructor TJSElement.Create(ALine, AColumn: Integer; const ASource: String);
 begin
   FLine:=ALine;
-  FRow:=ARow;
+  FColumn:=AColumn;
   FSource:=ASource;
+end;
+
+procedure TJSElement.AssignPosition(El: TJSElement);
+begin
+  Source:=El.Source;
+  Line:=El.Line;
+  Column:=El.Column;
 end;
 
 { TJSRegularExpressionLiteral }
@@ -1520,10 +1531,10 @@ begin
   FArgv[AIndex]:=Avalue;
 end;
 
-constructor TJSRegularExpressionLiteral.Create(ALine, ARow: Integer;
+constructor TJSRegularExpressionLiteral.Create(ALine, AColumn: Integer;
   const ASource: String);
 begin
-  inherited Create(ALine, ARow, ASource);
+  inherited Create(ALine, AColumn, ASource);
   FPattern:=TJSValue.Create;
   FPatternFlags:=TJSValue.Create;
 end;
@@ -1549,10 +1560,19 @@ end;
 
 { TJSArrayLiteral }
 
-constructor TJSArrayLiteral.Create(ALine, ARow: Integer; Const ASource: String = '');
+constructor TJSArrayLiteral.Create(ALine, AColumn: Integer; const ASource: String);
 begin
-  inherited Create(ALine, ARow, ASource);
+  inherited Create(ALine, AColumn, ASource);
   FElements:=TJSArrayLiteralElements.Create(TJSArrayLiteralElement);
+end;
+
+procedure TJSArrayLiteral.AddElement(El: TJSElement);
+var
+  ArrEl: TJSArrayLiteralElement;
+begin
+  ArrEl:=Elements.AddElement;
+  ArrEl.ElementIndex:=Elements.Count-1;
+  ArrEl.Expr:=El;
 end;
 
 destructor TJSArrayLiteral.Destroy;
@@ -1577,9 +1597,9 @@ end;
 
 { TJSObjectLiteral }
 
-constructor TJSObjectLiteral.Create(ALine, ARow: Integer; const ASource: String = '');
+constructor TJSObjectLiteral.Create(ALine, AColumn: Integer; const ASource: String = '');
 begin
-  inherited Create(ALine, ARow, ASource);
+  inherited Create(ALine, AColumn, ASource);
   FElements:=TJSObjectLiteralElements.Create(TJSObjectLiteralElement);
 end;
 
@@ -1613,6 +1633,13 @@ begin
   inherited Destroy;
 end;
 
+procedure TJSNewMemberExpression.AddArg(El: TJSElement);
+begin
+  if Args=nil then
+    Args:=TJSArguments.Create(Line,Column,Source);
+  Args.Elements.AddElement.Expr:=El;
+end;
+
 { TJSMemberExpression }
 
 destructor TJSMemberExpression.Destroy;
@@ -1628,6 +1655,11 @@ begin
   FreeAndNil(FExpr);
   FreeAndNil(FArgs);
   inherited Destroy;
+end;
+
+procedure TJSCallExpression.AddArg(El: TJSElement);
+begin
+  Args.Elements.AddElement.Expr:=El;
 end;
 
 { TJSUnary }
@@ -1796,9 +1828,9 @@ end;
 
 { TJSSwitch }
 
-constructor TJSSwitchStatement.Create(ALine, ARow: Integer; const ASource: String);
+constructor TJSSwitchStatement.Create(ALine, AColumn: Integer; const ASource: String);
 begin
-  inherited Create(ALine, ARow, ASource);
+  inherited Create(ALine, AColumn, ASource);
   FCases:=TJSCaseElements.Create(TJSCaseElement);
 end;
 
@@ -1834,10 +1866,10 @@ end;
 
 { TJSSourceElements }
 
-constructor TJSSourceElements.Create(ALine, ARow: Integer; const ASource: String
+constructor TJSSourceElements.Create(ALine, AColumn: Integer; const ASource: String
   );
 begin
-  inherited Create(ALine, ARow, ASource);
+  inherited Create(ALine, AColumn, ASource);
   FStatements:=TJSElementNodes.Create(TJSElementNode);
   FFunctions:=TJSElementNodes.Create(TJSElementNode);
   FVars:=TJSElementNodes.Create(TJSElementNode);
@@ -1916,10 +1948,10 @@ end;
 
 { TJSLiteral }
 
-constructor TJSLiteral.Create(ALine, ARow: Integer; const ASource: String);
+constructor TJSLiteral.Create(ALine, AColumn: Integer; const ASource: String);
 begin
   FValue:=TJSValue.Create;
-  inherited Create(ALine, ARow, ASource);
+  inherited Create(ALine, AColumn, ASource);
 end;
 
 destructor TJSLiteral.Destroy;

@@ -51,7 +51,7 @@ interface
           next    : tpreprocstack;
           name    : TIDString;
           line_nb : longint;
-          owner   : tscannerfile;
+          fileindex : longint;
           constructor Create(atyp:preproctyp;a:boolean;n:tpreprocstack);
        end;
 
@@ -142,6 +142,9 @@ interface
 
           preproc_pattern : string;
           preproc_token   : ttoken;
+
+          { true, if we are parsing preprocessor expressions }
+          in_preproc_comp_expr : boolean;
 
           constructor Create(const fn:string; is_macro: boolean = false);
           destructor Destroy;override;
@@ -2117,10 +2120,12 @@ type
         end;
 
      begin
+       current_scanner.in_preproc_comp_expr:=true;
        current_scanner.skipspace;
        { start preproc expression scanner }
        current_scanner.preproc_token:=current_scanner.readpreproc;
        preproc_comp_expr:=preproc_sub_expr(opcompare,true);
+       current_scanner.in_preproc_comp_expr:=false;
      end;
 
     function boolean_compile_time_expr(var valuedescr: string): Boolean;
@@ -2434,6 +2439,36 @@ type
                hs:=gettimestr;
              'DATE':
                hs:=getdatestr;
+             'DATEYEAR':
+               begin
+                 hs:=tostr(startsystime.Year);
+                 macroIsString:=false;
+               end;
+             'DATEMONTH':
+               begin
+                 hs:=tostr(startsystime.Month);
+                 macroIsString:=false;
+               end;
+             'DATEDAY':
+               begin
+                 hs:=tostr(startsystime.Day);
+                 macroIsString:=false;
+               end;
+             'TIMEHOUR':
+               begin
+                 hs:=tostr(startsystime.Hour);
+                 macroIsString:=false;
+               end;
+             'TIMEMINUTE':
+               begin
+                 hs:=tostr(startsystime.Minute);
+                 macroIsString:=false;
+               end;
+             'TIMESECOND':
+               begin
+                 hs:=tostr(startsystime.Second);
+                 macroIsString:=false;
+               end;
              'FILE':
                hs:=current_module.sourcefiles.get_file_name(current_filepos.fileindex);
              'LINE':
@@ -3710,7 +3745,8 @@ type
         while assigned(preprocstack) do
          begin
            Message4(scan_e_endif_expected,preprocstring[preprocstack.typ],preprocstack.name,
-             preprocstack.owner.inputfile.name,tostr(preprocstack.line_nb));
+             current_module.sourcefiles.get_file_name(preprocstack.fileindex),
+             tostr(preprocstack.line_nb));
            poppreprocstack;
          end;
       end;
@@ -3747,7 +3783,7 @@ type
         preprocstack:=tpreprocstack.create(atyp, condition, preprocstack);
         preprocstack.name:=valuedescr;
         preprocstack.line_nb:=line_no;
-        preprocstack.owner:=self;
+        preprocstack.fileindex:=current_filepos.fileindex;
         if preprocstack.accept then
           Message2(messid,preprocstack.name,'accepted')
         else
@@ -3766,6 +3802,7 @@ type
                preprocstack.accept:=not preprocstack.accept;
            preprocstack.typ:=pp_else;
            preprocstack.line_nb:=line_no;
+           preprocstack.fileindex:=current_filepos.fileindex;
            if preprocstack.accept then
             Message2(scan_c_else_found,preprocstack.name,'accepted')
            else
@@ -3801,6 +3838,7 @@ type
                end;
 
            preprocstack.line_nb:=line_no;
+           preprocstack.fileindex:=current_filepos.fileindex;
            if preprocstack.accept then
              Message2(scan_c_else_found,preprocstack.name,'accepted')
            else
@@ -4540,7 +4578,11 @@ type
                    if found=3 then
                     found:=4
                    else
-                    found:=1;
+                    begin
+                      if found=4 then
+                        inc_comment_level;
+                      found:=1;
+                    end;
                  end;
                ')' :
                  begin
@@ -4583,6 +4625,7 @@ type
     procedure tscannerfile.readtoken(allowrecordtoken:boolean);
       var
         code    : integer;
+        d : cardinal;
         len,
         low,high,mid : longint;
         w : word;
@@ -5157,9 +5200,35 @@ type
                                    iswidestring:=true;
                                    len:=0;
                                  end;
-                               { four or more chars aren't handled }
+                               { four chars }
                                if (ord(c) and $f0)=$f0 then
-                                 message(scan_e_utf8_bigger_than_65535)
+                                 begin
+                                   { this always represents a surrogate pair, so
+                                     read as 32-bit value and then split into
+                                     the corresponding pair of two wchars }
+                                   d:=ord(c) and $f;
+                                   readchar;
+                                   if (ord(c) and $c0)<>$80 then
+                                     message(scan_e_utf8_malformed);
+                                   d:=(d shl 6) or (ord(c) and $3f);
+                                   readchar;
+                                   if (ord(c) and $c0)<>$80 then
+                                     message(scan_e_utf8_malformed);
+                                   d:=(d shl 6) or (ord(c) and $3f);
+                                   readchar;
+                                   if (ord(c) and $c0)<>$80 then
+                                     message(scan_e_utf8_malformed);
+                                   d:=(d shl 6) or (ord(c) and $3f);
+                                   if d<$10000 then
+                                     message(scan_e_utf8_malformed);
+                                   d:=d-$10000;
+                                   { high surrogate }
+                                   w:=$d800+(d shr 10);
+                                   concatwidestringchar(patternw,w);
+                                   { low surrogate }
+                                   w:=$dc00+(d and $3ff);
+                                   concatwidestringchar(patternw,w);
+                                 end
                                { three chars }
                                else if (ord(c) and $e0)=$e0 then
                                  begin
@@ -5336,7 +5405,6 @@ exit_label:
       var
         low,high,mid: longint;
         optoken: ttoken;
-        s : string;
       begin
          skipspace;
          case c of
@@ -5375,7 +5443,7 @@ exit_label:
              end;
            '''' :
              begin
-               s:=readquotedstring;
+               readquotedstring;
                current_scanner.preproc_pattern:=cstringpattern;
                readpreproc:=_CSTRING;
              end;

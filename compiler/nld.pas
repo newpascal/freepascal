@@ -108,6 +108,9 @@ interface
        tarrayconstructorrangenodeclass = class of tarrayconstructorrangenode;
 
        tarrayconstructornode = class(tbinarynode)
+          allow_array_constructor : boolean;
+         private
+          function has_range_node:boolean;
          protected
           procedure wrapmanagedvarrec(var n: tnode);virtual;abstract;
          public
@@ -118,6 +121,7 @@ interface
           function docompare(p: tnode): boolean; override;
           procedure force_type(def:tdef);
           procedure insert_typeconvs;
+          function isempty : boolean;
        end;
        tarrayconstructornodeclass = class of tarrayconstructornode;
 
@@ -173,11 +177,11 @@ interface
 implementation
 
     uses
-      verbose,globtype,globals,systems,constexp,
+      verbose,globtype,globals,systems,constexp,compinnr,
       symtable,
       defutil,defcmp,
-      htypechk,pass_1,procinfo,paramgr,
       cpuinfo,
+      htypechk,pass_1,procinfo,paramgr,
       ncon,ninl,ncnv,nmem,ncal,nutils,
       cgbase
       ;
@@ -263,12 +267,12 @@ implementation
     function tloadnode.dogetcopy : tnode;
       var
          n : tloadnode;
-
       begin
          n:=tloadnode(inherited dogetcopy);
          n.symtable:=symtable;
          n.symtableentry:=symtableentry;
          n.fprocdef:=fprocdef;
+         n.loadnodeflags:=loadnodeflags;
          result:=n;
       end;
 
@@ -309,7 +313,7 @@ implementation
                     (symtable.symtablelevel<>current_procinfo.procdef.localst.symtablelevel) or
                     (current_procinfo.procdef.proctypeoption=potype_unitfinalize)
                   ) then
-                 make_not_regable(self,[ra_addr_taken]);
+                 make_not_regable(self,[ra_different_scope]);
                resultdef:=tabstractvarsym(symtableentry).vardef;
                if vo_is_thread_var in tstaticvarsym(symtableentry).varoptions then
                  result:=handle_threadvar_access;
@@ -331,7 +335,7 @@ implementation
                    exclude(tprocdef(symtable.defowner).procoptions,po_inline);
                    { reference in nested procedures, variable needs to be in memory }
                    { and behaves as if its address escapes its parent block         }
-                   make_not_regable(self,[ra_addr_taken]);
+                   make_not_regable(self,[ra_different_scope]);
                  end;
                resultdef:=tabstractvarsym(symtableentry).vardef;
                { self for objects is passed as var-parameter on the caller
@@ -563,26 +567,6 @@ implementation
            is_constrealnode(right) and
            not equal_defs(right.resultdef,left.resultdef) then
           inserttypeconv(right,left.resultdef);
-
-        { replace i:=succ/pred(i) by inc/dec(i)? }
-        if (right.nodetype=inlinen) and
-          ((tinlinenode(right).inlinenumber=in_succ_x) or (tinlinenode(right).inlinenumber=in_pred_x)) and
-          (tinlinenode(right).left.isequal(left)) and
-          ((localswitches*[cs_check_overflow,cs_check_range])=[]) and
-          ((right.localswitches*[cs_check_overflow,cs_check_range])=[]) and
-          valid_for_var(tinlinenode(right).left,false) and
-          not(might_have_sideeffects(tinlinenode(right).left)) then
-          begin
-            if tinlinenode(right).inlinenumber=in_succ_x then
-              result:=cinlinenode.create(
-                in_inc_x,false,ccallparanode.create(
-                left.getcopy,nil))
-            else
-              result:=cinlinenode.createintern(
-                in_dec_x,false,ccallparanode.create(
-                left.getcopy,nil));
-            exit;
-          end;
       end;
 
 
@@ -644,9 +628,16 @@ implementation
               converted node (that array is 2^31 or 2^63 bytes large) }
             exit;
 
-        { assigning nil to a dynamic array clears the array }
+        { assigning nil or [] to a dynamic array clears the array }
         if is_dynamic_array(left.resultdef) and
-           (right.nodetype=niln) then
+            (
+              (right.nodetype=niln) or
+              (
+                (right.nodetype=arrayconstructorn) and
+                (right.resultdef.typ=arraydef) and
+                (tarraydef(right.resultdef).elementdef=voidtype)
+              )
+            ) then
          begin
            { remove property flag to avoid errors, see comments for }
            { tf_winlikewidestring assignments below                 }
@@ -1021,6 +1012,7 @@ implementation
     constructor tarrayconstructornode.create(l,r : tnode);
       begin
          inherited create(arrayconstructorn,l,r);
+         allow_array_constructor:=false;
       end;
 
 
@@ -1030,6 +1022,30 @@ implementation
       begin
          n:=tarrayconstructornode(inherited dogetcopy);
          result:=n;
+      end;
+
+
+    function tarrayconstructornode.has_range_node:boolean;
+      var
+        n : tarrayconstructornode;
+      begin
+        result:=false;
+        n:=self;
+        while assigned(n) do
+          begin
+            if assigned(n.left) and (n.left.nodetype=arrayconstructorrangen) then
+              begin
+                result:=true;
+                break;
+              end;
+            n:=tarrayconstructornode(n.right);
+          end;
+      end;
+
+
+    function tarrayconstructornode.isempty:boolean;
+      begin
+        result:=not(assigned(left)) and not(assigned(right));
       end;
 
 
@@ -1048,7 +1064,7 @@ implementation
         Do this only if we didn't convert the arrayconstructor yet. This
         is needed for the cases where the resultdef is forced for a second
         run }
-        if not(allow_array_constructor) then
+        if not allow_array_constructor or has_range_node then
          begin
            hp:=tarrayconstructornode(getcopy);
            arrayconstructor_to_set(tnode(hp));
@@ -1116,10 +1132,10 @@ implementation
             is_open_array(hdef) then
            hdef:=voidtype;
          resultdef:=carraydef.create(0,len-1,s32inttype);
-         tarraydef(resultdef).elementdef:=hdef;
          include(tarraydef(resultdef).arrayoptions,ado_IsConstructor);
          if varia then
            include(tarraydef(resultdef).arrayoptions,ado_IsVariant);
+         tarraydef(resultdef).elementdef:=hdef;
       end;
 
 
@@ -1232,8 +1248,8 @@ implementation
         inherited ppuload(t,ppufile);
         ppufile.getderef(typedefderef);
         ppufile.getderef(typesymderef);
-        allowed:=boolean(ppufile.getbyte);
-        helperallowed:=boolean(ppufile.getbyte);
+        allowed:=ppufile.getboolean;
+        helperallowed:=ppufile.getboolean;
       end;
 
 
@@ -1242,8 +1258,8 @@ implementation
         inherited ppuwrite(ppufile);
         ppufile.putderef(typedefderef);
         ppufile.putderef(typesymderef);
-        ppufile.putbyte(byte(allowed));
-        ppufile.putbyte(byte(helperallowed));
+        ppufile.putboolean(allowed);
+        ppufile.putboolean(helperallowed);
       end;
 
 

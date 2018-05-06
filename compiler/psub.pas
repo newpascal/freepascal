@@ -31,9 +31,6 @@ interface
       symdef,procinfo,optdfa;
 
     type
-
-      { tcgprocinfo }
-
       tcgprocinfo = class(tprocinfo)
       private
         procedure CreateInlineInfo;
@@ -86,7 +83,7 @@ interface
     procedure read_proc(isclassmethod:boolean; usefwpd: tprocdef;isgeneric:boolean);
 
     { parses only the body of a non nested routine; needs a correctly setup pd }
-    procedure read_proc_body(pd:tprocdef);inline;
+    procedure read_proc_body(pd:tprocdef);
 
     procedure import_external_proc(pd:tprocdef);
 
@@ -103,7 +100,7 @@ implementation
        { symtable }
        symconst,symbase,symsym,symtype,symtable,defutil,defcmp,symcreat,
        paramgr,
-       ppu,fmodule,
+       fmodule,
        { pass 1 }
        nutils,ngenutil,nld,ncal,ncon,nflw,nadd,ncnv,nmem,
        pass_1,
@@ -116,9 +113,9 @@ implementation
 {$endif}
        { parser }
        scanner,gendef,
-       pbase,pstatmnt,pdecl,pdecsub,pexports,pgenutil,pparautl,pgentype,
+       pbase,pstatmnt,pdecl,pdecsub,pexports,pgenutil,pparautl,
        { codegen }
-       tgobj,cgbase,cgobj,cgutils,hlcgobj,hlcgcpu,dbgbase,
+       tgobj,cgbase,cgobj,hlcgobj,hlcgcpu,dbgbase,
 {$ifdef llvm}
       { override create_hlcodegen from hlcgcpu }
       hlcgllvm,
@@ -129,7 +126,9 @@ implementation
        optcse,
        optloop,
        optconstprop,
-       optdeadstore
+       optdeadstore,
+       optloadmodifystore,
+       optutils
 {$if defined(arm)}
        ,cpuinfo
 {$endif arm}
@@ -1437,6 +1436,9 @@ implementation
         if cs_opt_nodecse in current_settings.optimizerswitches then
           do_optcse(code);
 
+        if cs_opt_use_load_modify_store in current_settings.optimizerswitches then
+          do_optloadmodifystore(code);
+
         { only do secondpass if there are no errors }
         if (ErrorCount=0) then
           begin
@@ -1476,6 +1478,8 @@ implementation
             { caller paraloc info is also necessary in the stackframe_entry
               code of the ppc (and possibly other processors)               }
             procdef.init_paraloc_info(callerside);
+
+            CalcExecutionWeights(code);
 
             { Print the node to tree.log }
             if paraprintnodetree=1 then
@@ -1873,10 +1877,12 @@ implementation
          entryswitches:=current_settings.localswitches;
 
          recordtokens:=procdef.is_generic or
-                         (
-                           assigned(current_procinfo.procdef.struct) and
-                           (df_generic in current_procinfo.procdef.struct.defoptions)
-                         );
+                       (
+                         assigned(procdef.struct) and
+                         (df_generic in procdef.struct.defoptions) and
+                         assigned(procdef.owner) and
+                         (procdef.owner.defowner=procdef.struct)
+                       );
 
          if recordtokens then
            begin
@@ -1999,7 +2005,6 @@ implementation
       end;
 
 
-
     procedure read_proc_body(old_current_procinfo:tprocinfo;pd:tprocdef);
       {
         Parses the procedure directives, then parses the procedure body, then
@@ -2091,6 +2096,10 @@ implementation
             (
               not assigned(current_procinfo.procdef.struct) or
               not (df_specialization in current_procinfo.procdef.struct.defoptions)
+              or not (
+                assigned(current_procinfo.procdef.owner) and
+                (current_procinfo.procdef.owner.defowner=current_procinfo.procdef.struct)
+              )
             ) then
           consume(_SEMICOLON);
 

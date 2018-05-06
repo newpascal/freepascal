@@ -1,9 +1,17 @@
+{ %CONFIGFILE=fpcunit-console-defaults.ini testdefaults.ini }
+{ %SKIPTARGET=embedded,nativent,msdos,win16,macos,palmos }
+
 program testrunner.rtlobjpas;
 
 {$mode objfpc}{$H+}
+{ Invoke needs a function call manager }
+{.$define testinvoke}
 
 uses
-  simpletestrunner,
+  consoletestrunner,
+{$ifdef testinvoke}
+  tests.rtti.invoke,
+{$endif}
   tests.rtti;
 
 var

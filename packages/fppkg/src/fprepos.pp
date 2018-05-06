@@ -142,6 +142,7 @@ type
     Procedure Assign(Source : TPersistent); override;
     Function AddDependency(Const APackageName : String; const AMinVersion : String = '') : TFPDependency;
     Function IsPackageBroken: Boolean;
+    Function GetDebugName: string;
     Property Dependencies : TFPDependencies Read FDependencies;
     Property OSes : TOSes Read FOSes Write FOses;
     Property CPUs : TCPUs Read FCPUs Write FCPUs;
@@ -337,6 +338,8 @@ ResourceString
   SErrDuplicatePackageName = 'Duplicate package name : "%s"';
   SErrMaxLevelExceeded     = 'Maximum number of dependency levels exceeded (%d) at package "%s".';
   SErrMirrorNotFound       = 'Mirror "%s" not found.';
+  SRepoUnknown             = 'RepositoryUnknown';
+  SPackageUnknown          = 'unknown package';
 
 
 Function MakeTargetString(CPU : TCPU;OS: TOS) : String;
@@ -365,7 +368,14 @@ end;
 
 function TFPCustomPackagesStructure.GetBuildPathDirectory(APackage: TFPPackage): string;
 begin
-  Result := '';
+  if (APackage.Repository.RepositoryType=fprtInstalled) and (APackage.SourcePath<>'') then
+    begin
+      Result := APackage.SourcePath;
+    end
+  else
+    begin
+      Result := '';
+    end;
 end;
 
 function TFPCustomPackagesStructure.GetPrefix: string;
@@ -717,6 +727,15 @@ begin
     raise Exception.Create(SErrRepositoryNotAssigned);
 end;
 
+Function TFPPackage.GetDebugName: string;
+begin
+  if not Assigned(Self) then
+    Result := SPackageUnknown
+  else if Assigned(Repository) then
+    Result:=Repository.RepositoryName+'-'+Name
+  else
+    Result:=SRepoUnknown+'-'+Name;
+end;
 
 { TFPPackages }
 
@@ -800,8 +819,10 @@ begin
 end;
 
 function TFPRepository.PackageIsBroken(APackage: TFPPackage): Boolean;
+var
+  s: string;
 begin
-  Result := GFPpkg.PackageIsBroken(APackage, Self);
+  Result := GFPpkg.PackageIsBroken(APackage, s, Self);
 end;
 
 constructor TFPRepository.Create(AOwner: TComponent);

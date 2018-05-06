@@ -304,7 +304,8 @@ destructor TCollection.Destroy;
 begin
   FUpdateCount:=1; // Prevent OnChange
   try
-    DoClear;
+    if Assigned(FItems) then
+      DoClear;
   Finally
     FUpdateCount:=0;
   end;
@@ -324,9 +325,14 @@ Var I : Longint;
 begin
   If Source is TCollection then
     begin
-    Clear;
-    For I:=0 To TCollection(Source).Count-1 do
-     Add.Assign(TCollection(Source).Items[I]);
+    BeginUpdate;
+    try
+      Clear;
+      For I:=0 To TCollection(Source).Count-1 do
+       Add.Assign(TCollection(Source).Items[I]);
+    finally
+      EndUpdate;
+    end;
     exit;
     end
   else

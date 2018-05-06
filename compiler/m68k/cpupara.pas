@@ -50,6 +50,10 @@ unit cpupara;
           function get_volatile_registers_int(calloption:tproccalloption):tcpuregisterset;override;
           function get_volatile_registers_address(calloption:tproccalloption):tcpuregisterset;override;
           function get_volatile_registers_fpu(calloption:tproccalloption):tcpuregisterset;override;
+          function get_saved_registers_int(calloption:tproccalloption):tcpuregisterarray;override;
+          function get_saved_registers_address(calloption:tproccalloption):tcpuregisterarray;override;
+          function get_saved_registers_fpu(calloption:tproccalloption):tcpuregisterarray;override;
+          function get_para_align(calloption : tproccalloption):byte;override;
          private
           function parse_loc_string_to_register(var locreg: tregister; const s : string): boolean;
           function create_stdcall_paraloc_info(p : tabstractprocdef; side: tcallercallee; paras: tparalist;
@@ -79,6 +83,8 @@ unit cpupara;
       begin
         { d0 and d1 are considered volatile }
         Result:=VOLATILE_INTREGISTERS;
+        if target_info.system in [system_m68k_palmos] then
+          include(result,RS_D2);
       end;
 
 
@@ -86,12 +92,40 @@ unit cpupara;
       begin
         { a0 and a1 are considered volatile }
         Result:=VOLATILE_ADDRESSREGISTERS;
+        if target_info.system in [system_m68k_palmos] then
+          include(result,RS_A2);
       end;
 
     function tcpuparamanager.get_volatile_registers_fpu(calloption:tproccalloption):tcpuregisterset;
       begin
         { fp0 and fp1 are considered volatile }
         Result:=VOLATILE_FPUREGISTERS;
+      end;
+
+    function tcpuparamanager.get_saved_registers_int(calloption:tproccalloption):tcpuregisterarray;
+      const
+        saved_regs: array[0..5] of tsuperregister = (RS_D2,RS_D3,RS_D4,RS_D5,RS_D6,RS_D7);
+      begin
+        result:=saved_regs;
+      end;
+
+    function tcpuparamanager.get_saved_registers_address(calloption:tproccalloption):tcpuregisterarray;
+      const
+        saved_addr_regs: array[0..4] of tsuperregister = (RS_A2,RS_A3,RS_A4,RS_A5,RS_A6);
+      begin
+        result:=saved_addr_regs;
+      end;
+
+    function tcpuparamanager.get_saved_registers_fpu(calloption:tproccalloption):tcpuregisterarray;
+      const
+        saved_fpu_regs: array[0..5] of tsuperregister = (RS_FP2,RS_FP3,RS_FP4,RS_FP5,RS_FP6,RS_FP7);
+      begin
+        result:=saved_fpu_regs;
+      end;
+
+    function tcpuparamanager.get_para_align(calloption : tproccalloption):byte;
+      begin
+        result:=target_info.stackalign;
       end;
 
     function tcpuparamanager.param_use_paraloc(const cgpara:tcgpara):boolean;
@@ -168,8 +202,9 @@ unit cpupara;
 
     function tcpuparamanager.get_funcretloc(p : tabstractprocdef; side: tcallercallee; forcetempdef: tdef): tcgpara;
       var
-        paraloc : pcgparalocation;
+        paraloc    : pcgparalocation;
         retcgsize  : tcgsize;
+        retregtype : tregistertype;
       begin
         if set_common_funcretloc_info(p,forcetempdef,retcgsize,result) then
           exit;
@@ -223,10 +258,39 @@ unit cpupara;
                paraloc^.loc:=LOC_REGISTER;
                paraloc^.size:=retcgsize;
                paraloc^.def:=result.def;
-               if side=callerside then
-                 paraloc^.register:=newreg(R_INTREGISTER,RS_FUNCTION_RESULT_REG,cgsize2subreg(R_INTREGISTER,retcgsize))
+
+               { GCC (and SVR4 in general maybe?) requires a pointer result on the A0
+                 register, as well as D0. So we init the result to be A0, then copy
+                 it also to D0 in hlcg.gen_load_loc_function_result. This is not pretty,
+                 but we don't really have an architecture for funcretlocs in two
+                 separate locations.
+
+                 We also have to figure out a better switch for this, because this is
+                 now compiler and platform specific... (KB) }
+
+               if (tprocdef(p).proccalloption in [pocall_syscall,pocall_cdecl,pocall_cppdecl]) and
+                  (target_info.system in [system_m68k_palmos,system_m68k_linux]) and
+                  assigned(result.def) and
+                  (result.def.typ in [stringdef,pointerdef,classrefdef,objectdef,
+                                      procvardef,procdef,arraydef,formaldef]) then
+                 retregtype:=R_ADDRESSREGISTER
                else
-                 paraloc^.register:=newreg(R_INTREGISTER,RS_FUNCTION_RETURN_REG,cgsize2subreg(R_INTREGISTER,retcgsize));
+                 retregtype:=R_INTREGISTER;
+
+               if retregtype = R_ADDRESSREGISTER then
+                 begin
+                   if side=callerside then
+                     paraloc^.register:=newreg(R_ADDRESSREGISTER,RS_RETURN_ADDRESS_REG,cgsize2subreg(R_ADDRESSREGISTER,retcgsize))
+                   else
+                     paraloc^.register:=newreg(R_ADDRESSREGISTER,RS_RETURN_ADDRESS_REG,cgsize2subreg(R_ADDRESSREGISTER,retcgsize));
+                 end
+               else
+                 begin
+                   if side=callerside then
+                     paraloc^.register:=newreg(R_INTREGISTER,RS_FUNCTION_RESULT_REG,cgsize2subreg(R_INTREGISTER,retcgsize))
+                   else
+                     paraloc^.register:=newreg(R_INTREGISTER,RS_FUNCTION_RETURN_REG,cgsize2subreg(R_INTREGISTER,retcgsize));
+                 end;
              end;
           end;
       end;
@@ -256,9 +320,14 @@ unit cpupara;
         paradef      : tdef;
         i            : longint;
         firstparaloc : boolean;
+        paraalign    : shortint;
 
       begin
         result:=0;
+        if paras.count=0 then
+          exit;
+
+        paraalign:=get_para_align(p.proccalloption);
 
         for i:=0 to paras.count-1 do
           begin
@@ -309,7 +378,7 @@ unit cpupara;
                   end;
               end;
 
-            hp.paraloc[side].alignment:=target_info.stackalign;  //std_param_align;
+            hp.paraloc[side].alignment:=paraalign;
             hp.paraloc[side].size:=paracgsize;
             hp.paraloc[side].intsize:=paralen;
             hp.paraloc[side].def:=paradef;
@@ -327,15 +396,29 @@ unit cpupara;
             while (paralen > 0) do
               begin
                 paraloc:=hp.paraloc[side].add_location;
-
-                paraloc^.loc:=LOC_REFERENCE;
                 paraloc^.def:=get_paraloc_def(paradef,paralen,firstparaloc);
+
                 if (not (cs_fp_emulation in current_settings.moduleswitches)) and
                    (paradef.typ=floatdef) then
                   paraloc^.size:=int_float_cgsize(paralen)
                 else
                   paraloc^.size:=int_cgsize(paralen);
 
+                { various m68k based C ABIs used in the Unix world use a register to
+                  return a struct by address. we will probably need some kind of a
+                  switch to support these various ABIs when generating cdecl calls (KB) }
+                if ((vo_is_funcret in hp.varoptions) and
+                    (tprocdef(p).proccalloption in [pocall_cdecl,pocall_cppdecl]) and
+                    (target_info.system in [system_m68k_linux]) and
+                    (tprocdef(p).returndef.typ = recorddef)) then
+                  begin
+                    paraloc^.loc:=LOC_REGISTER;
+                    paraloc^.register:=NR_M68K_STRUCT_RESULT_REG;
+                    paralen:=0;
+                    continue;
+                  end;
+
+                paraloc^.loc:=LOC_REFERENCE;
                 paraloc^.reference.offset:=cur_stack_offset;
                 if (side = callerside) then
                   paraloc^.reference.index:=NR_STACK_POINTER_REG
@@ -343,10 +426,10 @@ unit cpupara;
                   begin
                     paraloc^.reference.index:=NR_FRAME_POINTER_REG;
                     inc(paraloc^.reference.offset,target_info.first_parm_offset);
-                    { M68K is a big-endian target }
-                    if (paralen<target_info.stackalign{tcgsize2size[OS_INT]}) then
-                      inc(paraloc^.reference.offset,target_info.stackalign-paralen);
                   end;
+                { M68K is a big-endian target }
+                if (paralen<paraalign) then
+                  inc(paraloc^.reference.offset,paraalign-paralen);
                 inc(cur_stack_offset,align(paralen,target_info.stackalign));
                 paralen := 0;
 
@@ -377,12 +460,13 @@ unit cpupara;
         rt: tregistertype;
       begin
         result:=0;
+        if paras.count=0 then
+          exit;
+
         parareg:=0;
         addrparareg:=0;
         floatparareg:=0;
 
-        if paras.count=0 then
-          exit;
         paraalign:=get_para_align(p.proccalloption);
 
         { clean up here so we can later detect properly if a parameter has been
@@ -489,6 +573,8 @@ unit cpupara;
                                 paraloc^.reference.index:=NR_FRAME_POINTER_REG;
                               varalign:=used_align(size_2_align(paralen),paraalign,paraalign);
                               paraloc^.reference.offset:=cur_stack_offset;
+                              if (paralen<paraalign) then
+                                inc(paraloc^.reference.offset,paraalign-paralen);
                               if side=calleeside then
                                 inc(paraloc^.reference.offset,target_info.first_parm_offset);
                               cur_stack_offset:=align(cur_stack_offset+paralen,varalign);
@@ -531,8 +617,8 @@ unit cpupara;
                                   varalign:=used_align(size_2_align(l),paraalign,paraalign);
                                   paraloc^.reference.offset:=cur_stack_offset;
                                   { M68K is a big-endian target }
-                                  if (paralen<tcgsize2size[OS_INT]) then
-                                    inc(paraloc^.reference.offset,4-paralen);
+                                  if (paralen<paraalign) then
+                                    inc(paraloc^.reference.offset,paraalign-paralen);
                                   if side=calleeside then
                                     inc(paraloc^.reference.offset,target_info.first_parm_offset);
                                   cur_stack_offset:=align(cur_stack_offset+l,varalign);

@@ -1,6 +1,6 @@
 #
 #   This file is part of the Free Pascal Compiler
-#   Copyright (c) 1999-2009 by the Free Pascal Development team
+#   Copyright (c) 1999-2018 by the Free Pascal Development team
 #
 #   Italian Language File for Free Pascal
 #   Contributed by Massimo Soricetti <notturno at quipo.it>
@@ -13,6 +13,9 @@
 #   but WITHOUT ANY WARRANTY; without even the implied warranty of
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 #
+
+# CodePage 1252
+
 #
 # The constants are build in the following order:
 # <part>_<type>_<txtidentifier>
@@ -2690,7 +2693,7 @@ wpo_cant_create_feedback_file=12019_E_Impossibile creare il file di feedback "$1
 #
 option_logo=11023_[
 Compilatore Free Pascal, versione $FPCFULLVERSION [$FPCDATE] per $FPCCPU
-Copyright (c) 1993-2017 di Florian Klaempfl and others
+Copyright (c) 1993-2018 di Florian Klaempfl and others
 ]
 
 #
@@ -2940,7 +2943,6 @@ S*2Aas_Assembla con GNU AS
 3*2Tnetwlibc_Novell Netware Module (libc)
 3*2Topenbsd_OpenBSD
 3*2Tos2_OS/2 / eComStation
-3*2Tsunos_SunOS/Solaris
 3*2Tsymbian_Symbian OS
 3*2Twatcom_DOS extender compatibile Watcom
 3*2Twdosx_WDOSX DOS extender

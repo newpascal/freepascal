@@ -34,7 +34,7 @@ implementation
     uses
        SysUtils,
        cutils,cfileutl,cclasses,
-       globtype,globals,systems,verbose,script,
+       globtype,globals,systems,verbose,cscript,
        fmodule,i_msdos,
        link,aasmbase,cpuinfo,
        omfbase,ogbase,ogomf,owomflib;
@@ -425,7 +425,8 @@ end;
 
 function TInternalLinkerMsDos.GetDataSize(aExeOutput: TExeOutput): QWord;
 begin
-  Result:=GetTotalSizeForSegmentClass(aExeOutput,'DATA');
+  Result:=GetTotalSizeForSegmentClass(aExeOutput,'DATA')+
+          GetTotalSizeForSegmentClass(aExeOutput,'FAR_DATA');
 end;
 
 function TInternalLinkerMsDos.GetBssSize(aExeOutput: TExeOutput): QWord;

@@ -24,6 +24,7 @@ type
   published
     //procedure GetTypes;
     procedure GetTypeInteger;
+    procedure GetTypePointer;
     procedure GetClassProperties;
 
     procedure GetClassPropertiesValue;
@@ -44,17 +45,32 @@ type
     procedure TestPropSetValueShortString;
 
     procedure TestGetValueStringCastError;
-    procedure TestMakeObject;
     procedure TestGetIsReadable;
     procedure TestIsWritable;
 
+    procedure TestMakeNil;
+    procedure TestMakeObject;
+    procedure TestMakeArrayDynamic;
+    procedure TestMakeArrayStatic;
+
+    procedure TestDataSize;
+    procedure TestDataSizeEmpty;
+    procedure TestReferenceRawData;
+    procedure TestReferenceRawDataEmpty;
+
     procedure TestIsManaged;
+
+    procedure TestInterface;
+{$ifdef fpc}
+    procedure TestInterfaceRaw;
+{$endif}
   end;
 
 implementation
 
 type
 
+  {$M+}
   TGetClassProperties = class
   private
     FPubPropRO: integer;
@@ -66,8 +82,14 @@ type
     property PubPropSetRW: integer read FPubPropRW write FPubPropRW;
   end;
 
+  TGetClassPropertiesSub = class(TGetClassProperties)
+
+  end;
+  {$M-}
+
   { TTestValueClass }
 
+  {$M+}
   TTestValueClass = class
   private
     FAInteger: integer;
@@ -90,14 +112,26 @@ type
     property AGetShortString: ShortString read GetAShortString;
     property AWriteOnly: integer write SetWriteOnly;
   end;
+  {$M-}
+
+  {$M+}
+  ITestInterface = interface
+    procedure Test;
+    function Test2: LongInt;
+    procedure Test3(aArg1: LongInt; const aArg2: AnsiString; var aArg3: Boolean; out aArg4: Word);
+    function Test4(aArg1: array of LongInt; aArg2: array of const): AnsiString;
+  end;
+  {$M-}
 
   TManagedRec = record
     s: string;
   end;
 
+{$ifdef fpc}
   TManagedRecOp = record
     class operator AddRef(var a: TManagedRecOp);
   end;
+{$endif}
 
   TNonManagedRec = record
     i: Integer;
@@ -124,6 +158,16 @@ type
   TArrayOfNonManagedRec = array[0..0] of TNonManagedRec;
   TArrayOfByte = array[0..0] of byte;
 
+  TArrayOfLongintDyn = array of LongInt;
+  TArrayOfLongintStatic = array[0..3] of LongInt;
+
+  TTestRecord = record
+    Value1: LongInt;
+    Value2: String;
+  end;
+  PTestRecord = ^TTestRecord;
+
+{$ifdef fpc}
 {$PUSH}
 {$INTERFACES CORBA}
 
@@ -131,10 +175,13 @@ type
   end;
 
 {$POP}
+{$endif}
 
+{$ifdef fpc}
 class operator TManagedRecOp.AddRef(var  a: TManagedRecOp);
 begin
 end;
+{$endif}
 
 { TTestValueClass }
 
@@ -216,6 +263,62 @@ begin
   end;
 end;
 
+procedure TTestCase1.TestMakeNil;
+var
+  value: TValue;
+begin
+  TValue.Make(Nil, Nil, value);
+  CheckTrue(value.Kind = tkUnknown);
+  CheckTrue(value.IsEmpty);
+  CheckTrue(value.IsObject);
+  CheckTrue(value.IsClass);
+  CheckTrue(value.IsOrdinal);
+  CheckFalse(value.IsArray);
+  CheckTrue(value.AsObject = Nil);
+  CheckTrue(value.AsClass = Nil);
+  CheckTrue(value.AsInterface = Nil);
+  CheckEquals(0, value.AsOrdinal);
+
+  TValue.Make(Nil, TypeInfo(TObject), value);
+  CheckTrue(value.IsEmpty);
+  CheckTrue(value.IsObject);
+  CheckTrue(value.IsClass);
+  CheckTrue(value.IsOrdinal);
+  CheckFalse(value.IsArray);
+  CheckTrue(value.AsObject=Nil);
+  CheckTrue(value.AsClass=Nil);
+  CheckTrue(value.AsInterface=Nil);
+  CheckEquals(0, value.AsOrdinal);
+
+  TValue.Make(Nil, TypeInfo(TClass), value);
+  CheckTrue(value.IsEmpty);
+  CheckTrue(value.IsClass);
+  CheckTrue(value.IsOrdinal);
+  CheckFalse(value.IsArray);
+  CheckTrue(value.AsObject=Nil);
+  CheckTrue(value.AsClass=Nil);
+  CheckTrue(value.AsInterface=Nil);
+  CheckEquals(0, value.AsOrdinal);
+
+  TValue.Make(Nil, TypeInfo(LongInt), value);
+  CheckTrue(value.IsOrdinal);
+  CheckFalse(value.IsEmpty);
+  CheckFalse(value.IsClass);
+  CheckFalse(value.IsObject);
+  CheckFalse(value.IsArray);
+  CheckEquals(0, value.AsOrdinal);
+  CheckEquals(0, value.AsInteger);
+  CheckEquals(0, value.AsInt64);
+  CheckEquals(0, value.AsUInt64);
+
+  TValue.Make(Nil, TypeInfo(String), value);
+  CheckFalse(value.IsEmpty);
+  CheckFalse(value.IsObject);
+  CheckFalse(value.IsClass);
+  CheckFalse(value.IsArray);
+  CheckEquals('', value.AsString);
+end;
+
 procedure TTestCase1.TestMakeObject;
 var
   AValue: TValue;
@@ -229,6 +332,63 @@ begin
   Check(AValue.AsObject=ATestClass);
   CheckEquals(TTestValueClass(AValue.AsObject).AInteger, 54329);
   ATestClass.Free;
+end;
+
+procedure TTestCase1.TestMakeArrayDynamic;
+var
+  arr: TArrayOfLongintDyn;
+  value: TValue;
+begin
+  SetLength(arr, 2);
+  arr[0] := 42;
+  arr[1] := 21;
+  TValue.Make(@arr, TypeInfo(TArrayOfLongintDyn), value);
+  CheckEquals(value.IsArray, True);
+  CheckEquals(value.IsObject, False);
+  CheckEquals(value.IsOrdinal, False);
+  CheckEquals(value.IsClass, False);
+  CheckEquals(value.GetArrayLength, 2);
+  CheckEquals(value.GetArrayElement(0).AsInteger, 42);
+  CheckEquals(value.GetArrayElement(1).AsInteger, 21);
+  value.SetArrayElement(0, 84);
+  CheckEquals(arr[0], 84);
+end;
+
+procedure TTestCase1.TestMakeArrayStatic;
+type
+  TArrStat = array[0..1] of LongInt;
+  TArrStat2D = array[0..1, 0..1] of LongInt;
+var
+  arr: TArrStat;
+  arr2D: TArrStat2D;
+  value: TValue;
+begin
+  arr[0] := 42;
+  arr[1] := 21;
+  TValue.Make(@arr, TypeInfo(TArrStat), value);
+  CheckEquals(value.IsArray, True);
+  CheckEquals(value.IsObject, False);
+  CheckEquals(value.IsOrdinal, False);
+  CheckEquals(value.IsClass, False);
+  CheckEquals(value.GetArrayLength, 2);
+  CheckEquals(value.GetArrayElement(0).AsInteger, 42);
+  CheckEquals(value.GetArrayElement(1).AsInteger, 21);
+  value.SetArrayElement(0, 84);
+  { since this is a static array the original array isn't touched! }
+  CheckEquals(arr[0], 42);
+
+  arr2D[0, 0] := 42;
+  arr2D[0, 1] := 21;
+  arr2D[1, 0] := 84;
+  arr2D[1, 1] := 63;
+
+  TValue.Make(@arr2D, TypeInfo(TArrStat2D), value);
+  CheckEquals(value.IsArray, True);
+  CheckEquals(value.GetArrayLength, 4);
+  CheckEquals(value.GetArrayElement(0).AsInteger, 42);
+  CheckEquals(value.GetArrayElement(1).AsInteger, 21);
+  CheckEquals(value.GetArrayElement(2).AsInteger, 84);
+  CheckEquals(value.GetArrayElement(3).AsInteger, 63);
 end;
 
 procedure TTestCase1.TestGetIsReadable;
@@ -479,7 +639,7 @@ begin
       AProperty := ARttiType.GetProperty('astring');
 
       s := 'ipse lorem or something like that';
-      TValue.Make(@s, TypeInfo(s), AValue);
+      TValue.Make(@s, TypeInfo(string), AValue);
       AProperty.SetValue(ATestClass, AValue);
       CheckEquals(ATestClass.AString, s);
       s := 'Another string';
@@ -509,7 +669,7 @@ begin
       AProperty := ARttiType.GetProperty('aInteger');
 
       i := -43573;
-      TValue.Make(@i, TypeInfo(i), AValue);
+      TValue.Make(@i, TypeInfo(Integer), AValue);
       AProperty.SetValue(ATestClass, AValue);
       CheckEquals(ATestClass.AInteger, i);
       i := 1;
@@ -539,12 +699,12 @@ begin
       AProperty := ARttiType.GetProperty('aboolean');
 
       b := true;
-      TValue.Make(@b, TypeInfo(b), AValue);
+      TValue.Make(@b, TypeInfo(Boolean), AValue);
       AProperty.SetValue(ATestClass, AValue);
       CheckEquals(ATestClass.ABoolean, b);
       b := false;
       CheckEquals(ATestClass.ABoolean, true);
-      TValue.Make(@b, TypeInfo(b), AValue);
+      TValue.Make(@b, TypeInfo(Boolean), AValue);
       AProperty.SetValue(ATestClass, AValue);
       CheckEquals(ATestClass.ABoolean, false);
     finally
@@ -573,14 +733,14 @@ begin
       AProperty := ARttiType.GetProperty('aShortString');
 
       s := 'ipse lorem or something like that';
-      TValue.Make(@s, TypeInfo(s), AValue);
+      TValue.Make(@s, TypeInfo(String), AValue);
       AProperty.SetValue(ATestClass, AValue);
       CheckEquals(ATestClass.AShortString, s);
       s := 'Another string';
       CheckEquals(ATestClass.AShortString, 'ipse lorem or something like that');
 
       ss := 'Hello World';
-      TValue.Make(@ss, TypeInfo(ss), AValue);
+      TValue.Make(@ss, TypeInfo(ShortString), AValue);
       AProperty.SetValue(ATestClass, AValue);
       CheckEquals(ATestClass.AShortString, ss);
       ss := 'Foobar';
@@ -685,16 +845,45 @@ begin
   LContext := TRttiContext.Create;
 
   LType := LContext.GetType(TypeInfo(integer));
+{$ifdef fpc}
   CheckEquals(LType.Name, 'LongInt');
+{$else}
+  CheckEquals(LType.Name, 'Integer');
+{$endif}
 
   LContext.Free;
+end;
+
+procedure TTestCase1.GetTypePointer;
+var
+  context: TRttiContext;
+  t: TRttiType;
+  p: TRttiPointerType absolute t;
+begin
+  context := TRttiContext.Create;
+  try
+    t := context.GetType(TypeInfo(Pointer));
+    Assert(t is TRttiPointerType, 'Type of Pointer is not a TRttiPointerType');
+    Assert(not Assigned(p.ReferredType), 'ReferredType of Pointer is not Nil');
+    t := context.GetType(TypeInfo(PLongInt));
+    Assert(t is TRttiPointerType, 'Type of Pointer is not a TRttiPointerType');
+    Assert(Assigned(p.ReferredType), 'ReferredType of PLongInt is Nil');
+    Assert(p.ReferredType = context.GetType(TypeInfo(LongInt)), 'ReferredType of PLongInt is not a LongInt');
+    t := context.GetType(TypeInfo(PWideChar));
+    Assert(t is TRttiPointerType, 'Type of Pointer is not a TRttiPointerType');
+    Assert(Assigned(p.ReferredType), 'ReferredType of PWideChar is Nil');
+    Assert(p.ReferredType = context.GetType(TypeInfo(WideChar)), 'ReferredType of PWideChar is not a WideChar');
+  finally
+    context.Free;
+  end;
 end;
 
 procedure TTestCase1.GetClassProperties;
 var
   LContext: TRttiContext;
   LType: TRttiType;
-  PropList: {$ifdef fpc}specialize{$endif} TArray<TRttiProperty>;
+  PropList, PropList2: {$ifdef fpc}specialize{$endif} TArray<TRttiProperty>;
+  i: LongInt;
 begin
   LContext := TRttiContext.Create;
 
@@ -706,6 +895,13 @@ begin
   CheckEquals('PubPropRW', PropList[1].Name);
   CheckEquals('PubPropSetRO', PropList[2].Name);
   CheckEquals('PubPropSetRW', PropList[3].Name);
+
+  LType := LContext.GetType(TypeInfo(TGetClassPropertiesSub));
+  PropList2 := LType.GetProperties;
+
+  CheckEquals(Length(PropList), Length(PropList2));
+  for i := 0 to High(PropList) do
+    Check(PropList[i] = PropList2[i], 'Property instances are not equal');
 
   LContext.Free;
 end;
@@ -735,6 +931,301 @@ begin
   LContext.Free;
 end;
 
+procedure TTestCase1.TestReferenceRawData;
+var
+  value: TValue;
+  str: String;
+  intf: IInterface;
+  i: LongInt;
+  test: TTestRecord;
+  arrdyn: TArrayOfLongintDyn;
+  arrstat: TArrayOfLongintStatic;
+begin
+  str := 'Hello World';
+  UniqueString(str);
+  TValue.Make(@str, TypeInfo(String), value);
+  Check(PPointer(value.GetReferenceToRawData)^ = Pointer(str), 'Reference to string data differs');
+
+  intf := TInterfacedObject.Create;
+  TValue.Make(@intf, TypeInfo(IInterface), value);
+  Check(PPointer(value.GetReferenceToRawData)^ = Pointer(intf), 'Reference to interface data differs');
+
+  i := 42;
+  TValue.Make(@i, TypeInfo(LongInt), value);
+  Check(value.GetReferenceToRawData <> @i, 'Reference to longint is equal');
+  Check(PLongInt(value.GetReferenceToRawData)^ = PLongInt(@i)^, 'Reference to longint data differs');
+
+  test.value1 := 42;
+  test.value2 := 'Hello World';
+  TValue.Make(@test, TypeInfo(TTestRecord), value);
+  Check(value.GetReferenceToRawData <> @test, 'Reference to record is equal');
+  Check(PTestRecord(value.GetReferenceToRawData)^.value1 = PTestRecord(@test)^.value1, 'Reference to record data value1 differs');
+  Check(PTestRecord(value.GetReferenceToRawData)^.value2 = PTestRecord(@test)^.value2, 'Reference to record data value2 differs');
+
+  SetLength(arrdyn, 3);
+  arrdyn[0] := 42;
+  arrdyn[1] := 23;
+  arrdyn[2] := 49;
+  TValue.Make(@arrdyn, TypeInfo(TArrayOfLongintDyn), value);
+  Check(PPointer(value.GetReferenceToRawData)^ = Pointer(arrdyn), 'Reference to dynamic array data differs');
+
+  arrstat[0] := 42;
+  arrstat[1] := 23;
+  arrstat[2] := 49;
+  arrstat[3] := 59;
+  TValue.Make(@arrstat, TypeInfo(TArrayOfLongintStatic), value);
+  Check(value.GetReferenceToRawData <> @arrstat, 'Reference to static array is equal');
+  Check(PLongInt(value.GetReferenceToRawData)^ = PLongInt(@arrstat)^, 'Reference to static array data differs');
+end;
+
+procedure TTestCase1.TestReferenceRawDataEmpty;
+var
+  value: TValue;
+begin
+  TValue.Make(Nil, TypeInfo(String), value);
+  Check(Assigned(value.GetReferenceToRawData()), 'Reference to empty String is not assigned');
+  Check(not Assigned(PPointer(value.GetReferenceToRawData)^), 'Empty String data is assigned');
+
+  TValue.Make(Nil, TypeInfo(IInterface), value);
+  Check(Assigned(value.GetReferenceToRawData()), 'Reference to empty interface is not assigned');
+  Check(not Assigned(PPointer(value.GetReferenceToRawData)^), 'Empty interface data is assigned');
+
+  TValue.Make(Nil, TypeInfo(LongInt), value);
+  Check(Assigned(value.GetReferenceToRawData()), 'Reference to empty LongInt is not assigned');
+  Check(PLongInt(value.GetReferenceToRawData)^ = 0, 'Empty longint data is not 0');
+
+  TValue.Make(Nil, TypeInfo(TTestRecord), value);
+  Check(Assigned(value.GetReferenceToRawData()), 'Reference to empty record is not assigned');
+  Check(PTestRecord(value.GetReferenceToRawData)^.value1 = 0, 'Empty record data value1 is not 0');
+  Check(PTestRecord(value.GetReferenceToRawData)^.value2 = '', 'Empty record data value2 is not empty');
+
+  TValue.Make(Nil, TypeInfo(TArrayOfLongintDyn), value);
+  Check(Assigned(value.GetReferenceToRawData()), 'Reference to empty dynamic array is not assigned');
+  Check(not Assigned(PPointer(value.GetReferenceToRawData)^), 'Empty dynamic array data is assigned');
+
+  TValue.Make(Nil, TypeInfo(TArrayOfLongintStatic), value);
+  Check(Assigned(value.GetReferenceToRawData()), 'Reference to empty static array is not assigned');
+  Check(PLongInt(value.GetReferenceToRawData)^ = 0, 'Empty static array data is not 0');
+end;
+
+procedure TTestCase1.TestDataSize;
+var
+  u8: UInt8;
+  u16: UInt16;
+  u32: UInt32;
+  u64: UInt64;
+  s8: Int8;
+  s16: Int16;
+  s32: Int32;
+  s64: Int64;
+  f32: Single;
+  f64: Double;
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+  f80: Extended;
+{$endif}
+  fco: Comp;
+  fcu: Currency;
+  ss: ShortString;
+  sa: AnsiString;
+  su: UnicodeString;
+  sw: WideString;
+  o: TObject;
+  c: TClass;
+  i: IInterface;
+  ad: TArrayOfLongintDyn;
+  _as: TArrayOfLongintStatic;
+  b8: Boolean;
+{$ifdef fpc}
+  b16: Boolean16;
+  b32: Boolean32;
+  b64: Boolean64;
+{$endif}
+  bl8: ByteBool;
+  bl16: WordBool;
+  bl32: LongBool;
+{$ifdef fpc}
+  bl64: QWordBool;
+{$endif}
+  e: TTestEnum;
+  s: TTestSet;
+  t: TTestRecord;
+  p: Pointer;
+  proc: TTestProc;
+  method: TTestMethod;
+
+  value: TValue;
+begin
+  TValue.Make(@u8, TypeInfo(UInt8), value);
+  CheckEquals(1, value.DataSize, 'Size of UInt8 differs');
+  TValue.Make(@u16, TypeInfo(UInt16), value);
+  CheckEquals(2, value.DataSize, 'Size of UInt16 differs');
+  TValue.Make(@u32, TypeInfo(UInt32), value);
+  CheckEquals(4, value.DataSize, 'Size of UInt32 differs');
+  TValue.Make(@u64, TypeInfo(UInt64), value);
+  CheckEquals(8, value.DataSize, 'Size of UInt64 differs');
+  TValue.Make(@s8, TypeInfo(Int8), value);
+  CheckEquals(1, value.DataSize, 'Size of Int8 differs');
+  TValue.Make(@s16, TypeInfo(Int16), value);
+  CheckEquals(2, value.DataSize, 'Size of Int16 differs');
+  TValue.Make(@s32, TypeInfo(Int32), value);
+  CheckEquals(4, value.DataSize, 'Size of Int32 differs');
+  TValue.Make(@s64, TypeInfo(Int64), value);
+  CheckEquals(8, value.DataSize, 'Size of Int64 differs');
+  TValue.Make(@b8, TypeInfo(Boolean), value);
+  CheckEquals(1, value.DataSize, 'Size of Boolean differs');
+{$ifdef fpc}
+  TValue.Make(@b16, TypeInfo(Boolean16), value);
+  CheckEquals(2, value.DataSize, 'Size of Boolean16 differs');
+  TValue.Make(@b32, TypeInfo(Boolean32), value);
+  CheckEquals(4, value.DataSize, 'Size of Boolean32 differs');
+  TValue.Make(@b64, TypeInfo(Boolean64), value);
+  CheckEquals(8, value.DataSize, 'Size of Boolean64 differs');
+{$endif}
+  TValue.Make(@bl8, TypeInfo(ByteBool), value);
+  CheckEquals(1, value.DataSize, 'Size of ByteBool differs');
+  TValue.Make(@bl16, TypeInfo(WordBool), value);
+  CheckEquals(2, value.DataSize, 'Size of WordBool differs');
+  TValue.Make(@bl32, TypeInfo(LongBool), value);
+  CheckEquals(4, value.DataSize, 'Size of LongBool differs');
+{$ifdef fpc}
+  TValue.Make(@bl64, TypeInfo(QWordBool), value);
+  CheckEquals(8, value.DataSize, 'Size of QWordBool differs');
+{$endif}
+  TValue.Make(@f32, TypeInfo(Single), value);
+  CheckEquals(4, value.DataSize, 'Size of Single differs');
+  TValue.Make(@f64, TypeInfo(Double), value);
+  CheckEquals(8, value.DataSize, 'Size of Double differs');
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+  TValue.Make(@f80, TypeInfo(Extended), value);
+  CheckEquals(10, value.DataSize, 'Size of Extended differs');
+{$endif}
+  TValue.Make(@fcu, TypeInfo(Currency), value);
+  CheckEquals(SizeOf(Currency), value.DataSize, 'Size of Currency differs');
+  TValue.Make(@fco, TypeInfo(Comp), value);
+  CheckEquals(SizeOf(Comp), value.DataSize, 'Size of Comp differs');
+  ss := '';
+  TValue.Make(@ss, TypeInfo(ShortString), value);
+  CheckEquals(254, value.DataSize, 'Size ofShortString differs');
+  TValue.Make(@sa, TypeInfo(AnsiString), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of AnsiString differs');
+  TValue.Make(@sw, TypeInfo(WideString), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of WideString differs');
+  TValue.Make(@su, TypeInfo(UnicodeString), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of UnicodeString differs');
+  o := TTestValueClass.Create;
+  TValue.Make(@o, TypeInfo(TObject), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of TObject differs');
+  o.Free;
+  c := TObject;
+  TValue.Make(@c, TypeInfo(TClass), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of TClass differs');
+  TValue.Make(@i, TypeInfo(IInterface), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of IInterface differs');
+  TValue.Make(@t, TypeInfo(TTestRecord), value);
+  CheckEquals(SizeOf(TTestRecord), value.DataSize, 'Size of TTestRecord differs');
+  proc := Nil;
+  TValue.Make(@proc, TypeInfo(TTestProc), value);
+  CheckEquals(SizeOf(TTestProc), value.DataSize, 'Size of TTestProc differs');
+  method := Nil;
+  TValue.Make(@method, TypeInfo(TTestMethod), value);
+  CheckEquals(SizeOf(TTestMethod), value.DataSize, 'Size of TTestMethod differs');
+  TValue.Make(@_as, TypeInfo(TArrayOfLongintStatic), value);
+  CheckEquals(SizeOf(TArrayOfLongintStatic), value.DataSize, 'Size of TArrayOfLongintStatic differs');
+  TValue.Make(@ad, TypeInfo(TArrayOfLongintDyn), value);
+  CheckEquals(SizeOf(TArrayOfLongintDyn), value.DataSize, 'Size of TArrayOfLongintDyn differs');
+  TValue.Make(@e, TypeInfo(TTestEnum), value);
+  CheckEquals(SizeOf(TTestEnum), value.DataSize, 'Size of TTestEnum differs');
+  TValue.Make(@s, TypeInfo(TTestSet), value);
+  CheckEquals(SizeOf(TTestSet), value.DataSize, 'Size of TTestSet differs');
+  p := Nil;
+  TValue.Make(@p, TypeInfo(Pointer), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of Pointer differs');
+end;
+
+procedure TTestCase1.TestDataSizeEmpty;
+var
+  value: TValue;
+begin
+  TValue.Make(Nil, TypeInfo(UInt8), value);
+  CheckEquals(1, value.DataSize, 'Size of UInt8 differs');
+  TValue.Make(Nil, TypeInfo(UInt16), value);
+  CheckEquals(2, value.DataSize, 'Size of UInt16 differs');
+  TValue.Make(Nil, TypeInfo(UInt32), value);
+  CheckEquals(4, value.DataSize, 'Size of UInt32 differs');
+  TValue.Make(Nil, TypeInfo(UInt64), value);
+  CheckEquals(8, value.DataSize, 'Size of UInt64 differs');
+  TValue.Make(Nil, TypeInfo(Int8), value);
+  CheckEquals(1, value.DataSize, 'Size of Int8 differs');
+  TValue.Make(Nil, TypeInfo(Int16), value);
+  CheckEquals(2, value.DataSize, 'Size of Int16 differs');
+  TValue.Make(Nil, TypeInfo(Int32), value);
+  CheckEquals(4, value.DataSize, 'Size of Int32 differs');
+  TValue.Make(Nil, TypeInfo(Int64), value);
+  CheckEquals(8, value.DataSize, 'Size of Int64 differs');
+  TValue.Make(Nil, TypeInfo(Boolean), value);
+  CheckEquals(1, value.DataSize, 'Size of Boolean differs');
+{$ifdef fpc}
+  TValue.Make(Nil, TypeInfo(Boolean16), value);
+  CheckEquals(2, value.DataSize, 'Size of Boolean16 differs');
+  TValue.Make(Nil, TypeInfo(Boolean32), value);
+  CheckEquals(4, value.DataSize, 'Size of Boolean32 differs');
+  TValue.Make(Nil, TypeInfo(Boolean64), value);
+  CheckEquals(8, value.DataSize, 'Size of Boolean64 differs');
+{$endif}
+  TValue.Make(Nil, TypeInfo(ByteBool), value);
+  CheckEquals(1, value.DataSize, 'Size of ByteBool differs');
+  TValue.Make(Nil, TypeInfo(WordBool), value);
+  CheckEquals(2, value.DataSize, 'Size of WordBool differs');
+  TValue.Make(Nil, TypeInfo(LongBool), value);
+  CheckEquals(4, value.DataSize, 'Size of LongBool differs');
+{$ifdef fpc}
+  TValue.Make(Nil, TypeInfo(QWordBool), value);
+  CheckEquals(8, value.DataSize, 'Size of QWordBool differs');
+{$endif}
+  TValue.Make(Nil, TypeInfo(Single), value);
+  CheckEquals(4, value.DataSize, 'Size of Single differs');
+  TValue.Make(Nil, TypeInfo(Double), value);
+  CheckEquals(8, value.DataSize, 'Size of Double differs');
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+  TValue.Make(Nil, TypeInfo(Extended), value);
+  CheckEquals(10, value.DataSize, 'Size of Extended differs');
+{$endif}
+  TValue.Make(Nil, TypeInfo(Currency), value);
+  CheckEquals(SizeOf(Currency), value.DataSize, 'Size of Currency differs');
+  TValue.Make(Nil, TypeInfo(Comp), value);
+  CheckEquals(SizeOf(Comp), value.DataSize, 'Size of Comp differs');
+  TValue.Make(Nil, TypeInfo(ShortString), value);
+  CheckEquals(254, value.DataSize, 'Size of ShortString differs');
+  TValue.Make(Nil, TypeInfo(AnsiString), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of Pointer differs');
+  TValue.Make(Nil, TypeInfo(WideString), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of WideString differs');
+  TValue.Make(Nil, TypeInfo(UnicodeString), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of UnicodeString differs');
+  TValue.Make(Nil, TypeInfo(TObject), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of TObject differs');
+  TValue.Make(Nil, TypeInfo(TClass), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of TClass differs');
+  TValue.Make(Nil, TypeInfo(IInterface), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of IInterface differs');
+  TValue.Make(Nil, TypeInfo(TTestRecord), value);
+  CheckEquals(SizeOf(TTestRecord), value.DataSize, 'Size of TTestRecord differs');
+  TValue.Make(Nil, TypeInfo(TTestProc), value);
+  CheckEquals(SizeOf(TTestProc), value.DataSize, 'Size of TTestProc differs');
+  TValue.Make(Nil, TypeInfo(TTestMethod), value);
+  CheckEquals(SizeOf(TTestMethod), value.DataSize, 'Size of TTestMethod differs');
+  TValue.Make(Nil, TypeInfo(TArrayOfLongintStatic), value);
+  CheckEquals(SizeOf(TArrayOfLongintStatic), value.DataSize, 'Size of TArrayOfLongintStatic differs');
+  TValue.Make(Nil, TypeInfo(TArrayOfLongintDyn), value);
+  CheckEquals(SizeOf(TArrayOfLongintDyn), value.DataSize, 'Size of TArrayOfLongintDyn differs');
+  TValue.Make(Nil, TypeInfo(TTestEnum), value);
+  CheckEquals(SizeOf(TTestEnum), value.DataSize, 'Size of TTestEnum differs');
+  TValue.Make(Nil, TypeInfo(TTestSet), value);
+  CheckEquals(SizeOf(TTestSet), value.DataSize, 'Size of TTestSet differs');
+  TValue.Make(Nil, TypeInfo(Pointer), value);
+  CheckEquals(SizeOf(Pointer), value.DataSize, 'Size of Pointer differs');
+end;
+
 procedure TTestCase1.TestIsManaged;
 begin
   CheckEquals(true, IsManaged(TypeInfo(ansistring)), 'IsManaged for tkAString');
@@ -745,7 +1236,9 @@ begin
   CheckEquals(true, IsManaged(TypeInfo(TArrayOfString)),
     'IsManaged for tkArray (with managed ElType)');
   CheckEquals(true, IsManaged(TypeInfo(TManagedRec)), 'IsManaged for tkRecord');
+  {$ifdef fpc}
   CheckEquals(true, IsManaged(TypeInfo(TManagedRecOp)), 'IsManaged for tkRecord');
+  {$endif}
   CheckEquals(true, IsManaged(TypeInfo(IInterface)), 'IsManaged for tkInterface');
   CheckEquals(true, IsManaged(TypeInfo(TManagedObj)), 'IsManaged for tkObject');
   {$ifdef fpc}
@@ -760,7 +1253,12 @@ begin
   CheckEquals(false, IsManaged(TypeInfo(TTestEnum)), 'IsManaged for tkEnumeration');
   CheckEquals(false, IsManaged(TypeInfo(Single)), 'IsManaged for tkFloat');
   CheckEquals(false, IsManaged(TypeInfo(TTestSet)), 'IsManaged for tkSet');
+  {$ifdef fpc}
   CheckEquals(false, IsManaged(TypeInfo(TTestMethod)), 'IsManaged for tkMethod');
+  {$else}
+  { Delphi bug (or sabotage). For some reason Delphi considers method pointers to be managed (only in newer versions, probably since XE7) :/ }
+  CheckEquals({$if RTLVersion>=28}true{$else}false{$endif}, IsManaged(TypeInfo(TTestMethod)), 'IsManaged for tkMethod');
+  {$endif}
   CheckEquals(false, IsManaged(TypeInfo(TArrayOfByte)),
     'IsManaged for tkArray (with non managed ElType)');
   CheckEquals(false, IsManaged(TypeInfo(TArrayOfNonManagedRec)),
@@ -772,14 +1270,171 @@ begin
   CheckEquals(false, IsManaged(TypeInfo(Boolean)), 'IsManaged for tkBool');
   CheckEquals(false, IsManaged(TypeInfo(Int64)), 'IsManaged for tkInt64');
   CheckEquals(false, IsManaged(TypeInfo(UInt64)), 'IsManaged for tkQWord');
+  {$ifdef fpc}
   CheckEquals(false, IsManaged(TypeInfo(ICORBATest)), 'IsManaged for tkInterfaceRaw');
+  {$endif}
   CheckEquals(false, IsManaged(TypeInfo(TTestProc)), 'IsManaged for tkProcVar');
   CheckEquals(false, IsManaged(TypeInfo(TTestHelper)), 'IsManaged for tkHelper');
+  {$ifdef fpc}
   CheckEquals(false, IsManaged(TypeInfo(file)), 'IsManaged for tkFile');
+  {$endif}
   CheckEquals(false, IsManaged(TypeInfo(TClass)), 'IsManaged for tkClassRef');
   CheckEquals(false, IsManaged(TypeInfo(Pointer)), 'IsManaged for tkPointer');
   CheckEquals(false, IsManaged(nil), 'IsManaged for nil');
 end;
+
+procedure TTestCase1.TestInterface;
+var
+  context: TRttiContext;
+  t: TRttiType;
+  ti1, ti2: TRttiInterfaceType;
+  methods: {$ifdef fpc}specialize{$endif} TArray<TRttiMethod>;
+  params: {$ifdef fpc}specialize{$endif} TArray<TRttiParameter>;
+  method: TRttiMethod;
+  param: TRttiParameter;
+  flag: TParamFlag;
+begin
+  context := TRttiContext.Create;
+  try
+    t := context.GetType(TypeInfo(IInterface));
+    Check(t is TRttiInterfaceType, 'Type is not an interface type');
+
+    Check(not Assigned(t.BaseType), 'Base type is assigned');
+
+    ti1 := TRttiInterfaceType(t);
+    Check(not Assigned(ti1.BaseType), 'Base type is assigned');
+
+    methods := t.GetMethods;
+    CheckEquals(0, Length(methods), 'Overall method count does not match');
+
+    methods := t.GetDeclaredMethods;
+    CheckEquals(0, Length(methods), 'Declared method conut does not match');
+
+    t := context.GetType(TypeInfo(ITestInterface));
+    Check(t is TRttiInterfaceType, 'Type is not an interface type');
+
+    Check(Assigned(t.BaseType), 'Base type is not assigned');
+    Check(t.BaseType = TRttiType(ti1), 'Base type does not match');
+
+    ti2 := TRttiInterfaceType(t);
+    Check(Assigned(ti2.BaseType), 'Base type is not assigned');
+    Check(ti2.BaseType = ti1, 'Base type does not match');
+
+    methods := t.GetMethods;
+    CheckEquals(4, Length(methods), 'Overall method count does not match');
+
+    methods := t.GetDeclaredMethods;
+    CheckEquals(4, Length(methods), 'Declared method count does not match');
+
+    method := methods[0];
+    CheckEquals(method.Name, 'Test', 'Method name of Test does not match');
+    Check(method.CallingConvention = ccReg, 'Calling convention of Test does not match');
+    Check(method.MethodKind = mkProcedure, 'Method kind of Test does not match');
+    Check(method.DispatchKind = dkInterface, 'Dispatch kind of Test does not match');
+    Check(not Assigned(method.CodeAddress), 'Code address of Test is not Nil');
+    CheckEquals(method.VirtualIndex, 3, 'Virtual index of Test does not match');
+    Check(not Assigned(method.ReturnType), 'Return type of Test is not Nil');
+    params := method.GetParameters;
+    CheckEquals(0, Length(params), 'Parameter count of Test does not match');
+
+    method := methods[1];
+    CheckEquals(method.Name, 'Test2', 'Method name of Test2 does not match');
+    Check(method.CallingConvention = ccReg, 'Calling convention of Test2 does not match');
+    Check(method.MethodKind = mkFunction, 'Method kind of Test2 does not match');
+    Check(method.DispatchKind = dkInterface, 'Dispatch kind of Test2 does not match');
+    Check(not Assigned(method.CodeAddress), 'Code address of Test2 is not Nil');
+    CheckEquals(method.VirtualIndex, 4, 'Virtual index of Test2 does not match');
+    Check(Assigned(method.ReturnType), 'Return type of Test2 is Nil');
+    Check(method.ReturnType.TypeKind = tkInteger, 'Return type of Test2 is not an ordinal');
+    params := method.GetParameters;
+    CheckEquals(0, Length(params), 'Parameter count of Test2 does not match');
+
+    method := methods[2];
+    CheckEquals(method.Name, 'Test3', 'Method name of Test3 does not match');
+    Check(method.CallingConvention = ccReg, 'Calling convention of Test3 does not match');
+    Check(method.MethodKind = mkProcedure, 'Method kind of Test3 does not match');
+    Check(method.DispatchKind = dkInterface, 'Dispatch kind of Test3 does not match');
+    Check(not Assigned(method.CodeAddress), 'Code address of Test3 is not Nil');
+    CheckEquals(method.VirtualIndex, 5, 'Virtual index of Test3 does not match');
+    Check(not Assigned(method.ReturnType), 'Return type of Test3 is not Nil');
+
+    params := method.GetParameters;
+    CheckEquals(4, Length(params), 'Parameter count of Test3 does not match');
+
+    param := params[0];
+    CheckEquals(param.Name, 'aArg1', 'Parameter name of Test3.aArg1 does not match');
+    Check(param.Flags = [], 'Parameter flags of Test3.aArg1 do not match');
+    Check(Assigned(param.ParamType), 'Parameter type of Test3.aArg1 is Nil');
+    Check(param.ParamType.TypeKind = tkInteger, 'Parameter type of Test3.aArg1 is not an ordinal');
+
+    param := params[1];
+    CheckEquals(param.Name, 'aArg2', 'Parameter name of Test3.aArg2 does not match');
+    Check(param.Flags = [pfConst], 'Parameter flags of Test3.aArg2 do not match');
+    Check(Assigned(param.ParamType), 'Parameter type of Test3.aArg2 is Nil');
+    Check(param.ParamType.TypeKind = tkAnsiString, 'Parameter type of Test3.aArg2 is not a string');
+
+    param := params[2];
+    CheckEquals(param.Name, 'aArg3', 'Parameter name of Test3.aArg3 does not match');
+    Check(param.Flags = [pfVar], 'Parameter flags of Test3.aArg3 do not match');
+    Check(Assigned(param.ParamType), 'Parameter type of Test3.aArg3 is Nil');
+    Check(param.ParamType.TypeKind = {$ifdef fpc}tkBool{$else}tkEnumeration{$endif}, 'Parameter type of Test3.aArg3 is not a boolean');
+
+    param := params[3];
+    CheckEquals(param.Name, 'aArg4', 'Parameter name of Test3.aArg4 does not match');
+    Check(param.Flags = [pfOut], 'Parameter flags of Test3.aArg4 do not match');
+    Check(Assigned(param.ParamType), 'Parameter type of Test3.aArg4 is Nil');
+    Check(param.ParamType.TypeKind = tkInteger, 'Parameter type of Test3.aArg4 is not a string');
+
+    method := methods[3];
+    CheckEquals(method.Name, 'Test4', 'Method name of Test4 does not match');
+    Check(method.CallingConvention = ccReg, 'Calling convention of Test4 does not match');
+    Check(method.MethodKind = mkFunction, 'Method kind of Test4 does not match');
+    Check(method.DispatchKind = dkInterface, 'Dispatch kind of Test4 does not match');
+    Check(not Assigned(method.CodeAddress), 'Code address of Test4 is not Nil');
+    CheckEquals(method.VirtualIndex, 6, 'Virtual index of Test4 does not match');
+    Check(Assigned(method.ReturnType), 'Return type of Test4 is not Nil');
+    Check(method.ReturnType.TypeKind = tkAnsiString, 'Return type of Test4 is not a string');
+
+    params := method.GetParameters;
+    CheckEquals(2, Length(params), 'Parameter count of Test4 does not match');
+
+    param := params[0];
+    CheckEquals(param.Name, 'aArg1', 'Parameter name of Test4.aArg1 does not match');
+    Check(param.Flags = [pfArray, pfReference], 'Parameter flags of Test4.aArg1 do not match');
+    Check(Assigned(param.ParamType), 'Parameter type of Test4.aArg1 is Nil');
+    Check(param.ParamType.TypeKind = tkInteger, 'Parameter type of Test4.aArg1 is not an ordinal');
+
+    param := params[1];
+    CheckEquals(param.Name, 'aArg2', 'Parameter name of Test4.aArg2 does not match');
+    Check(param.Flags = [pfArray, pfReference], 'Parameter flags of Test4.aArg2 do not match');
+    Check(Assigned(param.ParamType), 'Parameter type of Test4.aArg2 is Nil');
+    Check(param.ParamType.TypeKind = tkRecord, 'Parameter type of Test4.aArg2 is not a record');
+  finally
+    context.Free;
+  end;
+end;
+
+{$ifdef fpc}
+procedure TTestCase1.TestInterfaceRaw;
+var
+  context: TRttiContext;
+  t: TRttiType;
+  ti: TRttiInterfaceType;
+begin
+  context := TRttiContext.Create;
+  try
+    t := context.GetType(TypeInfo(ICORBATest));
+    Check(t is TRttiInterfaceType, 'Type is not a raw interface type');
+
+    Check(not Assigned(t.BaseType), 'Base type is assigned');
+
+    ti := TRttiInterfaceType(t);
+    Check(not Assigned(ti.BaseType), 'Base type is assigned');
+  finally
+    context.Free;
+  end;
+end;
+{$endif}
 
 initialization
 {$ifdef fpc}

@@ -71,7 +71,7 @@ interface
 implementation
 
     uses
-      cutils,globals,verbose,globtype,constexp,fmodule,
+      cutils,globals,verbose,globtype,constexp,fmodule,compinnr,
       aasmbase,aasmtai,aasmdata,aasmcpu,
       symtype,symconst,symdef,symsym,symcpu,symtable,jvmdef,
       defutil,
@@ -366,7 +366,7 @@ implementation
         tcallparanode(left).right:=nil;
         seteledef:=tsetdef(setpara.resultdef).elementdef;
         setpara:=caddrnode.create_internal(setpara);
-        include(setpara.flags,nf_typedaddr);
+        include(taddrnode(setpara).addrnodeflags,anf_typedaddr);
         if seteledef.typ=enumdef then
           begin
             inserttypeconv_explicit(setpara,java_juenumset);

@@ -108,18 +108,18 @@ implementation
 
     uses
       cutils,cclasses,
+      fpccrc,
       globtype,globals,verbose,constexp,
       systems,fmodule,
-      symsym,symtable,symcreat,defutil,
+      symsym,symtable,symcreat,
 {$ifdef cpuhighleveltarget}
       pparautl,
 {$endif cpuhighleveltarget}
       aasmtai,
       wpobase,
-      nobj,
       cgbase,parabase,paramgr,
 {$ifndef cpuhighleveltarget}
-      cgobj,cgcpu,hlcgobj,hlcgcpu,
+      hlcgobj,hlcgcpu,dbgbase,
 {$endif not cpuhighleveltarget}
       ncgrtti;
 
@@ -633,7 +633,7 @@ implementation
                 datatcb.queue_init(voidpointertype);
                 { reference to the vmt }
                 datatcb.queue_emit_asmsym(
-                  current_asmdata.RefAsmSymbol(classdef.vmt_mangledname,AT_DATA),
+                  current_asmdata.RefAsmSymbol(classdef.vmt_mangledname,AT_DATA,true),
                   tfieldvarsym(classdef.vmt_field).vardef);
               end;
             classtabledef:=datatcb.end_anonymous_record;
@@ -709,6 +709,25 @@ implementation
            Interface tables
 **************************************}
 
+    function CreateWrapperName(_class : tobjectdef;AImplIntf : TImplementedInterface;i : longint;pd : tprocdef) : string;
+      var
+        tmpstr : AnsiString;
+        hs : string;
+        crc : DWord;
+      begin
+        tmpstr:=_class.objname^+'_$_'+AImplIntf.IntfDef.objname^+'_$_'+tostr(i)+'_$_'+pd.mangledname;
+        if length(tmpstr)>100 then
+          begin
+            crc:=0;
+            crc:=UpdateCrc32(crc,tmpstr[101],length(tmpstr)-100);
+            hs:=copy(tmpstr,1,100)+'$CRC'+hexstr(crc,8);
+          end
+        else
+          hs:=tmpstr;
+        result:=make_mangledname('WRPR',_class.owner,hs);
+      end;
+
+
     procedure TVMTWriter.intf_create_vtbl(tcb: ttai_typedconstbuilder; AImplIntf: TImplementedInterface; intfindex: longint);
       var
         datatcb : ttai_typedconstbuilder;
@@ -725,8 +744,7 @@ implementation
             for i:=0 to AImplIntf.procdefs.count-1 do
               begin
                 pd:=tprocdef(AImplIntf.procdefs[i]);
-                hs:=make_mangledname('WRPR',_class.owner,_class.objname^+'_$_'+AImplIntf.IntfDef.objname^+'_$_'+
-                                     tostr(i)+'_$_'+pd.mangledname);
+                hs:=CreateWrapperName(_Class,AImplIntf,i,pd);
                 { create reference }
                 datatcb.emit_tai(Tai_const.Createname(hs,AT_FUNCTION,0),cprocvardef.getreusableprocaddr(pd));
               end;
@@ -1273,6 +1291,9 @@ implementation
 {$ifdef cpuhighleveltarget}
         wrapperpd: tprocdef;
         wrapperinfo: pskpara_interface_wrapper;
+{$else}
+       tmplist: tasmlist;
+       oldfileposinfo: tfileposinfo;
 {$endif cpuhighleveltarget}
       begin
         for i:=0 to _class.ImplementedInterfaces.count-1 do
@@ -1290,8 +1311,7 @@ implementation
                     if (po_virtualmethod in pd.procoptions) and
                        not is_objectpascal_helper(tprocdef(pd).struct) then
                       tobjectdef(tprocdef(pd).struct).register_vmt_call(tprocdef(pd).extnumber);
-                    tmps:=make_mangledname('WRPR',_class.owner,_class.objname^+'_$_'+
-                      ImplIntf.IntfDef.objname^+'_$_'+tostr(j)+'_$_'+pd.mangledname);
+                    tmps:=CreateWrapperName(_Class,ImplIntf,j,pd);
 {$ifdef cpuhighleveltarget}
                     new(wrapperinfo);
                     wrapperinfo^.pd:=pd;
@@ -1302,12 +1322,32 @@ implementation
                     wrapperpd:=create_procdef_alias(pd,tmps,tmps,
                       current_module.localsymtable,_class,
                       tsk_interface_wrapper,wrapperinfo);
+                    include(wrapperpd.procoptions,po_noreturn);
 {$else cpuhighleveltarget}
+                    oldfileposinfo:=current_filepos;
+                    if pd.owner.iscurrentunit then
+                      current_filepos:=pd.fileinfo
+                    else
+                      begin
+                        current_filepos.moduleindex:=current_module.unit_index;
+                        current_filepos.fileindex:=1;
+                        current_filepos.line:=1;
+                        current_filepos.column:=1;
+                      end;
                     { create wrapper code }
-                    new_section(list,sec_code,tmps,target_info.alignment.procalign);
+                    tmplist:=tasmlist.create;
+                    new_section(tmplist,sec_code,tmps,target_info.alignment.procalign);
+                    tmplist.Concat(tai_function_name.create(tmps));
                     hlcg.init_register_allocators;
-                    hlcg.g_intf_wrapper(list,pd,tmps,ImplIntf.ioffset);
+                    hlcg.g_intf_wrapper(tmplist,pd,tmps,ImplIntf.ioffset);
                     hlcg.done_register_allocators;
+                    if ((cs_debuginfo in current_settings.moduleswitches) or
+                       (cs_use_lineinfo in current_settings.globalswitches)) and
+                       (target_dbg.id<>dbg_stabx) then
+                         current_debuginfo.insertlineinfo(tmplist);
+                    list.concatlist(tmplist);
+                    tmplist.Free;
+                    current_filepos:=oldfileposinfo;
 {$endif cpuhighleveltarget}
                   end;
               end;
@@ -1348,7 +1388,7 @@ implementation
                       include(def.defstates,ds_vmt_written);
                     end;
                   if is_class(def) then
-                    gen_intf_wrapper(current_asmdata.asmlists[al_globals],tobjectdef(def));
+                    gen_intf_wrapper(current_asmdata.asmlists[al_procedures],tobjectdef(def));
                 end;
               procdef :
                 begin

@@ -7,12 +7,14 @@ uses
   cwstring,
   {$ENDIF}
   Classes, consoletestrunner, tcscanner, jsparser, jsscanner, jstree, jsbase,
-  tcparser, jswriter, tcwriter, jstoken;
+  tcparser, jswriter, tcwriter, jstoken, JSSrcMap, TCSrcMap;
 
 var
   Application: TTestRunner;
 
 {$IFDEF WINDOWS}{$R testjs.rc}{$ENDIF}
+
+{$R *.res}
 
 begin
   DefaultFormat:=fplain;

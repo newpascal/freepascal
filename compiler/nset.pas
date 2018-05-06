@@ -28,7 +28,7 @@ interface
     uses
        cclasses,constexp,
        node,globtype,globals,
-       aasmbase,aasmtai,aasmdata,ncon,nflw,symtype;
+       aasmbase,ncon,nflw,symtype;
 
     type
        TLabelType = (ltOrdinal, ltConstString);
@@ -40,6 +40,8 @@ interface
           { left and right tree node }
           less,
           greater : pcaselabel;
+
+          labellabel : TAsmLabel;
 
           { range type }
           case label_type : TLabelType of
@@ -104,7 +106,7 @@ interface
           function pass_1 : tnode;override;
           function simplify(forinline:boolean):tnode;override;
           function docompare(p: tnode): boolean; override;
-          procedure addlabel(blockid:longint;l,h : TConstExprInt); overload;
+          procedure addlabel(blockid:longint;const l,h : TConstExprInt); overload;
           procedure addlabel(blockid:longint;l,h : tstringconstnode); overload;
           procedure addblock(blockid:longint;instr:tnode);
           procedure addelseblock(instr:tnode);
@@ -128,12 +130,10 @@ interface
 implementation
 
     uses
-      systems,
       verbose,
       symconst,symdef,symsym,symtable,defutil,defcmp,
       htypechk,pass_1,
-      nadd,nbas,ncnv,nld,cgobj,cgbase,
-      widestr;
+      nadd,nbas,ncnv,nld,cgbase;
 
 
 {*****************************************************************************
@@ -500,7 +500,7 @@ implementation
       var
         b : byte;
       begin
-        ppufile.putbyte(byte(p^.label_type = ltConstString));
+        ppufile.putboolean(p^.label_type = ltConstString);
         if (p^.label_type = ltConstString) then
           begin
             p^._low_str.ppuwrite(ppufile);
@@ -528,7 +528,7 @@ implementation
         p : pcaselabel;
       begin
         new(p);
-        if boolean(ppufile.getbyte) then
+        if ppufile.getboolean then
           begin
             p^.label_type := ltConstString;
             p^._low_str := cstringconstnode.ppuload(stringconstn,ppufile);
@@ -695,7 +695,7 @@ implementation
           add_label_to_blockid_list(result,labels);
         end;
 
-      function makeifblock(const labtree : pcaselabel; elseblock : tnode): tnode;
+      function makeifblock(elseblock : tnode): tnode;
         var
           i, j: longint;
           check: taddnode;
@@ -723,7 +723,7 @@ implementation
                     newcheck:=@check;
                   labitem:=TLinkedListCaseLabelItem(lablist[j]).casenode;
                   newcheck^:=caddnode.create(equaln,left.getcopy,labitem^._low_str.getcopy);
-                  if (labtree^._low_str.fullcompare(labtree^._high_str)<>0) then
+                  if (labitem^._low_str.fullcompare(labitem^._high_str)<>0) then
                     begin
                       newcheck^.nodetype:=gten;
                       newcheck^:=caddnode.create(
@@ -800,7 +800,7 @@ implementation
 
          if (labels^.label_type = ltConstString) then
            begin
-             if_node:=makeifblock(labels, elseblock);
+             if_node:=makeifblock(elseblock);
 
              if assigned(init_block) then
                firstpass(tnode(init_block));
@@ -1032,7 +1032,7 @@ implementation
       end;
 
 
-    procedure tcasenode.addlabel(blockid:longint;l,h : TConstExprInt);
+    procedure tcasenode.addlabel(blockid:longint;const l,h : TConstExprInt);
       var
         hcaselabel : pcaselabel;
 

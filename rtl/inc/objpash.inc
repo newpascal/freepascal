@@ -192,6 +192,7 @@
          Entries    : array[0..0] of tinterfaceentry;
        end;
 
+       PMethod = ^TMethod;
        TMethod = record
          Code : CodePointer;
          Data : Pointer;
@@ -293,14 +294,18 @@
             VarResult,ExcepInfo,ArgErr : pointer) : HResult;stdcall;
        end;
 
+       { TInterfacedObject }
+
        TInterfacedObject = class(TObject,IUnknown)
        protected
           frefcount : longint;
+          FDestroyCount : longint;
           { implement methods of IUnknown }
           function QueryInterface({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} iid : tguid;out obj) : longint;{$IFNDEF WINDOWS}cdecl{$ELSE}stdcall{$ENDIF};
           function _AddRef : longint;{$IFNDEF WINDOWS}cdecl{$ELSE}stdcall{$ENDIF};
           function _Release : longint;{$IFNDEF WINDOWS}cdecl{$ELSE}stdcall{$ENDIF};
         public
+          destructor destroy; override;
           procedure AfterConstruction;override;
           procedure BeforeDestruction;override;
           class function NewInstance : TObject;override;
@@ -434,7 +439,9 @@
            vtPWideChar     : (VPWideChar: PWideChar);
            vtAnsiString    : (VAnsiString: Pointer);
            vtCurrency      : (VCurrency: PCurrency);
+{$ifdef FPC_HAS_FEATURE_VARIANTS}
            vtVariant       : (VVariant: PVariant);
+{$endif FPC_HAS_FEATURE_VARIANTS}
            vtInterface     : (VInterface: Pointer);
            vtWideString    : (VWideString: Pointer);
            vtInt64         : (VInt64: PInt64);

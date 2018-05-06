@@ -13,7 +13,7 @@
  **********************************************************************}
 {$mode objfpc}
 {$h+}
-unit zipper;
+unit Zipper;
 
 Interface
 
@@ -198,6 +198,7 @@ Const
 Type
 
   TProgressEvent = Procedure(Sender : TObject; Const Pct : Double) of object;
+  TProgressEventEx = Procedure(Sender : TObject; Const ATotPos, ATotSize: Int64) of object;
   TOnEndOfFileEvent = Procedure(Sender : TObject; Const Ratio : Double) of object;
   TOnStartFileEvent = Procedure(Sender : TObject; Const AFileName : String) of object;
 
@@ -205,6 +206,8 @@ Type
 
   { TCompressor }
   TCompressor = Class(TObject)
+  private
+    FTerminated: Boolean;
   Protected
     FInFile     : TStream;        { I/O file variables                         }
     FOutFile    : TStream;
@@ -219,10 +222,12 @@ Type
     Class Function ZipID : Word; virtual; Abstract;
     Class Function ZipVersionReqd: Word; virtual; Abstract;
     Function ZipBitFlag: Word; virtual; Abstract;
+    Procedure Terminate;
     Property BufferSize : LongWord read FBufferSize;
     Property OnPercent : Integer Read FOnPercent Write FOnPercent;
     Property OnProgress : TProgressEvent Read FOnProgress Write FOnProgress;
     Property Crc32Val : LongWord Read FCrc32Val Write FCrc32Val;
+    Property Terminated : Boolean Read FTerminated;
   end;
 
   { TDeCompressor }
@@ -234,15 +239,22 @@ Type
     FBufferSize : LongWord;
     FOnPercent  : Integer;
     FOnProgress : TProgressEvent;
+    FOnProgressEx: TProgressEventEx;
+    FTotPos      : Int64;
+    FTotSize     : Int64;
+    FTerminated : Boolean;
     Procedure UpdC32(Octet: Byte);
   Public
     Constructor Create(AInFile, AOutFile : TStream; ABufSize : LongWord); virtual;
     Procedure DeCompress; Virtual; Abstract;
+    Procedure Terminate;
     Class Function ZipID : Word; virtual; Abstract;
     Property BufferSize : LongWord read FBufferSize;
     Property OnPercent : Integer Read FOnPercent Write FOnPercent;
     Property OnProgress : TProgressEvent Read FOnProgress Write FOnProgress;
+    Property OnProgressEx : TProgressEventEx Read FOnProgressEx Write FOnProgressEx;
     Property Crc32Val : LongWord Read FCrc32Val Write FCrc32Val;
+    Property Terminated : Boolean Read FTerminated;
   end;
 
   { TShrinker }
@@ -401,6 +413,7 @@ Type
   TZipper = Class(TObject)
   Private
     FEntries        : TZipFileEntries;
+    FTerminated: Boolean;
     FZipping        : Boolean;
     FBufSize        : LongWord;
     FFileName       : RawByteString;         { Name of resulting Zip file                 }
@@ -419,6 +432,7 @@ Type
     FOnProgress     : TProgressEvent;
     FOnEndOfFile    : TOnEndOfFileEvent;
     FOnStartFile    : TOnStartFileEvent;
+    FCurrentCompressor : TCompressor;
     function CheckEntries: Integer;
     procedure SetEntries(const AValue: TZipFileEntries);
   Protected
@@ -449,6 +463,7 @@ Type
     Procedure ZipFiles(AFileName : RawByteString; Entries : TZipFileEntries);
     Procedure ZipFiles(Entries : TZipFileEntries);
     Procedure Clear;
+    Procedure Terminate;
   Public
     Property BufferSize : LongWord Read FBufSize Write SetBufSize;
     Property OnPercent : Integer Read FOnPercent Write FOnPercent;
@@ -461,6 +476,7 @@ Type
     Property Files : TStrings Read FFiles; deprecated;
     Property InMemSize : Int64 Read FInMemSize Write FInMemSize;
     Property Entries : TZipFileEntries Read FEntries Write SetEntries;
+    Property Terminated : Boolean Read FTerminated;
   end;
 
   { TFullZipFileEntry }
@@ -506,16 +522,23 @@ Type
     FFileComment: String;
     FEntries    : TFullZipFileEntries;
     FFiles      : TStrings;
-    FUseUTF8: Boolean;
+    FUseUTF8    : Boolean;
+    FFlat       : Boolean;
     FZipStream  : TStream;     { I/O file variables                         }
     LocalHdr    : Local_File_Header_Type; //Local header, before compressed file data
     LocalZip64Fld   : Zip64_Extended_Info_Field_Type; //header is in LocalZip64ExtHdr
     CentralHdr  : Central_File_Header_Type;
-
+    FTotPos     : Int64;
+    FTotSize    : Int64;
+    FTerminated: Boolean;
     FOnPercent  : LongInt;
     FOnProgress : TProgressEvent;
+    FOnProgressEx : TProgressEventEx;
     FOnEndOfFile : TOnEndOfFileEvent;
     FOnStartFile : TOnStartFileEvent;
+    FCurrentDecompressor: TDecompressor;
+    function CalcTotalSize(AllFiles: Boolean): Int64;
+    function IsMatch(I: TFullZipFileEntry): Boolean;
   Protected
     Procedure OpenInput;
     Procedure CloseOutput(Item : TFullZipFileEntry; var OutStream: TStream);
@@ -543,6 +566,7 @@ Type
     Procedure UnZipAllFiles(AFileName : RawByteString);
     Procedure Clear;
     Procedure Examine;
+    Procedure Terminate;
   Public
     Property BufferSize : LongWord Read FBufSize Write SetBufSize;
     Property OnOpenInputStream: TCustomInputStreamEvent read FOnOpenInputStream write FOnOpenInputStream;
@@ -551,6 +575,7 @@ Type
     Property OnDoneStream : TOnCustomStreamEvent Read FOnDoneStream Write FOnDoneStream;
     Property OnPercent : Integer Read FOnPercent Write FOnPercent;
     Property OnProgress : TProgressEvent Read FOnProgress Write FOnProgress;
+    Property OnProgressEx : TProgressEventEx Read FOnProgressEx Write FOnProgressEx;
     Property OnStartFile : TOnStartFileEvent Read FOnStartFile Write FOnStartFile;
     Property OnEndFile : TOnEndOfFileEvent Read FOnEndOfFile Write FOnEndOfFile;
     Property FileName : RawByteString Read FFileName Write SetFileName;
@@ -559,6 +584,8 @@ Type
     Property Files : TStrings Read FFiles;
     Property Entries : TFullZipFileEntries Read FEntries;
     Property UseUTF8 : Boolean Read FUseUTF8 Write FUseUTF8;
+    Property Flat : Boolean Read FFlat Write FFlat; // enable flat extraction, like -j when using unzip
+    Property Terminated : Boolean Read FTerminated;
   end;
 
   EZipError = Class(Exception);
@@ -849,6 +876,11 @@ begin
   CRC32Val:=$FFFFFFFF;
 end;
 
+procedure TDeCompressor.Terminate;
+begin
+  FTerminated:=True;
+end;
+
 
 { ---------------------------------------------------------------------
     TCompressor
@@ -867,6 +899,11 @@ begin
   FoutFile:=AOutFile;
   FBufferSize:=ABufSize;
   CRC32Val:=$FFFFFFFF;
+end;
+
+procedure TCompressor.Terminate;
+begin
+  FTerminated:=True;
 end;
 
 
@@ -918,7 +955,7 @@ begin
               FOnProgress(self,100 * ( BytesNow / FSize));
             inc(NextMark,OnBytes);
           end;
-      Until (Count=0);
+      Until (Count=0) or Terminated;
     Finally
       C.Free;
     end;
@@ -998,9 +1035,12 @@ begin
            begin
              if (FSize>0) and assigned(FOnProgress) Then
                FOnProgress(self,100 * ( BytesNow / FSize));
+             if assigned(FOnProgressEx) Then
+               FOnProgressEx(Self, FTotPos + BytesNow, FTotSize);
              inc(NextMark,OnBytes);
            end;
-      Until (Count=0);
+      Until (Count=0) or Terminated;
+      FTotPos := FTotPos + FOutFile.Size;
     Finally
       C.Free;
     end;
@@ -1009,6 +1049,8 @@ begin
   end;
  if assigned(FOnProgress) then
    fOnProgress(self,100.0);
+ if assigned(FOnProgressEx) then
+   FOnProgressEx(Self, FTotPos, FTotSize);
   Crc32Val:=NOT Crc32Val;
 end;
 
@@ -1797,6 +1839,7 @@ Function TZipper.CreateCompressor(Item : TZipFileEntry; AInFile,AZipStream : TSt
 begin
   Result:=TDeflater.Create(AinFile,AZipStream,FBufSize);
   (Result as TDeflater).CompressionLevel:=Item.CompressionLevel;
+  FCurrentCompressor:=Result;
 end;
 
 Procedure TZipper.ZipOneFile(Item : TZipFileEntry);
@@ -1807,7 +1850,8 @@ Var
   ZVersionReqd : Word;
   ZBitFlag : Word;
   ZipStream : TStream;
-  TmpFileName : String;
+  TmpFileName, Start : String;
+  I : Integer;
 
 Begin
   OpenInput(Item);
@@ -1817,9 +1861,12 @@ Begin
       ZipStream:=TMemoryStream.Create
     else
       begin
-      TmpFileName:=ChangeFileExt(FFileName,'.tmp');
-      if TmpFileName=FFileName then
-        TmpFileName:=TmpFileName+'.tmp';
+      Start := ChangeFileExt(FFileName, '');
+      I := 0;
+      repeat
+        TmpFileName := Format('%s%.5d.tmp', [Start, I]);
+        Inc(I);
+      until not FileExists(TmpFileName);
       ZipStream:=TFileStream.Create(TmpFileName,fmCreate);
       end;
     Try
@@ -1833,6 +1880,7 @@ Begin
           ZVersionReqd:=ZipVersionReqd;
           ZBitFlag:=ZipBitFlag;
         Finally
+          FCurrentCompressor:=Nil;
           Free;
         end;
       If UpdateZipHeader(Item,ZipStream,CRC,ZMethod,ZVersionReqd,ZBitFlag) then
@@ -1877,15 +1925,20 @@ procedure TZipper.SaveToStream(AStream: TStream);
 Var
   I : integer; //could be qword but limited by FEntries.Count
 begin
+  FTerminated:=False;
   FOutStream := AStream;
   If CheckEntries=0 then
     Exit;
   FZipping:=True;
   Try
     GetFileInfo; //get info on file entries in zip
-    for I:=0 to FEntries.Count-1 do
+    I:=0;
+    While (I<FEntries.Count) and not Terminated do
+      begin
       ZipOneFile(FEntries[i]);
-    if FEntries.Count>0 then
+      Inc(I);
+      end;
+    if (FEntries.Count>0) and not Terminated then
       BuildZipDirectory;
   finally
     FZipping:=False;
@@ -2003,6 +2056,13 @@ Procedure TZipper.Clear;
 begin
   FEntries.Clear;
   FFiles.Clear;
+end;
+
+procedure TZipper.Terminate;
+begin
+  FTerminated:=True;
+  if Assigned(FCurrentCompressor) then
+    FCurrentCompressor.Terminate;
 end;
 
 Destructor TZipper.Destroy;
@@ -2475,6 +2535,7 @@ begin
   else
     raise EZipError.CreateFmt(SErrUnsupportedCompressionFormat,[AMethod]);
   end;
+  FCurrentDecompressor:=Result;
 end;
 
 procedure TUnZipper.UnZipOneFile(Item: TFullZipFileEntry);
@@ -2536,12 +2597,19 @@ Var
     else
       With CreateDecompressor(Item, ZMethod, FZipStream, Dest) do
         Try
+          FTotPos := Self.FTotPos;
+          FTotSize := Self.FTotSize;
+          OnProgress:=Self.OnProgress;
+          OnProgressEx := Self.OnProgressEx;
+          OnPercent:=Self.OnPercent;
           OnProgress:=Self.OnProgress;
           OnPercent:=Self.OnPercent;
           DeCompress;
+          Self.FTotPos := FTotPos; 
           if Item.CRC32 <> Crc32Val then
             raise EZipError.CreateFmt(SErrInvalidCRC,[Item.ArchiveFileName]);
         Finally
+          FCurrentDecompressor:=Nil;
           Free;
         end;
   end;
@@ -2566,10 +2634,15 @@ Var
             U[i]:=DirectorySeparator;
       OutputFileName:=UTF8Encode(U);
       end;
-    if (Not IsCustomStream) and (FOutputPath<>'') then
+    if (Not IsCustomStream) then
       begin
-      // Do not use IncludeTrailingPathdelimiter
-      OutputFileName:=FOutputPath+OutputFileName;
+      if Flat then
+        OutputFileName:=ExtractFileName(OutputFileName);
+      if (FOutputPath<>'') then
+        begin
+        // Do not use IncludeTrailingPathdelimiter
+        OutputFileName:=FOutputPath+OutputFileName;
+        end;
       end;
   end;
 
@@ -2617,7 +2690,9 @@ Begin
       {$ENDIF}
       end
     else if Item.IsDirectory then
-      CreateDir(OutputFileName)
+      begin
+        if (NOT Flat) then CreateDir(OutputFileName);
+      end
     else
       begin
       try
@@ -2631,17 +2706,33 @@ Begin
     end;
 end;
 
+Function TUnZipper.IsMatch(I : TFullZipFileEntry) : Boolean;
+
+begin
+  if UseUTF8 then
+    Result:=(FFiles.IndexOf(I.UTF8ArchiveFileName)<>-1)
+  else
+    Result:=(FFiles.IndexOf(I.ArchiveFileName)<>-1)
+end;
+
+Function TUnZipper.CalcTotalSize(AllFiles : Boolean) : Int64;
+
+Var
+  I : Integer;
+  Item : TFullZipFileEntry;
+
+begin
+  Result:=0;
+  for i:=0 to FEntries.Count-1 do
+    begin
+    Item := FEntries[i];
+    if AllFiles or IsMatch(Item) then
+      Result := Result + TZipFileEntry(Item).Size;
+    end;
+end;
 
 procedure TUnZipper.UnZipAllFiles;
 
-  Function IsMatch(I : TFullZipFileEntry) : Boolean;
-
-  begin
-    if UseUTF8 then
-      Result:=(FFiles.IndexOf(I.UTF8ArchiveFileName)<>-1)
-    else
-      Result:=(FFiles.IndexOf(I.ArchiveFileName)<>-1)
-  end;
 
 Var
   Item : TFullZipFileEntry;
@@ -2649,18 +2740,25 @@ Var
   AllFiles : Boolean;
 
 Begin
+  FTerminated:=False;
   FUnZipping:=True;
   Try
     AllFiles:=(FFiles.Count=0);
     OpenInput;
     Try
       ReadZipDirectory;
-      for i:=0 to FEntries.Count-1 do
+      FTotPos := 0;
+      FTotSize := CalcTotalSize(AllFiles);
+      i:=0;
+      While (I<FEntries.Count) and not Terminated do
         begin
         Item:=FEntries[i];
         if AllFiles or IsMatch(Item) then
           UnZipOneFile(Item);
+        inc(I);
         end;
+      if Assigned(FOnProgressEx) and not Terminated then
+        FOnProgressEx(Self, FTotPos, FTotSize);
     Finally
       CloseInput;
     end;
@@ -2782,6 +2880,13 @@ begin
   Finally
     CloseInput;
   end;
+end;
+
+procedure TUnZipper.Terminate;
+begin
+  FTerminated:=True;
+  if Assigned(FCurrentDecompressor) then
+    FCurrentDecompressor.Terminate;
 end;
 
 destructor TUnZipper.Destroy;

@@ -61,12 +61,15 @@ implementation
 {$ifdef EXTDEBUG}
      cutils,
 {$endif}
-     globtype,systems,verbose,
+     globtype,verbose,
      globals,
-     paramgr,
-     aasmtai,aasmdata,
-     cgbase,
-     nflw,cgobj;
+     aasmdata,
+     cgobj
+{$ifdef EXTDEBUG}
+     ,cgbase
+     ,aasmtai
+{$endif}
+     ;
 
 {*****************************************************************************
                               SecondPass
@@ -190,6 +193,10 @@ implementation
             current_filepos:=p.fileinfo;
             current_settings.localswitches:=p.localswitches;
             codegenerror:=false;
+            if assigned(p.optinfo) then
+              cg.executionweight:=p.optinfo^.executionweight
+            else
+              cg.executionweight:=100;
 {$ifdef EXTDEBUG}
             if (p.expectloc=LOC_INVALID) then
               Comment(V_Warning,'ExpectLoc is not set before secondpass: '+nodetype2str[p.nodetype]);

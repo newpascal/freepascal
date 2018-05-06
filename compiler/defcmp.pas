@@ -59,8 +59,7 @@ interface
           cdo_allow_variant,
           cdo_parameter,
           cdo_warn_incompatible_univ,
-          cdo_strict_undefined_check,  // undefined defs are incompatible to everything except other undefined defs
-          cdo_assign_operator_dec
+          cdo_strict_undefined_check  // undefined defs are incompatible to everything except other undefined defs
        );
        tcompare_defs_options = set of tcompare_defs_option;
 
@@ -104,7 +103,8 @@ interface
           tc_interface_2_variant,
           tc_variant_2_interface,
           tc_array_2_dynarray,
-          tc_elem_2_openarray
+          tc_elem_2_openarray,
+          tc_arrayconstructor_2_dynarray
        );
 
     function compare_defs_ext(def_from,def_to : tdef;
@@ -115,11 +115,6 @@ interface
 
     { Returns if the type def_from can be converted to def_to or if both types are equal }
     function compare_defs(def_from,def_to:tdef;fromtreetype:tnodetype):tequaltype;
-
-    { Returns true, if def1 and def2 are semantically the same,
-      different than standard equal_defs, required for generic
-      operators implicit and explicit }
-    function equal_defs_assignment_op_dec(def_from,def_to:tdef):boolean;
 
     { Returns true, if def1 and def2 are semantically the same }
     function equal_defs(def_from,def_to:tdef):boolean;
@@ -291,11 +286,8 @@ implementation
                end;
 
              { either type has constraints }
-             if not (cdo_assign_operator_dec in cdoptions) and
-                 (
-                  assigned(tstoreddef(def_from).genconstraintdata) or
-                  assigned(tstoreddef(def_to).genconstraintdata)
-                 ) then
+             if assigned(tstoreddef(def_from).genconstraintdata) or
+                 assigned(tstoreddef(def_to).genconstraintdata) then
                begin
                  { won't work for class operatos like Equal for generic record
                    related to bug #30534 and 24073, temporary commented }
@@ -307,11 +299,23 @@ implementation
                  //    exit;
                  //  end;
 
-                 { one is definitely a constraint, for the other we don't
-                   care right now }
-                 doconv:=tc_equal;
-                 compare_defs_ext:=te_exact;
-                 exit;
+                 { maybe we are in generic type declaration/implementation.
+                   In this case constraint in comparison to not specialized generic
+                   is not "exact" nor "incompatible" }
+                 if not(((df_genconstraint in def_from.defoptions) and
+                        ([df_generic,df_specialization]*def_to.defoptions=[df_generic])
+                      ) or
+                      (
+                        (df_genconstraint in def_to.defoptions) and
+                        ([df_generic,df_specialization]*def_from.defoptions=[df_generic]))
+                    ) then
+                   begin
+                     { one is definitely a constraint, for the other we don't
+                       care right now }
+                     doconv:=tc_equal;
+                     compare_defs_ext:=te_exact;
+                     exit;
+                   end;
                end;
            end;
 
@@ -489,7 +493,9 @@ implementation
                    end;
                  arraydef :
                    begin
-                     if (m_mac in current_settings.modeswitches) and
+                     if (((m_mac in current_settings.modeswitches) and
+                          is_integer(def_to)) or
+                         is_widechar(def_to)) and
                         (fromtreetype=stringconstn) then
                        begin
                          eq:=te_convert_l3;
@@ -975,7 +981,43 @@ implementation
                         { to dynamic array }
                         else if is_dynamic_array(def_to) then
                          begin
-                           if equal_defs(tarraydef(def_from).elementdef,tarraydef(def_to).elementdef) then
+                           if is_array_constructor(def_from) then
+                             begin
+                               { array constructor -> dynamic array }
+                               if is_void(tarraydef(def_from).elementdef) then
+                                 begin
+                                   { only needs to loose to [] -> open array }
+                                   eq:=te_convert_l2;
+                                   doconv:=tc_arrayconstructor_2_dynarray;
+                                 end
+                               else
+                                 begin
+                                   { this should loose to the array constructor -> open array conversions,
+                                     but it might happen that the end of the convert levels is reached :/ }
+                                   subeq:=compare_defs_ext(tarraydef(def_from).elementdef,
+                                                        tarraydef(def_to).elementdef,
+                                                        { reason for cdo_allow_variant: see webtbs/tw7070a and webtbs/tw7070b }
+                                                        arrayconstructorn,hct,hpd,[cdo_check_operator,cdo_allow_variant]);
+                                   if (subeq>=te_equal) then
+                                     begin
+                                       eq:=te_convert_l2;
+                                     end
+                                   else
+                                     { an array constructor is not a dynamic array, so
+                                       use a lower level of compatibility than that one of
+                                       of the elements }
+                                     if subeq>te_convert_l5 then
+                                      begin
+                                        eq:=pred(pred(subeq));
+                                      end
+                                    else if subeq>te_convert_l6 then
+                                      eq:=pred(subeq)
+                                    else
+                                      eq:=subeq;
+                                   doconv:=tc_arrayconstructor_2_dynarray;
+                                 end;
+                             end
+                           else if equal_defs(tarraydef(def_from).elementdef,tarraydef(def_to).elementdef) then
                              begin
                                { dynamic array -> dynamic array }
                                if is_dynamic_array(def_from) then
@@ -1889,18 +1931,6 @@ implementation
       end;
 
 
-    function equal_defs_assignment_op_dec(def_from,def_to:tdef):boolean;
-      var
-        convtyp : tconverttype;
-        pd : tprocdef;
-      begin
-        { Compare defs with nothingn and no explicit typecasts and
-          searching for overloaded operators is not needed, additionaly
-          put special flag for generic assignment operators implicit and explicit }
-        equal_defs_assignment_op_dec:=(compare_defs_ext(def_from,def_to,nothingn,convtyp,pd,[cdo_assign_operator_dec])>=te_equal);
-      end;
-
-
     function equal_defs(def_from,def_to:tdef):boolean;
       var
         convtyp : tconverttype;
@@ -2306,7 +2336,7 @@ implementation
          if checkincompatibleuniv then
            include(pa_comp,cpo_warn_incompatible_univ);
          { check return value and options, methodpointer is already checked }
-         po_comp:=[po_interrupt,po_iocheck,po_varargs];
+         po_comp:=[po_interrupt,po_iocheck,po_varargs,po_far];
          { check static only if we compare method pointers }
          if def1.is_methodpointer and def2.is_methodpointer then
            include(po_comp,po_staticmethod);

@@ -378,6 +378,8 @@ type
           procedure insertListcopy(p : TLinkedList);
           { concats another List at the end and makes a copy }
           procedure concatListcopy(p : TLinkedList);
+          { removes all items from the list, the items are not freed }
+          procedure RemoveAll;
           property First:TLinkedListItem read FFirst;
           property Last:TLinkedListItem read FLast;
           property Count:Integer read FCount;
@@ -470,6 +472,7 @@ type
          procedure writestr(const s:string); {$ifdef CCLASSESINLINE}inline;{$endif}
          procedure readstream(f:TCStream;maxlen:longword);
          procedure writestream(f:TCStream);
+         function  equal(other:tdynamicarray):boolean;
          property  CurrBlockSize : longword read FCurrBlocksize;
          property  FirstBlock : PDynamicBlock read FFirstBlock;
          property  Pos : longword read FPosn;
@@ -2355,6 +2358,14 @@ end;
       end;
 
 
+    procedure TLinkedList.RemoveAll;
+      begin
+        FFirst:=nil;
+        FLast:=nil;
+        FCount:=0;
+      end;
+
+
 {****************************************************************************
                              TCmdStrListItem
  ****************************************************************************}
@@ -2790,6 +2801,14 @@ end;
            hp:=hp^.Next;
          end;
       end;
+
+
+    function tdynamicarray.equal(other:tdynamicarray):boolean;
+      begin
+        result:=false;
+        { TODO }
+      end;
+
 
 {****************************************************************************
                                 thashset

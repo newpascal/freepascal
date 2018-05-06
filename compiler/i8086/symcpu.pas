@@ -110,6 +110,12 @@ type
 
   tcpuprocvardef = class(ti86procvardef)
     constructor create(level:byte);override;
+    function getcopyas(newtyp:tdeftyp;copytyp:tproccopytyp):tstoreddef;override;
+    function address_type:tdef;override;
+    function ofs_address_type:tdef;override;
+    function size:asizeint;override;
+    procedure declared_far;override;
+    procedure declared_near;override;
     function is_far:boolean;
   end;
   tcpuprocvardefclass = class of tcpuprocvardef;
@@ -124,9 +130,12 @@ type
       - it has no 'near' or 'far' specifiers
       - it is compiled in a $F- state }
     function default_far:boolean;
+    procedure Setinterfacedef(AValue: boolean);override;
    public
     constructor create(level:byte;doregister:boolean);override;
+    function getcopyas(newtyp:tdeftyp;copytyp:tproccopytyp):tstoreddef;override;
     function address_type:tdef;override;
+    function ofs_address_type:tdef;override;
     function size:asizeint;override;
     procedure declared_far;override;
     procedure declared_near;override;
@@ -325,12 +334,28 @@ implementation
     end;
 
 
+  function tcpuprocdef.getcopyas(newtyp:tdeftyp;copytyp:tproccopytyp):tstoreddef;
+    begin
+      result:=inherited;
+      if is_far then
+        include(tabstractprocdef(result).procoptions,po_far)
+      else
+        exclude(tabstractprocdef(result).procoptions,po_far);
+    end;
+
+
   function tcpuprocdef.address_type: tdef;
     begin
       if is_far then
         result:=voidfarpointertype
       else
         result:=voidnearpointertype;
+    end;
+
+
+  function tcpuprocdef.ofs_address_type:tdef;
+    begin
+      result:=voidnearpointertype;
     end;
 
 
@@ -342,18 +367,18 @@ implementation
 
   procedure tcpuprocdef.declared_far;
     begin
-      if current_settings.x86memorymodel in x86_far_code_models then
-        include(procoptions,po_far)
-      else
-        inherited declared_far;
+      include(procoptions,po_far);
+      include(procoptions,po_hasnearfarcallmodel);
     end;
 
 
   procedure tcpuprocdef.declared_near;
     begin
-      if (current_settings.x86memorymodel in x86_far_code_models) and
-         not (cs_huge_code in current_settings.moduleswitches) then
-        exclude(procoptions,po_far)
+      if not (cs_huge_code in current_settings.moduleswitches) then
+        begin
+          exclude(procoptions,po_far);
+          include(procoptions,po_hasnearfarcallmodel);
+        end
       else
         inherited declared_near;
     end;
@@ -376,10 +401,19 @@ implementation
     end;
 
 
+  procedure tcpuprocdef.Setinterfacedef(AValue: boolean);
+    begin
+      inherited;
+      if (current_settings.x86memorymodel in x86_far_code_models) and AValue then
+        include(procoptions,po_far);
+    end;
+
+
   function tcpuprocdef.is_far: boolean;
     begin
       result:=(po_exports in procoptions) or
-              ((current_settings.x86memorymodel in x86_far_code_models) and ((po_far in procoptions) or default_far));
+              (po_far in procoptions) or
+              ((current_settings.x86memorymodel in x86_far_code_models) and default_far);
     end;
 
 {****************************************************************************
@@ -389,16 +423,87 @@ implementation
   constructor tcpuprocvardef.create(level: byte);
     begin
       inherited create(level);
-      { procvars are always far in the far code memory models }
       if current_settings.x86memorymodel in x86_far_code_models then
         procoptions:=procoptions+[po_far];
     end;
 
 
+  function tcpuprocvardef.getcopyas(newtyp:tdeftyp;copytyp:tproccopytyp):tstoreddef;
+    begin
+      result:=inherited;
+      if is_far then
+        include(tabstractprocdef(result).procoptions,po_far)
+      else
+        exclude(tabstractprocdef(result).procoptions,po_far);
+    end;
+
+
+  function tcpuprocvardef.address_type:tdef;
+    begin
+      if is_addressonly then
+        if is_far then
+          result:=voidfarpointertype
+        else
+          begin
+            { near }
+            if current_settings.x86memorymodel=mm_tiny then
+              result:=voidnearpointertype
+            else
+              result:=voidnearcspointertype;
+          end
+      else
+        result:=inherited;
+    end;
+
+
+  function tcpuprocvardef.ofs_address_type:tdef;
+    begin
+      result:=voidnearpointertype;
+    end;
+
+
+  function tcpuprocvardef.size:asizeint;
+    begin
+      if is_addressonly then
+        if is_far then
+          result:=4
+        else
+          result:=2
+      else
+        result:=inherited;
+    end;
+
+
+  procedure tcpuprocvardef.declared_far;
+    begin
+      if is_addressonly then
+        begin
+          include(procoptions,po_far);
+          include(procoptions,po_hasnearfarcallmodel);
+        end
+      else
+        inherited;
+    end;
+
+
+  procedure tcpuprocvardef.declared_near;
+    begin
+      if is_addressonly then
+        begin
+          exclude(procoptions,po_far);
+          include(procoptions,po_hasnearfarcallmodel);
+        end
+      else
+        inherited;
+    end;
+
+
   function tcpuprocvardef.is_far: boolean;
     begin
-      { procvars are always far in the far code memory models }
-      result:=current_settings.x86memorymodel in x86_far_code_models;
+      if is_addressonly then
+        result:=po_far in procoptions
+      else
+        result:=current_settings.x86memorymodel in x86_far_code_models;
     end;
 
 {****************************************************************************

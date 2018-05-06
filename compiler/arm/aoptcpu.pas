@@ -25,8 +25,8 @@ Unit aoptcpu;
 
 {$i fpcdefs.inc}
 
-{$define DEBUG_PREREGSCHEDULER}
-{$define DEBUG_AOPTCPU}
+{ $define DEBUG_PREREGSCHEDULER}
+{ $define DEBUG_AOPTCPU}
 
 Interface
 
@@ -654,6 +654,9 @@ Implementation
             if MatchInstruction(p, [A_ADC,A_ADD,A_BIC,A_SUB,A_MUL,A_MVN,A_MOV,A_ORR,A_EOR,A_AND,
                                  A_RSB,A_RSC,A_SBC,A_MLA], [C_None], [PF_None]) and
               GetNextInstruction(p, hp1) and
+              { mlas is only allowed in arm mode }
+              ((taicpu(p).opcode<>A_MLA) or
+               (current_settings.instructionset<>is_thumb)) and
               MatchInstruction(hp1, A_CMP, [C_None], [PF_None]) and
               (taicpu(hp1).oper[1]^.typ = top_const) and
               (taicpu(p).oper[0]^.reg = taicpu(hp1).oper[0]^.reg) and
@@ -2574,13 +2577,14 @@ Implementation
               hp3:=tai(p.Previous);
               hp5:=tai(p.next);
               asml.Remove(p);
-              { if there is a reg. dealloc instruction or address labels (e.g. for GOT-less PIC)
+              { if there is a reg. alloc/dealloc/sync instructions or address labels (e.g. for GOT-less PIC)
                 associated with p, move it together with p }
 
               { before the instruction? }
+              { find reg allocs,deallocs and PIC labels }
               while assigned(hp3) and (hp3.typ<>ait_instruction) do
                 begin
-                  if ( (hp3.typ=ait_regalloc) and (tai_regalloc(hp3).ratype in [ra_dealloc]) and
+                  if ( (hp3.typ=ait_regalloc) and (tai_regalloc(hp3).ratype in [ra_alloc, ra_dealloc]) and
                     RegInInstruction(tai_regalloc(hp3).reg,p) )
                     or ( (hp3.typ=ait_label) and (tai_label(hp3).labsym.typ=AT_ADDR) )
                   then
@@ -2588,7 +2592,7 @@ Implementation
                       hp4:=hp3;
                       hp3:=tai(hp3.Previous);
                       asml.Remove(hp4);
-                      list.Concat(hp4);
+                      list.Insert(hp4);
                     end
                   else
                     hp3:=tai(hp3.Previous);
@@ -2598,9 +2602,10 @@ Implementation
               SwapRegLive(taicpu(p),taicpu(hp1));
 
               { after the instruction? }
+              { find reg deallocs and reg syncs }
               while assigned(hp5) and (hp5.typ<>ait_instruction) do
                 begin
-                  if (hp5.typ=ait_regalloc) and (tai_regalloc(hp5).ratype in [ra_dealloc]) and
+                  if (hp5.typ=ait_regalloc) and (tai_regalloc(hp5).ratype in [ra_dealloc, ra_sync]) and
                     RegInInstruction(tai_regalloc(hp5).reg,p) then
                     begin
                       hp4:=hp5;

@@ -29,9 +29,9 @@ interface
        cutils,cclasses,
        aasmbase,aasmtai,aasmdata,aasmcpu,fmodule,globtype,globals,systems,verbose,
        symconst,symdef,symsym,
-       script,gendef,
+       cscript,gendef,
        cpubase,
-       import,export,link,comprsrc,cgobj,i_win;
+       import,export,link,comprsrc,i_win;
 
 
     const
@@ -96,7 +96,7 @@ implementation
   uses
     SysUtils,
     cfileutl,
-    cpuinfo,cgutils,dbgbase,
+    cgutils,dbgbase,
     owar,ogbase
 {$ifdef SUPPORT_OMF}
     ,ogomf
@@ -383,7 +383,7 @@ implementation
 {$else}
               objdata.writereloc(0,sizeof(longint),idata5label,RELOC_ABSOLUTE32);
 {$endif x86_64}
-              objdata.writebytes(nopopcodes,align(objdata.CurrObjSec.size,sizeof(nopopcodes))-objdata.CurrObjSec.size);
+              objdata.writebytes(nopopcodes,align(objdata.CurrObjSec.size,qword(sizeof(nopopcodes)))-objdata.CurrObjSec.size);
             end;
           ObjOutput.exportsymbol(implabel);
           WriteObjData(objdata);
@@ -527,7 +527,7 @@ implementation
                   {$ifdef ARM}
                     reference_reset_symbol(href,l5,0,sizeof(pint),[]);
                     current_asmdata.asmlists[al_imports].concat(Taicpu.op_reg_ref(A_LDR,NR_R12,href));
-                    reference_reset_base(href,NR_R12,0,sizeof(pint),[]);
+                    reference_reset_base(href,NR_R12,0,ctempposinvalid,sizeof(pint),[]);
                     current_asmdata.asmlists[al_imports].concat(Taicpu.op_reg_ref(A_LDR,NR_R15,href));
                     current_asmdata.asmlists[al_imports].concat(Tai_label.Create(l5));
                     reference_reset_symbol(href,l4,0,sizeof(pint),[]);
@@ -1251,6 +1251,7 @@ implementation
             Add('  . = ALIGN(__section_alignment__);');
             Add('  .text  __image_base__ + ( __section_alignment__ < 0x1000 ? . : __section_alignment__ ) :');
             Add('  {');
+            Add('    __text_start__ = . ;');
             Add('    *(.init)');
             add('    *(.text .stub .text.* .gnu.linkonce.t.*)');
             Add('    *(SORT(.text$*))');

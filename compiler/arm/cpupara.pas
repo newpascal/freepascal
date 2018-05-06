@@ -37,7 +37,7 @@ unit cpupara;
           function get_volatile_registers_int(calloption : tproccalloption):tcpuregisterset;override;
           function get_volatile_registers_fpu(calloption : tproccalloption):tcpuregisterset;override;
           function get_volatile_registers_mm(calloption : tproccalloption):tcpuregisterset;override;
-          procedure get_para_regoff(proccalloption: tproccalloption; paraloc: pcgparalocation; out reg: Byte; out off: LongInt);override;
+          function get_saved_registers_int(calloption : tproccalloption):tcpuregisterarray;override;
           function push_addr_param(varspez:tvarspez;def : tdef;calloption : tproccalloption) : boolean;override;
           function ret_in_param(def:tdef;pd:tabstractprocdef):boolean;override;
           procedure getintparaloc(list: TAsmList; pd : tabstractprocdef; nr : longint; var cgpara : tcgpara);override;
@@ -75,48 +75,19 @@ unit cpupara;
         result:=VOLATILE_FPUREGISTERS;
       end;
 
-    procedure tcpuparamanager.get_para_regoff(proccalloption: tproccalloption; paraloc: pcgparalocation; out reg: Byte; out off: LongInt);
-    var
-      I : SizeInt;
-    begin
-      with paraloc^ do
-        case loc of
-          LOC_REGISTER:
-            begin
-              reg:=getsupreg(register)-RS_R0;
-              off:=0;
-            end;
-          LOC_FPUREGISTER:
-            begin
-              reg:=getsupreg(register)-RS_F0;
-              off:=0;
-            end;
-          LOC_MMREGISTER:
-            begin
-              reg:=getsupreg(register);
-              if reg < RS_S1 then
-                begin
-                  reg:=reg-RS_D0;
-                  off:=0;
-                end
-              else
-                begin
-                  reg:=reg-RS_S1;
-                  off:=4;
-                end;
-            end;
-          LOC_REFERENCE:
-            begin
-              reg:=255;
-              off:=reference.offset;
-            end;
-        end;
-    end;
-
 
     function tcpuparamanager.get_volatile_registers_mm(calloption: tproccalloption): tcpuregisterset;
       begin
         result:=VOLATILE_MMREGISTERS;
+      end;
+
+
+    function tcpuparamanager.get_saved_registers_int(calloption : tproccalloption):tcpuregisterarray;
+      const
+        saved_regs : array[0..6] of tsuperregister =
+          (RS_R4,RS_R5,RS_R6,RS_R7,RS_R8,RS_R9,RS_R10);
+      begin
+        result:=saved_regs;
       end;
 
 

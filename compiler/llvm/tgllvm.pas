@@ -63,10 +63,9 @@ unit tgllvm;
         constructor create; override;
         destructor destroy; override;
         procedure setfirsttemp(l: asizeint); override;
-        function istemp(const ref: treference): boolean; override;
+        procedure temp_to_ref(p: ptemprecord; out ref: treference); override;
         procedure getlocal(list: TAsmList; size: asizeint; alignment: shortint; def: tdef; var ref: treference); override;
         procedure gethltemp(list: TAsmList; def: tdef; forcesize: asizeint; temptype: ttemptype; out ref: treference); override;
-        procedure ungetiftemp(list: TAsmList; const ref: treference); override;
       end;
 
 
@@ -90,20 +89,22 @@ implementation
     procedure ttgllvm.alloctemp(list: TAsmList; size: asizeint; alignment: shortint; temptype: ttemptype; def: tdef; fini: boolean; out ref: treference);
       var
         tl: ptemprecord;
+        reg: tregister;
         oldfileinfo: tfileposinfo;
       begin
-        reference_reset_base(ref,cg.gettempregister(list),0,alignment,[]);
+        reg:=cg.gettempregister(list);
         new(tl);
 
         tl^.temptype:=temptype;
         tl^.def:=def;
         tl^.fini:=fini;
         tl^.alignment:=alignment;
-        tl^.pos:=getsupreg(ref.base);
+        tl^.pos:=getsupreg(reg);
         tl^.size:=size;
         tl^.next:=templist;
         tl^.nextfree:=nil;
         templist:=tl;
+        temp_to_ref(tl,ref);
         list.concat(tai_tempalloc.alloc(tl^.pos,tl^.size));
         { TODO: add llvm.lifetime.start() for this allocation and afterwards
             llvm.lifetime.end() for freetemp (if the llvm version supports it) }
@@ -135,9 +136,14 @@ implementation
       end;
 
 
-    function ttgllvm.istemp(const ref: treference): boolean;
+    procedure ttgllvm.temp_to_ref(p: ptemprecord; out ref: treference);
+      var
+        temppos: treftemppos;
       begin
-        result:=getregtype(ref.base)=R_TEMPREGISTER;
+        { on the LLVM target, every temp is independent and encoded via a
+          separate temp register whose superregister number is stored in p^.pos }
+        temppos.val:=p^.pos;
+        reference_reset_base(ref,newreg(R_TEMPREGISTER,p^.pos,R_SUBWHOLE),0,temppos,p^.alignment,[]);
       end;
 
 
@@ -175,12 +181,6 @@ implementation
         gethltempintern(list,def,def.alignment,forcesize,tt_persistent,ref);
       end;
 
-
-    procedure ttgllvm.ungetiftemp(list: TAsmList; const ref: treference);
-      begin
-        if istemp(ref) then
-          FreeTemp(list,getsupreg(ref.base),[tt_normal]);
-      end;
 
 begin
   orgtgclass:=tgobjclass;

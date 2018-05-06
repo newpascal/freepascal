@@ -1,5 +1,6 @@
 unit System;
 
+
 interface
 
 { The heap for MSDOS is implemented
@@ -7,6 +8,9 @@ interface
   but it uses default SysGetMem names }
 
 {$define HAS_MEMORYMANAGER}
+{ define TEST_FPU_INT10 to force keeping local int10,
+  for testing purpose only }
+
 
 {$DEFINE FPC_INCLUDE_SOFTWARE_MUL}
 {$DEFINE FPC_INCLUDE_SOFTWARE_MOD_DIV}
@@ -19,6 +23,7 @@ interface
 
 { Use Ansi Char for files }
 {$define FPC_ANSI_TEXTFILEREC}
+{$define FPC_STDOUT_TRUE_ALIAS}
 
 {$ifdef NO_WIDESTRINGS}
   { Do NOT use wide Char for files }
@@ -79,6 +84,8 @@ var
   SaveInt00: FarPointer;public name '__SaveInt00';
   SaveInt10: FarPointer;public name '__SaveInt10';
   SaveInt75: FarPointer;public name '__SaveInt75';
+  fpu_status: word;public name '__fpu_status';
+
 
   AllFilesMask: string [3];
 {$ifndef RTLLITE}
@@ -123,7 +130,6 @@ var
   __nearheap_start: pointer;public name '__nearheap_start';
   __nearheap_end: pointer;public name '__nearheap_end';
   dos_version:Word;public name 'dos_version';
-  envp:PPFarChar;public name '__fpc_envp';
   dos_env_count:smallint;public name '__dos_env_count';
   dos_argv0 : PFarChar;public name '__fpc_dos_argv0';
 
@@ -141,6 +147,119 @@ procedure InstallInterruptHandlers; external name 'FPC_INSTALL_INTERRUPT_HANDLER
 procedure RestoreInterruptHandlers; external name 'FPC_RESTORE_INTERRUPT_HANDLERS';
 
 function CheckNullArea: Boolean; external name 'FPC_CHECK_NULLAREA';
+
+
+var
+  test_fpu_jmpbuf : jmp_buf;
+
+Procedure InterceptInvalidInstruction;
+begin
+  longjmp(test_fpu_jmpbuf, 1);
+end;
+
+{ Use msdos int21 set/get Interrupt address
+  to check if coprocessor is present }
+
+{$define FPC_SYSTEM_HAS_SYSINITFPU}
+Procedure SysInitFPU;
+
+  const
+    CR0_NE = $20;
+    CR0_NOT_NE = $FFFF - CR0_NE;
+  var
+    { these locals are so we don't have to hack pic code in the assembler }
+    localfpucw: word;
+    prevInt06 : FarPointer;
+    _newcr0_lw : word;
+    restore_old_int10 : boolean;
+
+
+  begin
+    restore_old_int10:=false;
+    localfpucw:=Default8087CW;
+    asm
+      fninit
+      fldcw   localfpucw
+      fwait
+    end;
+    if Test8087 < 3 then { i8087/i80287 do not have "native" exception mode (CR0:NE) }
+      begin
+        restore_old_int10:=true;
+      end
+    else
+      begin
+        asm
+          push es
+          push ds
+          { Get previous interrupt 06 handler }
+          mov ax, $3506
+          int $21
+          mov word [prevInt06],bx
+          mov dx,es
+          mov word [prevInt06+2],dx
+          { Install local interrupt 06 handler }
+    {$ifdef FPC_MM_TINY}
+          { Do not use SEG here, as this introduces a relocation that
+            is incompatible with COM executable generation }
+          mov dx, cs
+    {$else FPC_MM_TINY}
+          mov dx, SEG InterceptInvalidInstruction
+    {$endif FPC_MM_TINY}
+          mov ds, dx
+          mov dx, Offset InterceptInvalidInstruction
+          mov ax, $2506
+          int $21
+          pop ds
+          pop es
+        end;
+        if setjmp(test_fpu_jmpbuf)=0 then
+          begin
+            asm
+              db $0f, $20, $c0 { mov eax,cr0 }
+              { Reset CR0  Numeric Error bit,
+                to trigger IRQ13 - interrupt $75,
+                and thus avoid the generation of a $10 trap
+                which iterferes with video interrupt handler }
+              and ax,CR0_NOT_NE
+              db $0f, $22, $c0 { mov cr0,eax }
+            end;
+            //writeln(stderr,'Change of cr0 succeeded');
+            // Test that NE bit is indeed reset
+            asm
+              db $0f, $20, $c0 { mov eax,cr0 }
+              mov _newcr0_lw, ax
+            end;
+            if (_newcr0_lw and CR0_NE) = 0 then
+              restore_old_int10:=true;
+
+          end
+        else
+          begin
+            //writeln(stderr,'Change of cr0 failed');
+          end;
+        { Restore previous interrupt 06 handler }
+        asm
+          push ds
+          mov ax, $2506
+          lds dx,[prevInt06]
+          int $21
+          pop ds
+        end;
+      end;
+      { Special handler of interrupt $10
+        not needed anymore
+        Restore previous interrupt $10 handler }
+      {$ifndef TEST_FPU_INT10}
+      if restore_old_int10 then
+        asm
+          push ds
+          mov ax, $2510
+          lds dx,[SaveInt10]
+          int $21
+          pop ds
+        end;
+      {$endif ndef TEST_FPU_INT10}
+  end;
 
 {$I system.inc}
 
@@ -186,6 +305,9 @@ end;
                               ParamStr/Randomize
 *****************************************************************************}
 
+var
+  internal_envp : PPFarChar = nil;
+
 procedure setup_environment;
 var
   env_count : smallint;
@@ -201,18 +323,18 @@ begin
         inc(cp); { skip to NUL }
       inc(cp); { skip to next character }
     end;
-  envp := getmem((env_count+1) * sizeof(PFarChar));
+  internal_envp := getmem((env_count+1) * sizeof(PFarChar));
   cp:=dos_env;
   env_count:=0;
   while cp^<>#0 do
     begin
-      envp[env_count] := cp;
+      internal_envp[env_count] := cp;
       inc(env_count);
       while (cp^ <> #0) do
         inc(cp); { skip to NUL }
       inc(cp); { skip to next character }
     end;
-  envp[env_count]:=nil;
+  internal_envp[env_count]:=nil;
   dos_env_count := env_count;
   if dos_version >= $300 then
     begin
@@ -223,6 +345,13 @@ begin
     end
   else
     dos_argv0 := nil;
+end;
+
+function envp:PPFarChar;public name '__fpc_envp';
+begin
+  if not assigned(internal_envp) then
+    setup_environment;
+  envp:=internal_envp;
 end;
 
 
@@ -238,6 +367,8 @@ var
   arg: PChar;
   doscmd   : string[129];  { Dos commandline copied from PSP, max is 128 chars +1 for terminating zero }
 begin
+  { force environment to be setup so dos_argv0 is loaded }
+  envp;
   { load commandline from psp }
   SetLength(doscmd, Mem[PrefixSeg:$80]);
   for I := 1 to length(doscmd) do
@@ -429,12 +560,16 @@ end;
 
 function paramcount : longint;
 begin
+  if argv=nil then
+    setup_arguments;
   paramcount := argc - 1;
 end;
 
 
 function paramstr(l : longint) : string;
 begin
+  if argv=nil then
+    setup_arguments;
   if (l>=0) and (l+1<=argc) then
     paramstr:=strpas(argv[l])
   else
@@ -522,8 +657,10 @@ begin
   OpenStdIO(Input,fmInput,StdInputHandle);
   OpenStdIO(Output,fmOutput,StdOutputHandle);
   OpenStdIO(ErrOutput,fmOutput,StdErrorHandle);
+{$ifndef FPC_STDOUT_TRUE_ALIAS}
   OpenStdIO(StdOut,fmOutput,StdOutputHandle);
   OpenStdIO(StdErr,fmOutput,StdErrorHandle);
+{$endif FPC_STDOUT_TRUE_ALIAS}
 end;
 
 function GetProcessID: SizeUInt;
@@ -545,17 +682,23 @@ begin
     SysInitFPU;
   { To be set if this is a GUI or console application }
   IsConsole := TRUE;
+{$ifdef FPC_HAS_FEATURE_DYNLIBS}
+  { If dynlibs feature is disabled,
+    IsLibrary is a constant, which can thus not be set to a value }
   { To be set if this is a library and not a program  }
   IsLibrary := FALSE;
+{$endif def FPC_HAS_FEATURE_DYNLIBS}
 { Setup heap }
   InitDosHeap;
   SysInitExceptions;
+{$ifdef FPC_HAS_FEATURE_UNICODESTRINGS}
   initunicodestringmanager;
+{$endif def FPC_HAS_FEATURE_UNICODESTRINGS}
 { Setup stdin, stdout and stderr }
   SysInitStdIO;
 { Setup environment and arguments }
-  Setup_Environment;
-  Setup_Arguments;
+  { Done on  request only Setup_Environment; }
+  { Done on request only Setup_Arguments; }
 {$ifndef RTLLITE}
 { Use LFNSupport LFN }
   LFNSupport:=CheckLFN;

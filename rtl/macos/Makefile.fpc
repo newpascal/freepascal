@@ -7,8 +7,9 @@ main=rtl
 
 [target]
 loaders=
-units=system uuchar strings objpas macpas iso7185 extpas heaptrc getopts macostp macutils \
-      unixutil dos cmem charset cpall ctypes
+units=system uuchar strings objpas iso7185 heaptrc getopts macostp macutils \
+      unixutil dos extpas cmem charset cpall ctypes
+#     macpas \
 #      exec  \
 #      printer \
 #      lineinfo lnfodwrf  graph \
@@ -16,7 +17,10 @@ units=system uuchar strings objpas macpas iso7185 extpas heaptrc getopts macostp
 # rsts=math
 # implicitunits=exeinfo \
 implicitunits=cp1250 cp1251 cp1252 cp1253 cp1254 cp1255 cp1256 cp1257 cp1258 \
-      cp437 cp646 cp850 cp856 cp866 cp874 cp932 cp936 cp949 cp950 cp8859_1 cp8859_5 cp8859_2 cp852
+      cp437 cp646 cp737 cp775 cp850 cp852 cp855 cp856 cp857 cp860 cp861 cp862 \
+      cp863 cp864 cp865 cp866 cp869 cp874 cp3021 cp8859_1 cp8859_2 cp8859_3 cp8859_4 \
+      cp8859_5 cp8859_6 cp8859_7 cp8859_8 cp8859_9 cp8859_10 cp8859_11 \
+      cp8859_13 cp8859_14 cp8859_15 cp8859_16 cpkoi8_r cpkoi8_u
 
 [require]
 nortl=y
@@ -91,7 +95,7 @@ SYSDEPS=$(SYSINCDEPS) $(SYSCPUDEPS)
 #
 
 system$(PPUEXT) : system.pp $(SYSDEPS)
-	$(COMPILER) -Us -Sg system.pp $(REDIR)
+	$(COMPILER) $(FPC_SYSTEM_OPT) -Us -Sg system.pp $(REDIR)
 
 strings$(PPUEXT) : $(INC)/strings.pp system$(PPUEXT)
 	$(COMPILER) $(INC)/strings.pp $(REDIR)
@@ -139,9 +143,6 @@ dos$(PPUEXT) : $(DOSDEPS) unixutil$(PPUEXT) system$(PPUEXT)
 #printer$(PPUEXT) : printer.pp system$(PPUEXT)
 #        $(COMPILER) printer $(REDIR)
 
-objects$(PPUEXT) : $(INC)/objects.pp system$(PPUEXT)
-        $(COMPILER) $(INC)/objects.pp $(REDIR)
-
 #
 # Other system-independent RTL Units
 #
@@ -163,3 +164,6 @@ cpall$(PPUEXT): $(RTL)/charmaps/cpall.pas system$(PPUEXT) charset$(PPUEXT)
 cmem$(PPUEXT) : $(INC)/cmem.pp system$(PPUEXT)
 
 ctypes$(PPUEXT) :  $(INC)/ctypes.pp system$(PPUEXT)
+
+math$(PPUEXT): $(OBJPASDIR)/math.pp objpas$(PPUEXT) sysutils$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
+        $(COMPILER) $(OBJPASDIR)/math.pp

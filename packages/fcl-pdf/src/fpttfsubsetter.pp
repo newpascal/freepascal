@@ -828,9 +828,9 @@ var
   itm: TTextMapping;
 begin
   Result := TMemoryStream.Create;
-  SetLength(startCode, FGlyphIDList.Count);
-  SetLength(endCode, FGlyphIDList.Count);
-  SetLength(idDelta, FGlyphIDList.Count);
+  SetLength(startCode, FGlyphIDList.Count + 1);
+  SetLength(endCode, FGlyphIDList.Count + 1);
+  SetLength(idDelta, FGlyphIDList.Count + 1);
 
   // cmap header
   WriteUInt16(Result, 0);  // version
@@ -1092,7 +1092,7 @@ begin
 
   // update head.ChecksumAdjustment field
   head.Seek(8, soBeginning);
-  WriteInt32(head, checksum);
+  WriteInt32(head, Int32(checksum));
 
   // write table bodies
   WriteTableBodies(AStream, tables);

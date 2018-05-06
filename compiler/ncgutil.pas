@@ -26,11 +26,11 @@ unit ncgutil;
 interface
 
     uses
-      node,cpuinfo,
+      node,
       globtype,
       cpubase,cgbase,parabase,cgutils,
       aasmbase,aasmtai,aasmdata,aasmcpu,
-      symconst,symbase,symdef,symsym,symtype,symtable
+      symconst,symbase,symdef,symsym,symtype
 {$ifndef cpu64bitalu}
       ,cg64f32
 {$endif not cpu64bitalu}
@@ -104,14 +104,12 @@ interface
 implementation
 
   uses
-    version,
     cutils,cclasses,
-    globals,systems,verbose,export,
-    ppu,defutil,
-    procinfo,paramgr,fmodule,
+    globals,systems,verbose,
+    defutil,
+    procinfo,paramgr,
     dbgbase,
-    pass_1,pass_2,
-    nbas,ncon,nld,nmem,nutils,ngenutil,
+    nbas,ncon,nld,nmem,nutils,
     tgobj,cgobj,hlcgobj,hlcgcpu
 {$ifdef llvm}
     { override create_hlcodegen from hlcgcpu }
@@ -255,11 +253,38 @@ implementation
                 begin
                    opsize:=def_cgsize(p.resultdef);
                    case p.location.loc of
-                     LOC_SUBSETREG,LOC_CSUBSETREG,
+                     LOC_SUBSETREG,LOC_CSUBSETREG:
+                       begin
+                         if p.location.sreg.bitlen=1 then
+                           begin
+                             tmpreg:=cg.getintregister(list,p.location.sreg.subsetregsize);
+                             hlcg.a_op_const_reg_reg(list,OP_AND,cgsize_orddef(p.location.sreg.subsetregsize),1 shl p.location.sreg.startbit,p.location.sreg.subsetreg,tmpreg);
+                           end
+                         else
+                           begin
+                             tmpreg:=cg.getintregister(list,OS_INT);
+                             hlcg.a_load_loc_reg(list,p.resultdef,osuinttype,p.location,tmpreg);
+                           end;
+                         cg.a_cmp_const_reg_label(list,OS_INT,OC_NE,0,tmpreg,truelabel);
+                         cg.a_jmp_always(list,falselabel);
+                       end;
                      LOC_SUBSETREF,LOC_CSUBSETREF:
                        begin
-                         tmpreg := cg.getintregister(list,OS_INT);
-                         hlcg.a_load_loc_reg(list,p.resultdef,osuinttype,p.location,tmpreg);
+                         if (p.location.sref.bitindexreg=NR_NO) and (p.location.sref.bitlen=1) then
+                           begin
+                             tmpreg:=cg.getintregister(list,OS_INT);
+                             hlcg.a_load_ref_reg(list,u8inttype,osuinttype,p.location.sref.ref,tmpreg);
+
+                             if target_info.endian=endian_big then
+                               hlcg.a_op_const_reg_reg(list,OP_AND,osuinttype,1 shl (8-(p.location.sref.startbit+1)),tmpreg,tmpreg)
+                             else
+                               hlcg.a_op_const_reg_reg(list,OP_AND,osuinttype,1 shl p.location.sref.startbit,tmpreg,tmpreg);
+                           end
+                         else
+                           begin
+                             tmpreg:=cg.getintregister(list,OS_INT);
+                             hlcg.a_load_loc_reg(list,p.resultdef,osuinttype,p.location,tmpreg);
+                           end;
                          cg.a_cmp_const_reg_label(list,OS_INT,OC_NE,0,tmpreg,truelabel);
                          cg.a_jmp_always(list,falselabel);
                        end;
@@ -596,42 +621,42 @@ implementation
             if sym.initialloc.size in [OS_64,OS_S64] then
               begin
                 cg.a_reg_sync(list,sym.initialloc.register64.reglo);
-                cg.a_reg_sync(list,GetNextReg(sym.initialloc.register64.reglo));
+                cg.a_reg_sync(list,cg.GetNextReg(sym.initialloc.register64.reglo));
                 cg.a_reg_sync(list,sym.initialloc.register64.reghi);
-                cg.a_reg_sync(list,GetNextReg(sym.initialloc.register64.reghi));
+                cg.a_reg_sync(list,cg.GetNextReg(sym.initialloc.register64.reghi));
               end
             else
             if sym.initialloc.size in [OS_32,OS_S32] then
               begin
                 cg.a_reg_sync(list,sym.initialloc.register);
-                cg.a_reg_sync(list,GetNextReg(sym.initialloc.register));
+                cg.a_reg_sync(list,cg.GetNextReg(sym.initialloc.register));
               end
             else
 {$elseif defined(cpu8bitalu)}
             if sym.initialloc.size in [OS_64,OS_S64] then
               begin
                 cg.a_reg_sync(list,sym.initialloc.register64.reglo);
-                cg.a_reg_sync(list,GetNextReg(sym.initialloc.register64.reglo));
-                cg.a_reg_sync(list,GetNextReg(GetNextReg(sym.initialloc.register64.reglo)));
-                cg.a_reg_sync(list,GetNextReg(GetNextReg(GetNextReg(sym.initialloc.register64.reglo))));
+                cg.a_reg_sync(list,cg.GetNextReg(sym.initialloc.register64.reglo));
+                cg.a_reg_sync(list,cg.GetNextReg(cg.GetNextReg(sym.initialloc.register64.reglo)));
+                cg.a_reg_sync(list,cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(sym.initialloc.register64.reglo))));
                 cg.a_reg_sync(list,sym.initialloc.register64.reghi);
-                cg.a_reg_sync(list,GetNextReg(sym.initialloc.register64.reghi));
-                cg.a_reg_sync(list,GetNextReg(GetNextReg(sym.initialloc.register64.reghi)));
-                cg.a_reg_sync(list,GetNextReg(GetNextReg(GetNextReg(sym.initialloc.register64.reghi))));
+                cg.a_reg_sync(list,cg.GetNextReg(sym.initialloc.register64.reghi));
+                cg.a_reg_sync(list,cg.GetNextReg(cg.GetNextReg(sym.initialloc.register64.reghi)));
+                cg.a_reg_sync(list,cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(sym.initialloc.register64.reghi))));
               end
             else
             if sym.initialloc.size in [OS_32,OS_S32] then
               begin
                 cg.a_reg_sync(list,sym.initialloc.register);
-                cg.a_reg_sync(list,GetNextReg(sym.initialloc.register));
-                cg.a_reg_sync(list,GetNextReg(GetNextReg(sym.initialloc.register)));
-                cg.a_reg_sync(list,GetNextReg(GetNextReg(GetNextReg(sym.initialloc.register))));
+                cg.a_reg_sync(list,cg.GetNextReg(sym.initialloc.register));
+                cg.a_reg_sync(list,cg.GetNextReg(cg.GetNextReg(sym.initialloc.register)));
+                cg.a_reg_sync(list,cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(sym.initialloc.register))));
               end
             else
             if sym.initialloc.size in [OS_16,OS_S16] then
               begin
                 cg.a_reg_sync(list,sym.initialloc.register);
-                cg.a_reg_sync(list,GetNextReg(sym.initialloc.register));
+                cg.a_reg_sync(list,cg.GetNextReg(sym.initialloc.register));
               end
             else
 {$endif}
@@ -678,6 +703,7 @@ implementation
         href      : treference;
         sizeleft  : aint;
         tempref   : treference;
+        loadsize  : tcgint;
 {$ifdef mips}
         //tmpreg   : tregister;
 {$endif mips}
@@ -719,9 +745,18 @@ implementation
                         end
                       else
                         begin
-                          cg.a_load_cgparaloc_ref(list,paraloc^,href,tcgsize2size[paraloc^.size],destloc.reference.alignment);
-                          inc(href.offset,TCGSize2Size[paraloc^.size]);
-                          dec(sizeleft,TCGSize2Size[paraloc^.size]);
+                          { the min(...) call ensures that we do not store more than place is left as
+                             paraloc^.size could be bigger than destloc.size of a parameter occupies a full register
+                             and as on big endian system the parameters might be left aligned, we have to work
+                             with the full register size for paraloc^.size }
+                          if tcgsize2size[destloc.size]<>0 then
+                            loadsize:=min(min(tcgsize2size[paraloc^.size],tcgsize2size[destloc.size]),sizeleft)
+                          else
+                            loadsize:=min(tcgsize2size[paraloc^.size],sizeleft);
+
+                          cg.a_load_cgparaloc_ref(list,paraloc^,href,loadsize,destloc.reference.alignment);
+                          inc(href.offset,loadsize);
+                          dec(sizeleft,loadsize);
                         end;
                       unget_para(paraloc^);
                       paraloc:=paraloc^.next;
@@ -770,7 +805,7 @@ implementation
                     LOC_REFERENCE:
                       begin
                         gen_alloc_regloc(list,destloc,vardef);
-                        reference_reset_base(href,paraloc^.reference.index,paraloc^.reference.offset,para.alignment,[]);
+                        reference_reset_base(href,paraloc^.reference.index,paraloc^.reference.offset,ctempposinvalid,para.alignment,[]);
                         cg128.a_load128_ref_reg(list,href,destloc.register128);
                         unget_para(paraloc^);
                       end;
@@ -804,11 +839,11 @@ implementation
                                 unget_para(paraloc^);
                                 gen_alloc_regloc(list,destloc,vardef);
                                 { reg->reg, alignment is irrelevant }
-                                cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^,GetNextReg(destloc.register64.reghi),1);
+                                cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^,cg.GetNextReg(destloc.register64.reghi),1);
                                 unget_para(paraloc^.next^);
                                 cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^.next^,destloc.register64.reghi,1);
                                 unget_para(paraloc^.next^.next^);
-                                cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^.next^.next^,GetNextReg(destloc.register64.reglo),1);
+                                cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^.next^.next^,cg.GetNextReg(destloc.register64.reglo),1);
                                 unget_para(paraloc^.next^.next^.next^);
                                 cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^.next^.next^.next^,destloc.register64.reglo,1);
                               end
@@ -821,21 +856,21 @@ implementation
                                 gen_alloc_regloc(list,destloc,vardef);
                                 cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^,destloc.register64.reglo,2);
                                 unget_para(curparaloc^.next^);
-                                cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^.next^,GetNextReg(destloc.register64.reglo),1);
+                                cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^.next^,cg.GetNextReg(destloc.register64.reglo),1);
                                 unget_para(curparaloc^.next^.next^);
-                                cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^.next^.next^,GetNextReg(GetNextReg(destloc.register64.reglo)),1);
+                                cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^.next^.next^,cg.GetNextReg(cg.GetNextReg(destloc.register64.reglo)),1);
                                 unget_para(curparaloc^.next^.next^.next^);
-                                cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^.next^.next^.next^,GetNextReg(GetNextReg(GetNextReg(destloc.register64.reglo))),1);
+                                cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^.next^.next^.next^,cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(destloc.register64.reglo))),1);
 
                                 curparaloc:=paraloc^.next^.next^.next^.next;
                                 unget_para(curparaloc^);
                                 cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^,destloc.register64.reghi,2);
                                 unget_para(curparaloc^.next^);
-                                cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^.next^,GetNextReg(destloc.register64.reghi),1);
+                                cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^.next^,cg.GetNextReg(destloc.register64.reghi),1);
                                 unget_para(curparaloc^.next^.next^);
-                                cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^.next^.next^,GetNextReg(GetNextReg(destloc.register64.reghi)),1);
+                                cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^.next^.next^,cg.GetNextReg(cg.GetNextReg(destloc.register64.reghi)),1);
                                 unget_para(curparaloc^.next^.next^.next^);
-                                cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^.next^.next^.next^,GetNextReg(GetNextReg(GetNextReg(destloc.register64.reghi))),1);
+                                cg.a_load_cgparaloc_anyreg(list,OS_8,curparaloc^.next^.next^.next^,cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(destloc.register64.reghi))),1);
                               end;
 {$endif defined(cpu8bitalu)}
 {$if defined(cpu16bitalu) or defined(cpu8bitalu)}
@@ -848,11 +883,11 @@ implementation
                                 unget_para(paraloc^);
                                 gen_alloc_regloc(list,destloc,vardef);
                                 { reg->reg, alignment is irrelevant }
-                                cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^,GetNextReg(destloc.register64.reghi),2);
+                                cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^,cg.GetNextReg(destloc.register64.reghi),2);
                                 unget_para(paraloc^.next^);
                                 cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^.next^,destloc.register64.reghi,2);
                                 unget_para(paraloc^.next^.next^);
-                                cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^.next^.next^,GetNextReg(destloc.register64.reglo),2);
+                                cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^.next^.next^,cg.GetNextReg(destloc.register64.reglo),2);
                                 unget_para(paraloc^.next^.next^.next^);
                                 cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^.next^.next^.next^,destloc.register64.reglo,2);
                               end
@@ -864,11 +899,11 @@ implementation
                                 gen_alloc_regloc(list,destloc,vardef);
                                 cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^,destloc.register64.reglo,2);
                                 unget_para(paraloc^.next^);
-                                cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^.next^,GetNextReg(destloc.register64.reglo),2);
+                                cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^.next^,cg.GetNextReg(destloc.register64.reglo),2);
                                 unget_para(paraloc^.next^.next^);
                                 cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^.next^.next^,destloc.register64.reghi,2);
                                 unget_para(paraloc^.next^.next^.next^);
-                                cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^.next^.next^.next^,GetNextReg(destloc.register64.reghi),2);
+                                cg.a_load_cgparaloc_anyreg(list,OS_16,paraloc^.next^.next^.next^,cg.GetNextReg(destloc.register64.reghi),2);
                               end;
 {$endif defined(cpu16bitalu) or defined(cpu8bitalu)}
                           2:
@@ -901,7 +936,7 @@ implementation
                     LOC_REFERENCE:
                       begin
                         gen_alloc_regloc(list,destloc,vardef);
-                        reference_reset_base(href,paraloc^.reference.index,paraloc^.reference.offset,para.alignment,[]);
+                        reference_reset_base(href,paraloc^.reference.index,paraloc^.reference.offset,ctempposinvalid,para.alignment,[]);
                         cg64.a_load64_ref_reg(list,href,destloc.register64);
                         unget_para(paraloc^);
                       end;
@@ -922,7 +957,7 @@ implementation
                           cg.a_load_cgparaloc_anyreg(list,OS_INT,paraloc^,destloc.register,sizeof(aint));
                           unget_para(paraloc^.Next^);
                           {$if defined(cpu16bitalu) or defined(cpu8bitalu)}
-                            cg.a_load_cgparaloc_anyreg(list,OS_INT,paraloc^.Next^,GetNextReg(destloc.register),sizeof(aint));
+                            cg.a_load_cgparaloc_anyreg(list,OS_INT,paraloc^.Next^,cg.GetNextReg(destloc.register),sizeof(aint));
                           {$else}
                             cg.a_load_cgparaloc_anyreg(list,OS_INT,paraloc^.Next^,destloc.registerhi,sizeof(aint));
                           {$endif}
@@ -935,11 +970,11 @@ implementation
                           gen_alloc_regloc(list,destloc,vardef);
                           cg.a_load_cgparaloc_anyreg(list,OS_8,paraloc^,destloc.register,sizeof(aint));
                           unget_para(paraloc^.Next^);
-                          cg.a_load_cgparaloc_anyreg(list,OS_8,paraloc^.Next^,GetNextReg(destloc.register),sizeof(aint));
+                          cg.a_load_cgparaloc_anyreg(list,OS_8,paraloc^.Next^,cg.GetNextReg(destloc.register),sizeof(aint));
                           unget_para(paraloc^.Next^.Next^);
-                          cg.a_load_cgparaloc_anyreg(list,OS_8,paraloc^.Next^.Next^,GetNextReg(GetNextReg(destloc.register)),sizeof(aint));
+                          cg.a_load_cgparaloc_anyreg(list,OS_8,paraloc^.Next^.Next^,cg.GetNextReg(cg.GetNextReg(destloc.register)),sizeof(aint));
                           unget_para(paraloc^.Next^.Next^.Next^);
-                          cg.a_load_cgparaloc_anyreg(list,OS_8,paraloc^.Next^.Next^.Next^,GetNextReg(GetNextReg(GetNextReg(destloc.register))),sizeof(aint));
+                          cg.a_load_cgparaloc_anyreg(list,OS_8,paraloc^.Next^.Next^.Next^,cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(destloc.register))),sizeof(aint));
                         end
 {$endif defined(cpu8bitalu)}
                       else
@@ -1516,42 +1551,42 @@ implementation
             if location.size in [OS_64,OS_S64] then
               begin
                 rv.intregvars.addnodup(getsupreg(location.register64.reglo));
-                rv.intregvars.addnodup(getsupreg(GetNextReg(location.register64.reglo)));
+                rv.intregvars.addnodup(getsupreg(cg.GetNextReg(location.register64.reglo)));
                 rv.intregvars.addnodup(getsupreg(location.register64.reghi));
-                rv.intregvars.addnodup(getsupreg(GetNextReg(location.register64.reghi)));
+                rv.intregvars.addnodup(getsupreg(cg.GetNextReg(location.register64.reghi)));
               end
             else
             if location.size in [OS_32,OS_S32] then
               begin
                 rv.intregvars.addnodup(getsupreg(location.register));
-                rv.intregvars.addnodup(getsupreg(GetNextReg(location.register)));
+                rv.intregvars.addnodup(getsupreg(cg.GetNextReg(location.register)));
               end
             else
 {$elseif defined(cpu8bitalu)}
             if location.size in [OS_64,OS_S64] then
               begin
                 rv.intregvars.addnodup(getsupreg(location.register64.reglo));
-                rv.intregvars.addnodup(getsupreg(GetNextReg(location.register64.reglo)));
-                rv.intregvars.addnodup(getsupreg(GetNextReg(GetNextReg(location.register64.reglo))));
-                rv.intregvars.addnodup(getsupreg(GetNextReg(GetNextReg(GetNextReg(location.register64.reglo)))));
+                rv.intregvars.addnodup(getsupreg(cg.GetNextReg(location.register64.reglo)));
+                rv.intregvars.addnodup(getsupreg(cg.GetNextReg(cg.GetNextReg(location.register64.reglo))));
+                rv.intregvars.addnodup(getsupreg(cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(location.register64.reglo)))));
                 rv.intregvars.addnodup(getsupreg(location.register64.reghi));
-                rv.intregvars.addnodup(getsupreg(GetNextReg(location.register64.reghi)));
-                rv.intregvars.addnodup(getsupreg(GetNextReg(GetNextReg(location.register64.reghi))));
-                rv.intregvars.addnodup(getsupreg(GetNextReg(GetNextReg(GetNextReg(location.register64.reghi)))));
+                rv.intregvars.addnodup(getsupreg(cg.GetNextReg(location.register64.reghi)));
+                rv.intregvars.addnodup(getsupreg(cg.GetNextReg(cg.GetNextReg(location.register64.reghi))));
+                rv.intregvars.addnodup(getsupreg(cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(location.register64.reghi)))));
               end
             else
             if location.size in [OS_32,OS_S32] then
               begin
                 rv.intregvars.addnodup(getsupreg(location.register));
-                rv.intregvars.addnodup(getsupreg(GetNextReg(location.register)));
-                rv.intregvars.addnodup(getsupreg(GetNextReg(GetNextReg(location.register))));
-                rv.intregvars.addnodup(getsupreg(GetNextReg(GetNextReg(GetNextReg(location.register)))));
+                rv.intregvars.addnodup(getsupreg(cg.GetNextReg(location.register)));
+                rv.intregvars.addnodup(getsupreg(cg.GetNextReg(cg.GetNextReg(location.register))));
+                rv.intregvars.addnodup(getsupreg(cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(location.register)))));
               end
             else
             if location.size in [OS_16,OS_S16] then
               begin
                 rv.intregvars.addnodup(getsupreg(location.register));
-                rv.intregvars.addnodup(getsupreg(GetNextReg(location.register)));
+                rv.intregvars.addnodup(getsupreg(cg.GetNextReg(location.register)));
               end
             else
 {$endif}
@@ -1698,42 +1733,42 @@ implementation
                           if def_cgsize(vardef) in [OS_64,OS_S64] then
                             begin
                               cg.a_reg_sync(list,localloc.register64.reglo);
-                              cg.a_reg_sync(list,GetNextReg(localloc.register64.reglo));
+                              cg.a_reg_sync(list,cg.GetNextReg(localloc.register64.reglo));
                               cg.a_reg_sync(list,localloc.register64.reghi);
-                              cg.a_reg_sync(list,GetNextReg(localloc.register64.reghi));
+                              cg.a_reg_sync(list,cg.GetNextReg(localloc.register64.reghi));
                             end
                           else
                           if def_cgsize(vardef) in [OS_32,OS_S32] then
                             begin
                               cg.a_reg_sync(list,localloc.register);
-                              cg.a_reg_sync(list,GetNextReg(localloc.register));
+                              cg.a_reg_sync(list,cg.GetNextReg(localloc.register));
                             end
                           else
 {$elseif defined(cpu8bitalu)}
                           if def_cgsize(vardef) in [OS_64,OS_S64] then
                             begin
                               cg.a_reg_sync(list,localloc.register64.reglo);
-                              cg.a_reg_sync(list,GetNextReg(localloc.register64.reglo));
-                              cg.a_reg_sync(list,GetNextReg(GetNextReg(localloc.register64.reglo)));
-                              cg.a_reg_sync(list,GetNextReg(GetNextReg(GetNextReg(localloc.register64.reglo))));
+                              cg.a_reg_sync(list,cg.GetNextReg(localloc.register64.reglo));
+                              cg.a_reg_sync(list,cg.GetNextReg(cg.GetNextReg(localloc.register64.reglo)));
+                              cg.a_reg_sync(list,cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(localloc.register64.reglo))));
                               cg.a_reg_sync(list,localloc.register64.reghi);
-                              cg.a_reg_sync(list,GetNextReg(localloc.register64.reghi));
-                              cg.a_reg_sync(list,GetNextReg(GetNextReg(localloc.register64.reghi)));
-                              cg.a_reg_sync(list,GetNextReg(GetNextReg(GetNextReg(localloc.register64.reghi))));
+                              cg.a_reg_sync(list,cg.GetNextReg(localloc.register64.reghi));
+                              cg.a_reg_sync(list,cg.GetNextReg(cg.GetNextReg(localloc.register64.reghi)));
+                              cg.a_reg_sync(list,cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(localloc.register64.reghi))));
                             end
                           else
                           if def_cgsize(vardef) in [OS_32,OS_S32] then
                             begin
                               cg.a_reg_sync(list,localloc.register);
-                              cg.a_reg_sync(list,GetNextReg(localloc.register));
-                              cg.a_reg_sync(list,GetNextReg(GetNextReg(localloc.register)));
-                              cg.a_reg_sync(list,GetNextReg(GetNextReg(GetNextReg(localloc.register))));
+                              cg.a_reg_sync(list,cg.GetNextReg(localloc.register));
+                              cg.a_reg_sync(list,cg.GetNextReg(cg.GetNextReg(localloc.register)));
+                              cg.a_reg_sync(list,cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(localloc.register))));
                             end
                           else
                           if def_cgsize(vardef) in [OS_16,OS_S16] then
                             begin
                               cg.a_reg_sync(list,localloc.register);
-                              cg.a_reg_sync(list,GetNextReg(localloc.register));
+                              cg.a_reg_sync(list,cg.GetNextReg(localloc.register));
                             end
                           else
 {$endif}

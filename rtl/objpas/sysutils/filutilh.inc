@@ -17,7 +17,7 @@ Type
 
 
   // Some operating systems need FindHandle to be a Pointer
-{$if defined(unix) or defined(msdos) or defined(hasamiga) or defined(atari)}
+{$if defined(unix) or defined(msdos) or defined(hasamiga) or defined(atari) or defined(win16)}
     {$define FINDHANDLE_IS_POINTER}
 {$endif}
 
@@ -57,6 +57,10 @@ Type
 {$ifdef USEFINDDATA}
     FindData : TFindData;
 {$endif}
+  private
+    function GetTimeStamp: TDateTime;
+  public
+    property TimeStamp: TDateTime read GetTimeStamp;
   end;
 
   TRawbyteSearchRec = Record
@@ -72,6 +76,10 @@ Type
 {$IFDEF USEFINDDATA}
     FindData : TFindData;
 {$ENDIF}
+  private
+    function GetTimeStamp: TDateTime;
+  public
+    property TimeStamp: TDateTime read GetTimeStamp;
   end;
 
 {$IFDEF FPC_UNICODE_RTL}
@@ -168,6 +176,7 @@ Function FileRead (Handle : THandle; out Buffer; Count : longint) : Longint;
 Function FileWrite (Handle : THandle; const Buffer; Count : Longint) : Longint;
 Function FileSeek (Handle : THandle; FOffset, Origin: Longint) : Longint;
 Function FileSeek (Handle : THandle; FOffset: Int64; Origin: Longint) : Int64;
+function FileFlush(Handle: THandle): Boolean; 
 Procedure FileClose (Handle : THandle);
 Function FileTruncate (Handle : THandle;Size: Int64) : boolean;
 Function FindNext (Var Rslt : TRawByteSearchRec) : Longint;

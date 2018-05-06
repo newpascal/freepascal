@@ -47,7 +47,7 @@ unit ag68kvasm;
     uses
        cutils,cfileutl,globals,verbose,
        cgbase,
-       script,
+       cscript,
        itcpugas,cpuinfo,
        aasmcpu;
 
@@ -68,10 +68,17 @@ unit ag68kvasm;
         case atype of
           sec_code, sec_fpc, sec_init, sec_fini:
             result:='acrx';
-          sec_data:
+          { map sec_rodata as read-write, otherwise the linker (vlink) complains if it
+            has to write into the relocations in a rodata section. (KB) }
+          sec_data, sec_rodata:
             result:='adrw';
-          sec_rodata, sec_rodata_norel:
-            result:='adr';
+          sec_rodata_norel:
+            case target_info.system of
+              { stop vlink from complaining when it merges ro sections into rw ones (KB) }
+              system_m68k_atari: result:='adrw';
+            else
+              result:='adr';
+            end;
           sec_bss, sec_threadvar:
             result:='aurw';
           sec_stab, sec_stabstr:

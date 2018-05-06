@@ -26,6 +26,7 @@ Unit aopt;
 {$i fpcdefs.inc}
 
 { $define DEBUG_OPTALLOC}
+{ $define DEBUG_INSTRUCTIONREGISTERDEPENDENCIES}
 
   Interface
 
@@ -79,7 +80,7 @@ Unit aopt;
       verbose,
       cpubase,
       cgbase,
-      aoptda,aoptcpu,aoptcpud;
+      aoptcpu;
 
     Constructor TAsmOptimizer.create(_AsmL: TAsmList);
       Begin
@@ -381,6 +382,9 @@ Unit aopt;
       begin
         p:=casmoptimizer.Create(AsmL);
         p.Optimize;
+{$ifdef DEBUG_INSTRUCTIONREGISTERDEPENDENCIES}
+        p.Debug_InsertInstrRegisterDependencyInfo;
+{$endif DEBUG_INSTRUCTIONREGISTERDEPENDENCIES}
         p.free
       end;
 

@@ -71,11 +71,11 @@ interface
   implementation
 
     uses
-      globals,systems,
+      globals,
       cutils,verbose,
       aasmbase,aasmcpu,
-      symsym,symconst,symdef,defutil,
-      nflw,pass_2,ncgutil,
+      symsym,symconst,defutil,
+      pass_2,ncgutil,
       cgbase,cgobj,hlcgobj,
       procinfo,
       cpuinfo,
@@ -127,6 +127,7 @@ interface
       var
         sym : tabstractnormalvarsym;
 {$ifdef x86}
+        segment : tregister;
         scale : byte;
 {$endif x86}
         forceref,
@@ -139,6 +140,7 @@ interface
             sofs:=op.localoper^.localsymofs;
             indexreg:=op.localoper^.localindexreg;
 {$ifdef x86}
+            segment:=op.localoper^.localsegment;
             scale:=op.localoper^.localscale;
 {$endif x86}
             getoffset:=op.localoper^.localgetoffset;
@@ -150,7 +152,11 @@ interface
                 begin
                   if getoffset then
                     begin
-                      if indexreg=NR_NO then
+                      if (indexreg=NR_NO)
+{$ifdef x86}
+                         and (segment=NR_NO)
+{$endif x86}
+                         then
                         begin
                           op.typ:=top_const;
                           op.val:=sym.localloc.reference.offset+sofs;
@@ -160,7 +166,10 @@ interface
                           op.typ:=top_ref;
                           new(op.ref);
                           reference_reset_base(op.ref^,indexreg,sym.localloc.reference.offset+sofs,
-                            newalignment(sym.localloc.reference.alignment,sofs),[]);
+                            sym.localloc.reference.temppos,newalignment(sym.localloc.reference.alignment,sofs),[]);
+{$ifdef x86}
+                          op.ref^.segment:=segment;
+{$endif x86}
                         end;
                     end
                   else
@@ -168,9 +177,10 @@ interface
                       op.typ:=top_ref;
                       new(op.ref);
                       reference_reset_base(op.ref^,sym.localloc.reference.base,sym.localloc.reference.offset+sofs,
-                        newalignment(sym.localloc.reference.alignment,sofs),[]);
+                        sym.localloc.reference.temppos,newalignment(sym.localloc.reference.alignment,sofs),[]);
                       op.ref^.index:=indexreg;
 {$ifdef x86}
+                      op.ref^.segment:=segment;
                       op.ref^.scalefactor:=scale;
 {$endif x86}
                     end;
@@ -181,12 +191,17 @@ interface
                     MessagePos(filepos,asmr_e_invalid_reference_syntax);
                   { Subscribed access }
                   if forceref or
-                     (sofs<>0) then
+{$ifdef avr}                     
+                     (sofs>=tcgsize2size[sym.localloc.size])
+{$else avr}
+                     (sofs<>0)
+{$endif avr}
+                     then
                     begin
                       op.typ:=top_ref;
                       new(op.ref);
                       { no idea about the actual alignment }
-                      reference_reset_base(op.ref^,sym.localloc.register,sofs,1,[]);
+                      reference_reset_base(op.ref^,sym.localloc.register,sofs,ctempposinvalid,1,[]);
                       op.ref^.index:=indexreg;
 {$ifdef x86}
                       op.ref^.scalefactor:=scale;
@@ -196,6 +211,14 @@ interface
                     begin
                       op.typ:=top_reg;
                       op.reg:=sym.localloc.register;
+
+{$ifdef avr}
+                      case sofs of
+                        1: op.reg:=cg.GetNextReg(op.reg);
+                        2: op.reg:=cg.GetNextReg(cg.GetNextReg(op.reg));
+                        3: op.reg:=cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(op.reg)));
+                      end;
+{$endif avr}
                     end;
                 end;
               LOC_FPUREGISTER,
@@ -307,6 +330,10 @@ interface
                                      ReLabel(ref^.symbol);
                                    if assigned(ref^.relsymbol) then
                                      ReLabel(ref^.relsymbol);
+{$ifdef x86}
+                                   if (ref^.segment<>NR_NO) and (ref^.segment<>get_default_segment_of_ref(ref^)) then
+                                     taicpu(hp2).segprefix:=ref^.segment;
+{$endif x86}
                                  end;
                              end;
                            end;
@@ -341,7 +368,19 @@ interface
 {$endif}
                        { fixup the references }
                        for i:=1 to taicpu(hp).ops do
-                         ResolveRef(taicpu(hp).fileinfo,taicpu(hp).oper[i-1]^);
+                         begin
+                           ResolveRef(taicpu(hp).fileinfo,taicpu(hp).oper[i-1]^);
+{$ifdef x86}
+                           with taicpu(hp).oper[i-1]^ do
+                             begin
+                               case typ of
+                                 top_ref :
+                                   if (ref^.segment<>NR_NO) and (ref^.segment<>get_default_segment_of_ref(ref^)) then
+                                     taicpu(hp).segprefix:=ref^.segment;
+                               end;
+                             end;
+{$endif x86}
+                         end;
 {$ifdef x86}
                       { can only be checked now that all local operands }
                       { have been resolved                              }
@@ -550,6 +589,9 @@ interface
 
         location_reset(location,LOC_VOID,OS_NO);
 
+        if ti_cleanup_only in tempflags then
+          exit;
+
         { see comments at ti_const declaration: if we initialised this temp with
           the value of another temp, that other temp was not freed because the
           ti_const flag was set }
@@ -593,42 +635,42 @@ interface
                   if tempinfo^.location.size in [OS_64,OS_S64] then
                     begin
                       cg.a_reg_sync(current_asmdata.CurrAsmList,tempinfo^.location.register64.reghi);
-                      cg.a_reg_sync(current_asmdata.CurrAsmList,GetNextReg(tempinfo^.location.register64.reghi));
+                      cg.a_reg_sync(current_asmdata.CurrAsmList,cg.GetNextReg(tempinfo^.location.register64.reghi));
                       cg.a_reg_sync(current_asmdata.CurrAsmList,tempinfo^.location.register64.reglo);
-                      cg.a_reg_sync(current_asmdata.CurrAsmList,GetNextReg(tempinfo^.location.register64.reglo));
+                      cg.a_reg_sync(current_asmdata.CurrAsmList,cg.GetNextReg(tempinfo^.location.register64.reglo));
                     end
                   else
                   if tempinfo^.location.size in [OS_32,OS_S32] then
                     begin
                       cg.a_reg_sync(current_asmdata.CurrAsmList,tempinfo^.location.register);
-                      cg.a_reg_sync(current_asmdata.CurrAsmList,GetNextReg(tempinfo^.location.register));
+                      cg.a_reg_sync(current_asmdata.CurrAsmList,cg.GetNextReg(tempinfo^.location.register));
                     end
                   else
 {$elseif defined(cpu8bitalu)}
                   if tempinfo^.location.size in [OS_64,OS_S64] then
                     begin
                       cg.a_reg_sync(current_asmdata.CurrAsmList,tempinfo^.location.register64.reghi);
-                      cg.a_reg_sync(current_asmdata.CurrAsmList,GetNextReg(tempinfo^.location.register64.reghi));
-                      cg.a_reg_sync(current_asmdata.CurrAsmList,GetNextReg(GetNextReg(tempinfo^.location.register64.reghi)));
-                      cg.a_reg_sync(current_asmdata.CurrAsmList,GetNextReg(GetNextReg(GetNextReg(tempinfo^.location.register64.reghi))));
+                      cg.a_reg_sync(current_asmdata.CurrAsmList,cg.GetNextReg(tempinfo^.location.register64.reghi));
+                      cg.a_reg_sync(current_asmdata.CurrAsmList,cg.GetNextReg(cg.GetNextReg(tempinfo^.location.register64.reghi)));
+                      cg.a_reg_sync(current_asmdata.CurrAsmList,cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(tempinfo^.location.register64.reghi))));
                       cg.a_reg_sync(current_asmdata.CurrAsmList,tempinfo^.location.register64.reglo);
-                      cg.a_reg_sync(current_asmdata.CurrAsmList,GetNextReg(tempinfo^.location.register64.reglo));
-                      cg.a_reg_sync(current_asmdata.CurrAsmList,GetNextReg(GetNextReg(tempinfo^.location.register64.reglo)));
-                      cg.a_reg_sync(current_asmdata.CurrAsmList,GetNextReg(GetNextReg(GetNextReg(tempinfo^.location.register64.reglo))));
+                      cg.a_reg_sync(current_asmdata.CurrAsmList,cg.GetNextReg(tempinfo^.location.register64.reglo));
+                      cg.a_reg_sync(current_asmdata.CurrAsmList,cg.GetNextReg(cg.GetNextReg(tempinfo^.location.register64.reglo)));
+                      cg.a_reg_sync(current_asmdata.CurrAsmList,cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(tempinfo^.location.register64.reglo))));
                     end
                   else
                   if tempinfo^.location.size in [OS_32,OS_S32] then
                     begin
                       cg.a_reg_sync(current_asmdata.CurrAsmList,tempinfo^.location.register);
-                      cg.a_reg_sync(current_asmdata.CurrAsmList,GetNextReg(tempinfo^.location.register));
-                      cg.a_reg_sync(current_asmdata.CurrAsmList,GetNextReg(GetNextReg(tempinfo^.location.register)));
-                      cg.a_reg_sync(current_asmdata.CurrAsmList,GetNextReg(GetNextReg(GetNextReg(tempinfo^.location.register))));
+                      cg.a_reg_sync(current_asmdata.CurrAsmList,cg.GetNextReg(tempinfo^.location.register));
+                      cg.a_reg_sync(current_asmdata.CurrAsmList,cg.GetNextReg(cg.GetNextReg(tempinfo^.location.register)));
+                      cg.a_reg_sync(current_asmdata.CurrAsmList,cg.GetNextReg(cg.GetNextReg(cg.GetNextReg(tempinfo^.location.register))));
                     end
                   else
                   if tempinfo^.location.size in [OS_16,OS_S16] then
                     begin
                       cg.a_reg_sync(current_asmdata.CurrAsmList,tempinfo^.location.register);
-                      cg.a_reg_sync(current_asmdata.CurrAsmList,GetNextReg(tempinfo^.location.register));
+                      cg.a_reg_sync(current_asmdata.CurrAsmList,cg.GetNextReg(tempinfo^.location.register));
                     end
                   else
 {$endif}

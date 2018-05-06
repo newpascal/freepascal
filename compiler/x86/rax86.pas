@@ -91,8 +91,8 @@ implementation
 uses
   globtype,globals,systems,verbose,
   procinfo,
-  cpuinfo,cgbase,cgutils,
-  itcpugas,cgx86, symsym, cutils;
+  cgbase,cgutils,
+  itcpugas,cgx86, cutils;
 
 
 {*****************************************************************************
@@ -331,32 +331,6 @@ begin
   inherited Create(optype);
   Opsize:=S_NO;
 end;
-
-
-const
-{$ifdef x86_64}
-  topsize2memsize: array[topsize] of integer =
-    (0, 8,16,32,64,8,8,16,8,16,32,
-     16,32,64,
-     16,32,64,0,0,
-     64,
-     0,0,0,
-     80,
-     128,
-     256
-    );
-{$else}
-topsize2memsize: array[topsize] of integer =
-  (0, 8,16,32,64,8,8,16,
-   16,32,64,
-   16,32,64,0,0,
-   64,
-   0,0,0,
-   80,
-   128,
-   256
-  );
-{$endif}
 
 procedure Tx86Instruction.AddReferenceSizes;
 { this will add the sizes for references like [esi] which do not
@@ -896,14 +870,26 @@ begin
             exit;
           A_MOVQ :
             opsize:=S_IQ;
+          A_CVTSI2SS,
+          A_CVTSI2SD,
           A_OUT :
             opsize:=tx86operand(operands[1]).opsize;
           else
             opsize:=tx86operand(operands[2]).opsize;
         end;
       end;
-    3,4 :
+    3 :
+      begin
+        case opcode of
+          A_VCVTSI2SS,
+          A_VCVTSI2SD:
+            opsize:=tx86operand(operands[1]).opsize;
+        else
           opsize:=tx86operand(operands[ops]).opsize;
+        end;
+      end;
+    4 :
+        opsize:=tx86operand(operands[ops]).opsize;
 
   end;
 end;
@@ -1100,7 +1086,16 @@ begin
       if (ops=1) and (opcode=A_BRKEM) then
         siz:=S_B;
 {$endif i8086}
-      if (ops=1) and (opcode=A_RET) or (opcode=A_RETN) or (opcode=A_RETF) then
+      if (ops=1) and (opcode=A_RET) or (opcode=A_RETN) or (opcode=A_RETF) or
+                     (opcode=A_RETW) or (opcode=A_RETNW) or (opcode=A_RETFW) or
+{$ifndef x86_64}
+                     (opcode=A_RETD) or (opcode=A_RETND) or
+{$endif x86_64}
+                     (opcode=A_RETFD)
+{$ifdef x86_64}
+                  or (opcode=A_RETQ) or (opcode=A_RETNQ) or (opcode=A_RETFQ)
+{$endif x86_64}
+          then
         siz:=S_W;
       if (ops=1) and (opcode=A_PUSH) then
         begin
@@ -1197,6 +1192,19 @@ begin
        operands[2].opr.reg:=NR_ST0;
      end;
 
+   { Check for 'POP CS' }
+   if (opcode=A_POP) and (ops=1) and (operands[1].opr.typ=OPR_REGISTER) and
+      (operands[1].opr.reg=NR_CS) then
+{$ifdef i8086}
+     { On i8086 we print only a warning, because 'POP CS' works on 8086 and 8088
+       CPUs, but isn't supported on any later CPU }
+     Message(asmr_w_pop_cs_not_portable);
+{$else i8086}
+     { On the i386 and x86_64 targets, we print out an error, because no CPU,
+       supported by these targets support 'POP CS' }
+     Message(asmr_e_pop_cs_not_valid);
+{$endif i8086}
+
    { I tried to convince Linus Torvalds to add
      code to support ENTER instruction
      (when raising a stack page fault)
@@ -1232,10 +1240,15 @@ begin
           ai.loadsymbol(i-1,operands[i].opr.symbol,operands[i].opr.symofs);
        OPR_LOCAL :
          with operands[i].opr do
-           ai.loadlocal(i-1,localsym,localsymofs,localindexreg,
-                        localscale,localgetoffset,localforceref);
+           begin
+             ai.loadlocal(i-1,localsym,localsymofs,localindexreg,
+                          localscale,localgetoffset,localforceref);
+             ai.oper[i-1]^.localoper^.localsegment:=localsegment;
+           end;
        OPR_REFERENCE:
          begin
+           if (opcode<>A_XLAT) and not is_x86_string_op(opcode) then
+             optimize_ref(operands[i].opr.ref,true);
            ai.loadref(i-1,operands[i].opr.ref);
            if operands[i].size<>OS_NO then
              begin
@@ -1250,7 +1263,7 @@ begin
                      if siz=S_FAR then
                        asize:=OT_FAR
                      else
-                       asize:=OT_BITS16;
+                       asize:=OT_BITS32;
 {$else i8086}
                      asize:=OT_BITS32;
 {$endif i8086}
