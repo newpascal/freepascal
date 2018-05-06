@@ -103,10 +103,7 @@ Const
      pocall_stdcall,
      pocall_cdecl,
      pocall_cppdecl,
-     pocall_far16,
-     pocall_pascal,
-     pocall_oldfpccall,
-     pocall_mwpascal
+     pocall_pascal
    ];
 
    cputypestr : array[tcputype] of string[10] = ('',

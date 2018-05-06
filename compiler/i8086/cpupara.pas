@@ -164,9 +164,7 @@ unit cpupara;
               else
                 result:=
                   (not(calloption in (cdecl_pocalls)) and
-                   (def.size>sizeof(aint))) or
-                  (((calloption = pocall_mwpascal) or (target_info.system=system_i386_wince)) and
-                   (varspez=vs_const));
+                   (def.size>sizeof(aint)));
             end;
           arraydef :
             begin
@@ -215,10 +213,7 @@ unit cpupara;
           pocall_safecall,
           pocall_stdcall,
           pocall_cppdecl,
-          pocall_mwpascal,
-          pocall_far16,
-          pocall_pascal,
-          pocall_oldfpccall :
+          pocall_pascal :
             result:=[RS_AX,RS_DX,RS_CX,RS_SI,RS_DI,RS_BX];
           else
             internalerror(200309071);
@@ -251,10 +246,7 @@ unit cpupara;
           pocall_safecall,
           pocall_stdcall,
           pocall_cppdecl,
-          pocall_mwpascal,
-          pocall_far16,
-          pocall_pascal,
-          pocall_oldfpccall :
+          pocall_pascal :
             result:=saveregs_pascal;
           else
             internalerror(2018042301);

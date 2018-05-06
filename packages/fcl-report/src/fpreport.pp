@@ -347,10 +347,11 @@ type
     procedure StartRender; virtual;
     // called when the renderer ends its job on the report.
     procedure EndRender; virtual;
+  Protected
+    Procedure FixupReference(Const PN,PV : String; C : TFPReportElement); virtual;
   public
     Function AllocateName : String;
     // Called when done reading
-    Procedure FixupReference(PN,PV : String; C : TFPReportElement); virtual;
     procedure WriteElement(AWriter: TFPReportStreamer; AOriginal: TFPReportElement = nil); virtual;
     procedure ReadElement(AReader: TFPReportStreamer); virtual;
     // called when the designer starts editing this component .
@@ -689,7 +690,7 @@ type
     procedure SetVisibleExpr(AValue: String);
   protected
     Procedure ParentFontChanged; virtual;
-    procedure ApplyStretchMode(const ADesiredHeight: TFPReportUnits);
+    procedure ApplyStretchMode(const ADesiredHeight: TFPReportUnits); virtual;
     function GetDateTimeFormat: String; virtual;
     function ExpandMacro(const s: String; const AIsExpr: boolean): TFPReportString; virtual;
     function GetReportBand: TFPReportCustomBand; virtual;
@@ -757,6 +758,7 @@ type
     procedure PrepareObjects(aRTParent: TFPReportElement); virtual;
     { This should run against the runtime version of the children }
     procedure RecalcLayout; override;
+    procedure ApplyStretchMode(const ADesiredHeight: TFPReportUnits);override;
   public
     destructor  Destroy; override;
     Procedure   Validate(aErrors : TStrings); override;
@@ -943,6 +945,7 @@ type
     procedure   SetUseParentFont(AValue: boolean);
     procedure   SetVisibleOnPage(AValue: TFPReportVisibleOnPage);
   protected
+    procedure FixupReference(Const PN, PV: String; C: TFPReportElement); override;
     procedure ParentFontChanged; override;
     function CalcDesiredHeight: TFPReportUnits; virtual;
     function    GetReportPage: TFPReportCustomPage; override;
@@ -977,7 +980,6 @@ type
     destructor  Destroy; override;
     Procedure   Validate(aErrors : TStrings); override;
     procedure   Assign(Source: TPersistent); override;
-    procedure FixupReference(PN, PV: String; C: TFPReportElement); override;
     Procedure SendToBack(El : TFPReportElement);
     Procedure BringToFront(El : TFPReportElement);
     Class Function ReportBandType : TFPReportBandType; virtual;
@@ -1029,7 +1031,7 @@ type
     procedure SetHeaderBand(AValue: TFPReportCustomDataHeaderBand);
     procedure SetMasterBand(AValue: TFPReportCustomDataBand);
   protected
-    Procedure FixupReference(PN,PV : String; C : TFPReportElement); override;
+    Procedure FixupReference(Const PN,PV : String; C : TFPReportElement); override;
     Procedure Notification(AComponent: TComponent; Operation: TOperation); override;
     property  DisplayPosition: Integer read FDisplayPosition write FDisplayPosition default 0;
     // No longer used, set the FooterBand.Data or HeaderBand.Data properties instead.
@@ -1198,7 +1200,7 @@ type
     function    GetReportBandName: string; override;
     procedure   DoWriteLocalProperties(AWriter: TFPReportStreamer; AOriginal: TFPReportElement = nil); override;
     procedure   Notification(AComponent: TComponent; Operation: TOperation); override;
-    Procedure FixupReference(PN, PV: String; C: TFPReportElement); override;
+    Procedure   FixupReference(Const PN, PV: String; C: TFPReportElement); override;
     procedure   BeforePrintWithChilds; override;
     procedure   MovedToNextPageWithChilds; override;
     procedure   AfterPrintWithChilds; override;
@@ -1317,7 +1319,7 @@ type
     FDoNotConsiderInFooterSpaceNeeded: Boolean;
     procedure SetGroupHeader(const AValue: TFPReportCustomGroupHeaderBand);
   protected
-    procedure FixupReference(PN, PV: String; C: TFPReportElement); override;
+    procedure FixupReference(Const PN, PV: String; C: TFPReportElement); override;
     procedure SetBandPosition(pBandPosition: TFPReportBandPosition); override;
     function  GetReportBandName: string; override;
     procedure DoWriteLocalProperties(AWriter: TFPReportStreamer; AOriginal: TFPReportElement = nil); override;
@@ -1652,8 +1654,8 @@ type
     procedure RunReport;
     Procedure ClearPreparedReport; virtual;
     Function  Prepared : Boolean;
-    Procedure StartDesigning; virtual;
-    Procedure EndDesigning; virtual;
+    Procedure StartDesigning; override;
+    Procedure EndDesigning; override;
     procedure RenderReport(const AExporter: TFPReportExporter);
     procedure AddBuiltinsToExpressionIdentifiers(Idents: TFPExprIdentifierDefs); virtual;
     Property Variables : TFPReportVariables Read FVariables Write SetVariables;
@@ -1707,7 +1709,6 @@ type
     FData: TFPReportData;
     FParentLoop: TLoopData;
     FDataHeaderPrinted: boolean;
-    FLastGroupCondition: string;
     FDataHeader : TFPReportCustomDataHeaderBand;
     FDataFooter : TFPReportCustomDataFooterBand;
     FDataBand : TFPReportCustomDataBand;
@@ -2050,7 +2051,7 @@ type
   protected
     procedure   DoWriteLocalProperties(AWriter: TFPReportStreamer; AOriginal: TFPReportElement = nil); override;
     Procedure   RecalcLayout; override;
-    function PrepareObject(aRTParent: TFPReportElement): TFPReportElement; override;
+    function    PrepareObject(aRTParent: TFPReportElement): TFPReportElement; override;
     property    Image: TFPCustomImage read GetImage write SetImage;
     property    ImageID: integer read FImageID write SetImageID;
     property    Stretched: boolean read FStretched write SetStretched;
@@ -2064,6 +2065,7 @@ type
     procedure   ReadElement(AReader: TFPReportStreamer); override;
     procedure   WriteElement(AWriter: TFPReportStreamer; AOriginal: TFPReportElement = nil); override;
     procedure   LoadFromFile(const AFileName: string);
+    Procedure   LoadFromStream(const AStream: TStream; aHandler: TFPCustomImageReaderClass);
     procedure   LoadPNGFromStream(AStream: TStream);
     procedure   LoadImage(const AImageData: Pointer; const AImageDataSize: LongWord);
   end;
@@ -2356,7 +2358,7 @@ resourcestring
   SErrRegisterUnknownElement = 'Unable to find registered report element <%s>.';
   SErrUnknownExporter = 'Unknown exporter: "%s"';
   SErrMultipleDataBands = 'A report page may not have more than one master databand.';
-  SErrCantAssignReportFont = 'Can''t Assign() report font - Source is not TFPReportFont.';
+  // SErrCantAssignReportFont = 'Can''t Assign() report font - Source is not TFPReportFont.';
   SErrNoStreamInstanceWasSupplied = 'No valid TStream instance was supplied.';
   SErrIncorrectDescendant = 'AElement is not a TFPReportElementWithChildren descendant.';
 
@@ -3542,8 +3544,6 @@ procedure TFPReportVariable.UpdateExpressionValue(aData: TFPReportData; IsFirstp
 
 var
   lResetValue: String;
-  lResult: PFPExpressionResult;
-  lValue: TFPExpressionResult;
   IsReset : Boolean;
 
   Function NeedReset : Boolean;
@@ -3956,9 +3956,6 @@ begin
 end;
 
 procedure TFPReportCustomMemo.SetUseParentFont(AValue: Boolean);
-
-Var
-  R : TFPReportFont;
 
 begin
   if FUseParentFont = AValue then
@@ -4409,8 +4406,10 @@ end;
 { package the text into TextBlock objects. We don't apply Memo Margins here - that
   gets done in the Apply*TextAlignment() methods. }
 procedure TFPReportCustomMemo.PrepareTextBlocks;
+
 var
   i: integer;
+
 begin
   { blockstate is cleared outside the FOR loop because the font state could
     roll over to multiple lines. }
@@ -4419,13 +4418,11 @@ begin
   FLastURL := '';
   FLastFGColor := clNone;
   FLastBGColor := clNone;
-
   for i := 0 to FTextLines.Count-1 do
   begin
     FTextBlockXOffset := 0;
     if Assigned(FCurTextBlock) then
       FTextBlockYOffset := FTextBlockYOffset + FCurTextBlock.Height + FCurTextBlock.Descender + LineSpacing;
-
     if moAllowHTML in Options then
     begin
       FParser := THTMLParser.Create(FTextLines[i]);
@@ -5127,8 +5124,6 @@ procedure TFPReportCustomMemo.ReadElement(AReader: TFPReportStreamer);
 
 var
   E: TObject;
-  F : TFPReportFont;
-
 begin
   inherited ReadElement(AReader);
   E := AReader.FindChild('TextAlignment');
@@ -5450,6 +5445,17 @@ begin
   ImageID:=R.Images[I].ID;
 end;
 
+procedure TFPReportCustomImage.LoadFromStream(const AStream: TStream; aHandler: TFPCustomImageReaderClass);
+
+var
+  R : TFPCustomReport;
+  i : integer;
+begin
+  R:=Report;
+  I:=R.Images.AddFromStream(aStream,aHandler,True);
+  ImageID:=R.Images[I].ID;
+end;
+
 procedure TFPReportCustomImage.LoadPNGFromStream(AStream: TStream);
 
 var
@@ -5718,7 +5724,7 @@ begin
     FMasterBand.FreeNotification(Self);
 end;
 
-procedure TFPReportCustomDataBand.FixupReference(PN, PV: String; C: TFPReportElement);
+procedure TFPReportCustomDataBand.FixupReference(const PN, PV: String; C: TFPReportElement);
 begin
   If SameText('FooterBand',PN) and (C is TFPReportCustomDataFooterBand) then
     FooterBand:=TFPReportCustomDataFooterBand(C)
@@ -5936,7 +5942,7 @@ begin
 
 end;
 
-procedure TFPReportCustomGroupHeaderBand.FixupReference(PN, PV: String; C: TFPReportElement);
+procedure TFPReportCustomGroupHeaderBand.FixupReference(const PN, PV: String; C: TFPReportElement);
 begin
   if SameText(PN,'ParentGroupHeader') then
     ParentGroupHeader:=TFPReportCustomGroupHeaderBand(C)
@@ -6268,7 +6274,7 @@ begin
   Until (Owner=Nil) or (Owner.FindComponent(Result)=Nil);
 end;
 
-procedure TFPReportComponent.FixupReference(PN, PV: String; C: TFPReportElement);
+procedure TFPReportComponent.FixupReference(const PN, PV: String; C: TFPReportElement);
 begin
   // Do nothing
 end;
@@ -6934,7 +6940,10 @@ end;
 
 function TFPReportElement.GetReportPage: TFPReportCustomPage;
 begin
-  Result := Band.Page;
+  if Assigned(Band) then
+    Result := Band.Page
+  else
+    Result:=Nil;
 end;
 
 procedure TFPReportElement.SaveDataToNames;
@@ -7290,6 +7299,27 @@ begin
   if Assigned(FChildren) then
     for i := 0 to FChildren.Count -1 do
       Child[i].RecalcLayout;
+end;
+
+procedure TFPReportElementWithChildren.ApplyStretchMode(const ADesiredHeight: TFPReportUnits);
+
+var
+   OldH,H: TFPReportUnits;
+   i: Integer;
+   c: TFPReportElement;
+
+begin
+  OldH:=RTLayout.Height;
+  inherited ApplyStretchMode(ADesiredHeight);
+  H:=RTLayout.Height;
+  // If the height changed, recalc for smMaxheight.
+  if (H<>OldH) then
+    for i := 0 to ChildCount-1 do
+      begin
+      c := Child[i];
+      if (c.StretchMode = smMaxHeight) then
+        C.RecalcLayout;
+      end;
 end;
 
 destructor TFPReportElementWithChildren.Destroy;
@@ -8339,7 +8369,7 @@ end;
 Function TFPCustomReport.StreamToReportElements(aStream: TStream): TFPObjectList;
 
 Var
-  I,aCount : Integer;
+  I : Integer;
   S : TFPReportJSONStreamer;
   aName : String;
   E : TObject;
@@ -8384,7 +8414,6 @@ var
   f: string;
   r: TResultType;
   d: string;
-  v: TFPReportVariable;
   df: TFPReportDataField;
   aData : TFPReportData;
 
@@ -9094,9 +9123,6 @@ end;
 
 procedure TFPReportCustomBand.SetUseParentFont(AValue: boolean);
 
-Var
-  F : TFPReportFont;
-
 begin
   if FUseParentFont = AValue then
     Exit;
@@ -9229,7 +9255,7 @@ begin
   end;
 end;
 
-procedure TFPReportCustomBand.FixupReference(PN, PV: String; C: TFPReportElement);
+procedure TFPReportCustomBand.FixupReference(const PN, PV: String; C: TFPReportElement);
 begin
   if SameText(PN,'ChildBand') then
     begin
@@ -9373,10 +9399,10 @@ begin
 end;
 
 procedure TFPReportCustomBand.ReadElement(AReader: TFPReportStreamer);
+
 var
   E: TObject;
   s: string;
-  F : TFPReportFont;
 
 begin
   E := AReader.FindChild(GetReportBandName);
@@ -9555,7 +9581,7 @@ begin
     end;
 end;
 
-procedure TFPReportCustomGroupFooterBand.FixupReference(PN, PV: String; C: TFPReportElement);
+procedure TFPReportCustomGroupFooterBand.FixupReference(const PN, PV: String; C: TFPReportElement);
 begin
   if SameText(PN,'Groupheader') then
     GroupHeader:=TFPReportCustomGroupHeaderBand(C)
@@ -11923,9 +11949,6 @@ end;
 procedure TFPReportLayouter.RunDataLoop(aPage: TFPReportCustomPage; aData: TFPReportData);
 
 Var
-  I : integer;
-  lBand : TFPReportCustomBand;
-  g : TFPReportCustomDataFooterBand;
   aLoop: TLoopData;
 
 begin
@@ -12027,10 +12050,6 @@ begin
 end;
 
 procedure TFPReportLayouter.HandleReportSummaryBands;
-
-Var
-  I : integer;
-  lBand : TFPReportCustomBand;
 
 begin
   if not Assigned(FSummary) then
