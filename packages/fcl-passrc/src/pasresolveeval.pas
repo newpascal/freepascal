@@ -91,7 +91,7 @@ const
   nCallingConventionMismatch = 3018;
   nResultTypeMismatchExpectedButFound = 3019;
   nFunctionHeaderMismatchForwardVarName = 3020;
-  nFunctionHidesIdentifier = 3021;
+  nFunctionHidesIdentifier_NonVirtualMethod = 3021;
   nNoMethodInAncestorToOverride = 3022;
   nInheritedOnlyWorksInMethods = 3023;
   nInheritedNeedsAncestor = 3024;
@@ -120,7 +120,7 @@ const
   nExpectXArrayElementsButFoundY = 3047;
   nCannotCreateADescendantOfTheSealedXY = 3048;
   nAncestorIsNotExternal = 3049;
-  nVirtualMethodXHasLowerVisibility = 3050; // FPC 3250
+  nPropertyMustHaveReadOrWrite = 3050;
   nExternalClassInstanceCannotAccessStaticX = 3051;
   nXModifierMismatchY = 3052;
   nSymbolCannotBePublished = 3053;
@@ -128,12 +128,12 @@ const
   nTypeIdentifierExpected = 3055;
   nCannotNestAnonymousX = 3056;
   nFoundCallCandidateX = 3057;
-  nSymbolXIsNotPortable = 3058;
-  nSymbolXIsExperimental = 3059;
-  nSymbolXIsNotImplemented = 3060;
-  nSymbolXBelongsToALibrary = 3061;
-  nSymbolXIsDeprecated = 3062;
-  nSymbolXIsDeprecatedY = 3063;
+  // free 3058
+  // free 3059
+  // free 3060
+  // free 3061
+  // free 3062
+  // free 3063
   nRangeCheckError = 3064;
   nHighRangeLimitLTLowRangeLimit = 3065;
   nRangeCheckEvaluatingConstantsVMinMax = 3066;
@@ -150,14 +150,14 @@ const
   nMethodHidesMethodOfBaseType = 3077;
   nContextExpectedXButFoundY = 3078;
   nContextXInvalidY = 3079;
-  nConstructingClassXWithAbstractMethodY = 3080;
+  // free 3080;
   nXIsNotSupported = 3081;
   nOperatorIsNotOverloadedAOpB = 3082;
   nIllegalQualifierAfter = 3084;
   nIllegalQualifierInFrontOf = 3085;
   nIllegalQualifierWithin = 3086;
   nMethodClassXInOtherUnitY = 3087;
-  nNoMatchingImplForIntfMethodXFound = 3088;
+  // free 3088
   nCannotMixMethodResolutionAndDelegationAtX = 3089;
   nImplementsDoesNotSupportArrayProperty = 3101;
   nImplementsDoesNotSupportIndex = 3102;
@@ -171,6 +171,19 @@ const
   nMissingFieldsX = 3109;
   nCantAssignValuesToConstVariable = 3110;
   nIllegalAssignmentToForLoopVar = 3111;
+  nFunctionHidesIdentifier_NonProc = 3112;
+  // Note: use one of the free IDs above
+
+  // using same IDs as FPC
+  nVirtualMethodXHasLowerVisibility = 3250; // was 3050
+  nConstructingClassXWithAbstractMethodY = 4046; // was 3080
+  nNoMatchingImplForIntfMethodXFound = 5042;  // was 3088
+  nSymbolXIsDeprecated = 5043;   // was 3062
+  nSymbolXBelongsToALibrary = 5065; // was 3061
+  nSymbolXIsDeprecatedY = 5066;   // 3063
+  nSymbolXIsNotPortable = 5076; // was 3058
+  nSymbolXIsNotImplemented = 5078; // was  3060
+  nSymbolXIsExperimental = 5079;  // was 3059
 
 // resourcestring patterns of messages
 resourcestring
@@ -194,7 +207,7 @@ resourcestring
   sCallingConventionMismatch = 'Calling convention mismatch';
   sResultTypeMismatchExpectedButFound = 'Result type mismatch, expected %s, but found %s';
   sFunctionHeaderMismatchForwardVarName = 'function header "%s" doesn''t match forward : var name changes %s => %s';
-  sFunctionHidesIdentifier = 'function hides identifier at "%s"';
+  sFunctionHidesIdentifier = 'function hides identifier at "%s". Use overload or reintroduce';
   sNoMethodInAncestorToOverride = 'There is no method in an ancestor class to be overridden "%s"';
   sInheritedOnlyWorksInMethods = 'Inherited works only in methods';
   sInheritedNeedsAncestor = 'inherited needs an ancestor';
@@ -223,6 +236,7 @@ resourcestring
   sExpectXArrayElementsButFoundY = 'Expect %s array elements, but found %s';
   sCannotCreateADescendantOfTheSealedXY = 'Cannot create a descendant of the sealed %s "%s"';
   sAncestorIsNotExternal = 'Ancestor "%s" is not external';
+  sPropertyMustHaveReadOrWrite = 'Property must have read or write accessor';
   sVirtualMethodXHasLowerVisibility = 'Virtual method "%s" has a lower visibility (%s) than parent class %s (%s)';
   sExternalClassInstanceCannotAccessStaticX = 'External class instance cannot access static %s';
   sXModifierMismatchY = '%s modifier "%s" mismatch';
@@ -3930,13 +3944,21 @@ begin
           'A'..'F': u:=u*16+ord(c)-ord('A')+10;
           else break;
           end;
-          if u>$ffff then
+          if u>$10FFFF then
             RangeError(20170523115712);
           inc(p);
         until false;
         if p=StartP then
           RaiseInternalError(20170207164956);
-        AddHash(u);
+        if u>$ffff then
+          begin
+          // split into two
+          dec(u,$10000);
+          AddHash($D800+(u shr 10));
+          AddHash($DC00+(u and $3ff));
+          end
+        else
+          AddHash(u);
         end
       else
         begin

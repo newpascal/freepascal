@@ -34,6 +34,31 @@ const
   po_tcmodules = po_Pas2js+[po_KeepScannerError];
   co_tcmodules = [coNoTypeInfo];
 type
+  TSrcMarkerKind = (
+    mkLabel,
+    mkResolverReference,
+    mkDirectReference
+    );
+  PSrcMarker = ^TSrcMarker;
+  TSrcMarker = record
+    Kind: TSrcMarkerKind;
+    Filename: string;
+    Row: integer;
+    StartCol, EndCol: integer; // token start, end column
+    Identifier: string;
+    Next: PSrcMarker;
+  end;
+
+  { TTestHintMessage }
+
+  TTestHintMessage = class
+  public
+    Id: int64;
+    MsgType: TMessageType;
+    MsgNumber: integer;
+    Msg: string;
+    SourcePos: TPasSourcePos;
+  end;
 
   { TTestPasParser }
 
@@ -92,14 +117,21 @@ type
     FModules: TObjectList;// list of TTestEnginePasResolver
     FParser: TTestPasParser;
     FPasProgram: TPasProgram;
+    FHintMsgs: TObjectList; // list of TTestHintMessage
+    FHintMsgsGood: TFPList; // list of TTestHintMessage marked as expected
     FJSRegModuleCall: TJSCallExpression;
     FScanner: TPascalScanner;
     FSkipTests: boolean;
     FSource: TStringList;
     FFirstPasStatement: TPasImplBlock;
+    function GetMsgCount: integer;
+    function GetMsgs(Index: integer): TTestHintMessage;
     function GetResolverCount: integer;
     function GetResolvers(Index: integer): TTestEnginePasResolver;
     function OnPasResolverFindUnit(const aUnitName: String): TPasModule;
+    procedure OnParserLog(Sender: TObject; const Msg: String);
+    procedure OnPasResolverLog(Sender: TObject; const Msg: String);
+    procedure OnScannerLog(Sender: TObject; const Msg: String);
   protected
     procedure SetUp; override;
     function CreateConverter: TPasToJSConverter; virtual;
@@ -132,6 +164,9 @@ type
       ImplStatements: string = ''); virtual;
     procedure CheckDiff(Msg, Expected, Actual: string); virtual;
     procedure CheckUnit(Filename, ExpectedSrc: string); virtual;
+    procedure CheckHint(MsgType: TMessageType; MsgNumber: integer;
+      Msg: string; Marker: PSrcMarker = nil); virtual;
+    procedure CheckResolverUnexpectedHints(WithSourcePos: boolean = false); virtual;
     procedure SetExpectedScannerError(Msg: string; MsgNumber: integer);
     procedure SetExpectedParserError(Msg: string; MsgNumber: integer);
     procedure SetExpectedPasResolverError(Msg: string; MsgNumber: integer);
@@ -169,10 +204,14 @@ type
     property ExpectedErrorNumber: integer read FExpectedErrorNumber write FExpectedErrorNumber;
     property SkipTests: boolean read FSkipTests write FSkipTests;
   public
+    constructor Create; override;
+    destructor Destroy; override;
     property Source: TStringList read FSource;
     property FileResolver: TStreamResolver read FFileResolver;
     property Scanner: TPascalScanner read FScanner;
     property Parser: TTestPasParser read FParser;
+    property MsgCount: integer read GetMsgCount;
+    property Msgs[Index: integer]: TTestHintMessage read GetMsgs;
   end;
 
   { TTestModule }
@@ -228,6 +267,7 @@ type
     Procedure TestString_Compare;
     Procedure TestString_SetLength;
     Procedure TestString_CharAt;
+    Procedure TestStringHMinusFail;
     Procedure TestStr;
     Procedure TestBaseType_AnsiStringFail;
     Procedure TestBaseType_WideStringFail;
@@ -261,6 +301,7 @@ type
     Procedure TestAssignFunctionResult;
     Procedure TestFunctionResultInCondition;
     Procedure TestFunctionResultInForLoop;
+    Procedure TestFunctionResultInTypeCast;
     Procedure TestExit;
     Procedure TestBreak;
     Procedure TestBreakAsVar;
@@ -330,6 +371,7 @@ type
     Procedure TestCaseOfNoElse_UseSwitch;
     Procedure TestCaseOfRange;
     Procedure TestCaseOfString;
+    Procedure TestCaseOfExternalClassConst;
 
     // arrays
     Procedure TestArray_Dynamic;
@@ -338,9 +380,11 @@ type
     Procedure TestArray_StaticInt;
     Procedure TestArray_StaticBool;
     Procedure TestArray_StaticChar;
-    Procedure TestArray_StaticMultiDim; // ToDo
+    Procedure TestArray_StaticMultiDim;
     Procedure TestArrayOfRecord;
-    // ToDo: Procedure TestArrayOfSet;
+    Procedure TestArrayOfSet;
+    // call(set)  literal and clone var
+    // call([set])   literal and clone var
     Procedure TestArray_DynAsParam;
     Procedure TestArray_StaticAsParam;
     Procedure TestArrayElement_AsParams;
@@ -353,14 +397,19 @@ type
     Procedure TestArray_Concat;
     Procedure TestArray_Copy;
     Procedure TestArray_InsertDelete;
-    Procedure TestArray_DynArrayConst;
+    Procedure TestArray_DynArrayConstObjFPC;
+    Procedure TestArray_DynArrayConstDelphi;
+    Procedure TestArray_ArrayLitAsParam;
+    Procedure TestArray_ArrayLitMultiDimAsParam;
+    Procedure TestArray_ArrayLitStaticAsParam;
     Procedure TestArray_ForInArrOfString;
-    Procedure TestExternalClass_TypeCastArrayToExternalArray;
-    Procedure TestExternalClass_TypeCastArrayFromExternalArray;
+    Procedure TestExternalClass_TypeCastArrayToExternalClass;
+    Procedure TestExternalClass_TypeCastArrayFromExternalClass;
 
     // record
     Procedure TestRecord_Empty;
     Procedure TestRecord_Var;
+    Procedure TestRecord_VarExternal;
     Procedure TestWithRecordDo;
     Procedure TestRecord_Assign;
     Procedure TestRecord_PassAsArgClone;
@@ -456,7 +505,9 @@ type
     Procedure TestExternalClass_DuplicateVarFail;
     Procedure TestExternalClass_Method;
     Procedure TestExternalClass_ClassMethod;
+    Procedure TestExternalClass_FunctionResultInTypeCast;
     Procedure TestExternalClass_NonExternalOverride;
+    Procedure TestExternalClass_OverloadHint;
     Procedure TestExternalClass_Property;
     Procedure TestExternalClass_ClassProperty;
     Procedure TestExternalClass_ClassOf;
@@ -467,6 +518,8 @@ type
     Procedure TestExternalClass_New;
     Procedure TestExternalClass_ClassOf_New;
     Procedure TestExternalClass_FuncClassOf_New;
+    Procedure TestExternalClass_New_PasClassFail;
+    Procedure TestExternalClass_New_PasClassBracketsFail;
     Procedure TestExternalClass_LocalConstSameName;
     Procedure TestExternalClass_ReintroduceOverload;
     Procedure TestExternalClass_Inherited;
@@ -479,14 +532,18 @@ type
     Procedure TestExternalClass_TypeCastToRootClass;
     Procedure TestExternalClass_TypeCastToJSObject;
     Procedure TestExternalClass_TypeCastStringToExternalString;
+    Procedure TestExternalClass_TypeCastToJSFunction;
     Procedure TestExternalClass_CallClassFunctionOfInstanceFail;
     Procedure TestExternalClass_BracketAccessor;
+    Procedure TestExternalClass_BracketAccessor_Call;
     Procedure TestExternalClass_BracketAccessor_2ParamsFail;
     Procedure TestExternalClass_BracketAccessor_ReadOnly;
     Procedure TestExternalClass_BracketAccessor_WriteOnly;
     Procedure TestExternalClass_BracketAccessor_MultiType;
     Procedure TestExternalClass_BracketAccessor_Index;
     Procedure TestExternalClass_ForInJSObject;
+    Procedure TestExternalClass_ForInJSArray;
+    Procedure TestExternalClass_IncompatibleArgDuplicateIdentifier;
 
     // class interfaces
     Procedure TestClassInterface_Corba;
@@ -569,6 +626,7 @@ type
     Procedure TestJSValue_ClassInstance;
     Procedure TestJSValue_ClassOf;
     Procedure TestJSValue_ArrayOfJSValue;
+    Procedure TestJSValue_ArrayLit;
     Procedure TestJSValue_Params;
     Procedure TestJSValue_UntypedParam;
     Procedure TestJSValue_FuncResultType;
@@ -585,6 +643,8 @@ type
     Procedure TestJSValue_ForIn;
 
     // RTTI
+    Procedure TestRTTI_IntRange;
+    Procedure TestRTTI_Double;
     Procedure TestRTTI_ProcType;
     Procedure TestRTTI_ProcType_ArgFromOtherUnit;
     Procedure TestRTTI_EnumAndSetType;
@@ -924,6 +984,16 @@ end;
 
 { TCustomTestModule }
 
+function TCustomTestModule.GetMsgCount: integer;
+begin
+  Result:=FHintMsgs.Count;
+end;
+
+function TCustomTestModule.GetMsgs(Index: integer): TTestHintMessage;
+begin
+  Result:=TTestHintMessage(FHintMsgs[Index]);
+end;
+
 function TCustomTestModule.GetResolverCount: integer;
 begin
   Result:=FModules.Count;
@@ -952,8 +1022,65 @@ begin
     end;
   Result:=LoadUnit(aUnitName);
   if Result<>nil then exit;
+  {$IFDEF VerbosePas2JS}
   writeln('TTestModule.OnPasResolverFindUnit missing unit "',aUnitName,'"');
+  {$ENDIF}
   Fail('can''t find unit "'+aUnitName+'"');
+end;
+
+procedure TCustomTestModule.OnParserLog(Sender: TObject; const Msg: String);
+var
+  aParser: TPasParser;
+  Item: TTestHintMessage;
+begin
+  aParser:=Sender as TPasParser;
+  Item:=TTestHintMessage.Create;
+  Item.Id:=aParser.LastMsgNumber;
+  Item.MsgType:=aParser.LastMsgType;
+  Item.MsgNumber:=aParser.LastMsgNumber;
+  Item.Msg:=Msg;
+  Item.SourcePos:=aParser.Scanner.CurSourcePos;
+  {$IFDEF VerbosePas2JS}
+  writeln('TCustomTestModule.OnParserLog ',GetObjName(Sender),' ',Item.MsgType,' (',Item.MsgNumber,') {',Msg,'}');
+  {$ENDIF}
+  FHintMsgs.Add(Item);
+end;
+
+procedure TCustomTestModule.OnPasResolverLog(Sender: TObject; const Msg: String
+  );
+var
+  aResolver: TTestEnginePasResolver;
+  Item: TTestHintMessage;
+begin
+  aResolver:=Sender as TTestEnginePasResolver;
+  Item:=TTestHintMessage.Create;
+  Item.Id:=aResolver.LastMsgId;
+  Item.MsgType:=aResolver.LastMsgType;
+  Item.MsgNumber:=aResolver.LastMsgNumber;
+  Item.Msg:=Msg;
+  Item.SourcePos:=aResolver.LastSourcePos;
+  {$IFDEF VerbosePas2JS}
+  writeln('TCustomTestModule.OnPasResolverLog ',GetObjName(Sender),' ',Item.MsgType,' (',Item.MsgNumber,') {',Msg,'}');
+  {$ENDIF}
+  FHintMsgs.Add(Item);
+end;
+
+procedure TCustomTestModule.OnScannerLog(Sender: TObject; const Msg: String);
+var
+  Item: TTestHintMessage;
+  aScanner: TPascalScanner;
+begin
+  aScanner:=Sender as TPascalScanner;
+  Item:=TTestHintMessage.Create;
+  Item.Id:=aScanner.LastMsgNumber;
+  Item.MsgType:=aScanner.LastMsgType;
+  Item.MsgNumber:=aScanner.LastMsgNumber;
+  Item.Msg:=Msg;
+  Item.SourcePos:=aScanner.CurSourcePos;
+  {$IFDEF VerbosePas2JS}
+  writeln('TCustomTestModule.OnScannerLog ',GetObjName(Sender),' ',Item.MsgType,' (',Item.MsgNumber,') {',Msg,'}');
+  {$ENDIF}
+  FHintMsgs.Add(Item);
 end;
 
 function TCustomTestModule.LoadUnit(const aUnitName: String): TPasModule;
@@ -1023,6 +1150,7 @@ begin
   FEngine.Scanner:=FScanner;
 
   FParser:=TTestPasParser.Create(FScanner,FFileResolver,FEngine);
+  FParser.OnLog:=@OnParserLog;
   FEngine.Parser:=FParser;
   Parser.Options:=po_tcmodules;
 
@@ -1045,11 +1173,16 @@ begin
   aScanner.CurrentModeSwitches:=OBJFPCModeSwitches*msAllPas2jsModeSwitches+msAllPas2jsModeSwitchesReadOnly;
 
   aScanner.AllowedBoolSwitches:=msAllPas2jsBoolSwitches;
-  aScanner.CurrentBoolSwitches:=[bsHints,bsNotes,bsWarnings,bsWriteableConst];
+  aScanner.ReadOnlyBoolSwitches:=msAllPas2jsBoolSwitchesReadOnly;
+  aScanner.CurrentBoolSwitches:=msAllPas2jsBoolSwitchesReadOnly+[bsHints,bsNotes,bsWarnings,bsWriteableConst];
+
+  aScanner.OnLog:=@OnScannerLog;
 end;
 
 procedure TCustomTestModule.TearDown;
 begin
+  FHintMsgs.Clear;
+  FHintMsgsGood.Clear;
   FSkipTests:=false;
   FJSModule:=nil;
   FJSRegModuleCall:=nil;
@@ -1209,6 +1342,7 @@ begin
   Result.Filename:=aFilename;
   Result.AddObjFPCBuiltInIdentifiers(btAllJSBaseTypes,bfAllJSBaseProcs);
   Result.OnFindUnit:=@OnPasResolverFindUnit;
+  Result.OnLog:=@OnPasResolverLog;
   FModules.Add(Result);
 end;
 
@@ -1549,6 +1683,73 @@ begin
   end;
 end;
 
+procedure TCustomTestModule.CheckHint(MsgType: TMessageType;
+  MsgNumber: integer; Msg: string; Marker: PSrcMarker);
+var
+  i: Integer;
+  Item: TTestHintMessage;
+  Expected,Actual: string;
+begin
+  //writeln('TCustomTestModule.CheckHint MsgCount=',MsgCount);
+  for i:=0 to MsgCount-1 do
+    begin
+    Item:=Msgs[i];
+    if (Item.MsgNumber<>MsgNumber) or (Item.Msg<>Msg) then continue;
+    if (Marker<>nil) then
+      begin
+      if Item.SourcePos.Row<>Marker^.Row then continue;
+      if (Item.SourcePos.Column<Marker^.StartCol)
+          or (Item.SourcePos.Column>Marker^.EndCol) then continue;
+      end;
+    // found
+    FHintMsgsGood.Add(Item);
+    str(Item.MsgType,Actual);
+    str(MsgType,Expected);
+    AssertEquals('MsgType',Expected,Actual);
+    exit;
+    end;
+
+  // needed message missing -> show emitted messages
+  WriteSources('',0,0);
+  for i:=0 to MsgCount-1 do
+    begin
+    Item:=Msgs[i];
+    write('TCustomTestModule.CheckHint ',i,'/',MsgCount,' ',Item.MsgType,
+      ' ('+IntToStr(Item.MsgNumber),')');
+    if Marker<>nil then
+      write(' '+ExtractFileName(Item.SourcePos.FileName),'(',Item.SourcePos.Row,',',Item.SourcePos.Column,')');
+    writeln(' {',Item.Msg,'}');
+    end;
+  str(MsgType,Expected);
+  Actual:='Missing '+Expected+' ('+IntToStr(MsgNumber)+')';
+  if Marker<>nil then
+    Actual:=Actual+' '+ExtractFileName(Marker^.Filename)+'('+IntToStr(Marker^.Row)+','+IntToStr(Marker^.StartCol)+'..'+IntToStr(Marker^.EndCol)+')';
+  Actual:=Actual+' '+Msg;
+  Fail(Actual);
+end;
+
+procedure TCustomTestModule.CheckResolverUnexpectedHints(WithSourcePos: boolean
+  );
+var
+  i: Integer;
+  s, Txt: String;
+  Msg: TTestHintMessage;
+begin
+  for i:=0 to MsgCount-1 do
+    begin
+    Msg:=Msgs[i];
+    if FHintMsgsGood.IndexOf(Msg)>=0 then continue;
+    s:='';
+    str(Msg.MsgType,s);
+    Txt:='Unexpected resolver message found ['+IntToStr(Msg.Id)+'] '
+      +s+': ('+IntToStr(Msg.MsgNumber)+')';
+    if WithSourcePos then
+      Txt:=Txt+' '+ExtractFileName(Msg.SourcePos.FileName)+'('+IntToStr(Msg.SourcePos.Row)+','+IntToStr(Msg.SourcePos.Column)+')';
+    Txt:=Txt+' {'+Msg.Msg+'}';
+    Fail(Txt);
+    end;
+end;
+
 procedure TCustomTestModule.SetExpectedScannerError(Msg: string;
   MsgNumber: integer);
 begin
@@ -1765,6 +1966,20 @@ begin
   C:=FModule.ClassType;
   if (C=TPasProgram) or (C=TPasLibrary) or (C=TPasPackage) then
     Result:=Engine.DefaultNameSpace;
+end;
+
+constructor TCustomTestModule.Create;
+begin
+  inherited Create;
+  FHintMsgs:=TObjectList.Create(true);
+  FHintMsgsGood:=TFPList.Create;
+end;
+
+destructor TCustomTestModule.Destroy;
+begin
+  FreeAndNil(FHintMsgs);
+  FreeAndNil(FHintMsgsGood);
+  inherited Destroy;
 end;
 
 { TTestModule }
@@ -1997,6 +2212,7 @@ begin
   Add('  i8: byte = 00;');
   Add('  u8: nativeuint =  $fffffffffffff;');
   Add('  u9: nativeuint =  $0000000000000;');
+  Add('  u10: nativeuint = $00ff00;');
   Add('begin');
   ConvertProgram;
   CheckSource('TestVarBaseTypes',
@@ -2018,7 +2234,8 @@ begin
     'this.i7 =-0x10000000000000;',
     'this.i8 = 0;',
     'this.u8 = 0xfffffffffffff;',
-    'this.u9 = 0x0000000000000;'
+    'this.u9 = 0x0;',
+    'this.u10 = 0xff00;'
     ]),
     '');
 end;
@@ -2775,6 +2992,29 @@ begin
     '']),
     LinesToStr([
     '$mod.Func1([1, 2, 3]);'
+    ]));
+end;
+
+procedure TTestModule.TestFunctionResultInTypeCast;
+begin
+  StartProgram(false);
+  Add([
+  'function GetInt: longint;',
+  'begin',
+  'end;',
+  'begin',
+  '  if Byte(GetInt)=0 then ;',
+  '']);
+  ConvertProgram;
+  CheckSource('TestFunctionResultInTypeCast',
+    LinesToStr([ // statements
+    'this.GetInt = function () {',
+    '  var Result = 0;',
+    '  return Result;',
+    '};',
+    '']),
+    LinesToStr([
+    'if (($mod.GetInt() & 255) === 0) ;'
     ]));
 end;
 
@@ -3627,36 +3867,39 @@ end;
 procedure TTestModule.TestEnum_Functions;
 begin
   StartProgram(false);
-  Add('type TMyEnum = (Red, Green);');
-  Add('var');
-  Add('  e: TMyEnum;');
-  Add('  i: longint;');
-  Add('  s: string;');
-  Add('  b: boolean;');
-  Add('begin');
-  Add('  i:=ord(red);');
-  Add('  i:=ord(green);');
-  Add('  i:=ord(e);');
-  Add('  i:=ord(b);');
-  Add('  e:=low(tmyenum);');
-  Add('  e:=low(e);');
-  Add('  b:=low(boolean);');
-  Add('  e:=high(tmyenum);');
-  Add('  e:=high(e);');
-  Add('  b:=high(boolean);');
-  Add('  e:=pred(green);');
-  Add('  e:=pred(e);');
-  Add('  b:=pred(b);');
-  Add('  e:=succ(red);');
-  Add('  e:=succ(e);');
-  Add('  b:=succ(b);');
-  Add('  e:=tmyenum(1);');
-  Add('  e:=tmyenum(i);');
-  Add('  s:=str(e);');
-  Add('  str(e,s);');
-  Add('  s:=str(e:3);');
-  Add('  e:=TMyEnum(i);');
-  Add('  i:=longint(e);');
+  Add([
+  'type TMyEnum = (Red, Green);',
+  'var',
+  '  e: TMyEnum;',
+  '  i: longint;',
+  '  s: string;',
+  '  b: boolean;',
+  'begin',
+  '  i:=ord(red);',
+  '  i:=ord(green);',
+  '  i:=ord(e);',
+  '  i:=ord(b);',
+  '  e:=low(tmyenum);',
+  '  e:=low(e);',
+  '  b:=low(boolean);',
+  '  e:=high(tmyenum);',
+  '  e:=high(e);',
+  '  b:=high(boolean);',
+  '  e:=pred(green);',
+  '  e:=pred(e);',
+  '  b:=pred(b);',
+  '  e:=succ(red);',
+  '  e:=succ(e);',
+  '  b:=succ(b);',
+  '  e:=tmyenum(1);',
+  '  e:=tmyenum(i);',
+  '  s:=str(e);',
+  '  str(e,s);',
+  '  str(red,s);',
+  '  s:=str(e:3);',
+  '  writestr(s,e:3,red);',
+  '  e:=TMyEnum(i);',
+  '  i:=longint(e);']);
   ConvertProgram;
   CheckSource('TestEnum_Functions',
     LinesToStr([ // statements
@@ -3692,7 +3935,9 @@ begin
     '$mod.e=$mod.i;',
     '$mod.s = $mod.TMyEnum[$mod.e];',
     '$mod.s = $mod.TMyEnum[$mod.e];',
+    '$mod.s = $mod.TMyEnum[$mod.TMyEnum.Red];',
     '$mod.s = rtl.spaceLeft($mod.TMyEnum[$mod.e], 3);',
+    '$mod.s = rtl.spaceLeft($mod.TMyEnum[$mod.e], 3)+$mod.TMyEnum[$mod.TMyEnum.Red];',
     '$mod.e=$mod.i;',
     '$mod.i=$mod.e;',
     '']));
@@ -5280,6 +5525,9 @@ begin
   Add('  c:=^A;');
   Add('  c:=''"'';');
   Add('  c:=default(char);');
+  Add('  c:=#$00E4;'); // ä
+  Add('  c:=''ä'';');
+  Add('  c:=#$E4;'); // ä
   ConvertProgram;
   CheckSource('TestCharConst',
     LinesToStr([
@@ -5299,8 +5547,11 @@ begin
     '$mod.c="\x0B";',
     '$mod.c="\x01";',
     '$mod.c=''"'';',
-    '$mod.c="\x00";'
-    ]));
+    '$mod.c="\x00";',
+    '$mod.c = "ä";',
+    '$mod.c = "ä";',
+    '$mod.c = "ä";',
+    '']));
 end;
 
 procedure TTestModule.TestChar_Compare;
@@ -5392,6 +5643,7 @@ procedure TTestModule.TestStringConst;
 begin
   StartProgram(false);
   Add([
+  '{$H+}',
   'var',
   '  s: string = ''abc'';',
   'begin',
@@ -5402,6 +5654,8 @@ begin
   '  s:=''foo''#13''bar'';',
   '  s:=''"'';',
   '  s:=''"''''"'';',
+  '  s:=#$20AC;', // euro
+  '  s:=#$10437;', // outside BMP
   '  s:=default(string);',
   '']);
   ConvertProgram;
@@ -5417,6 +5671,8 @@ begin
     '$mod.s="foo\rbar";',
     '$mod.s=''"'';',
     '$mod.s=''"\''"'';',
+    '$mod.s="€";',
+    '$mod.s="'#$F0#$90#$90#$B7'";',
     '$mod.s="";'
     ]));
 end;
@@ -5558,6 +5814,17 @@ begin
     '$mod.s = rtl.setCharAt($mod.s, 0, $mod.c);',
     '$mod.s = rtl.setCharAt($mod.s, (2 + 3) - 1, $mod.c);',
     '']));
+end;
+
+procedure TTestModule.TestStringHMinusFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$H-}',
+  'var s: string;',
+  'begin']);
+  ConvertProgram;
+  CheckHint(mtWarning,nWarnIllegalCompilerDirectiveX,'Warning: test1.pp(3,6) : Illegal compiler directive "H-"');
 end;
 
 procedure TTestModule.TestStr;
@@ -6235,14 +6502,17 @@ end;
 procedure TTestModule.TestCaseOf;
 begin
   StartProgram(false);
-  Add('var vI: longint;');
-  Add('begin');
-  Add('  case vi of');
-  Add('  1: ;');
-  Add('  2: vi:=3;');
-  Add('  else');
-  Add('    VI:=4');
-  Add('  end;');
+  Add([
+  'const e: longint; external name ''$e'';',
+  'var vI: longint;',
+  'begin',
+  '  case vi of',
+  '  1: ;',
+  '  2: vi:=3;',
+  '  e: ;',
+  '  else',
+  '    VI:=4',
+  '  end;']);
   ConvertProgram;
   CheckSource('TestCaseOf',
     LinesToStr([ // statements
@@ -6250,7 +6520,11 @@ begin
     ]),
     LinesToStr([ // $mod.$main
     'var $tmp1 = $mod.vI;',
-    'if ($tmp1 === 1) {} else if ($tmp1 === 2){ $mod.vI = 3 }else {',
+    'if ($tmp1 === 1) {}',
+    'else if ($tmp1 === 2) {',
+    '  $mod.vI = 3}',
+    ' else if ($tmp1 === $e) {}',
+    'else {',
     '  $mod.vI = 4;',
     '};'
     ]));
@@ -6383,25 +6657,53 @@ begin
     '']));
 end;
 
+procedure TTestModule.TestCaseOfExternalClassConst;
+begin
+  StartProgram(false);
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TBird = class external name ''Bird''',
+  '    const e: longint;',
+  '  end;',
+  'var vI: longint;',
+  'begin',
+  '  case vi of',
+  '  1: vi:=3;',
+  '  TBird.e: ;',
+  '  end;']);
+  ConvertProgram;
+  CheckSource('TestCaseOfExternalClassConst',
+    LinesToStr([ // statements
+    'this.vI = 0;'
+    ]),
+    LinesToStr([ // $mod.$main
+    'var $tmp1 = $mod.vI;',
+    'if ($tmp1 === 1) {',
+    '  $mod.vI = 3}',
+    ' else if ($tmp1 === Bird.e) ;'
+    ]));
+end;
+
 procedure TTestModule.TestArray_Dynamic;
 begin
   StartProgram(false);
-  Add('type');
-  Add('  TArrayInt = array of longint;');
-  Add('var');
-  Add('  Arr: TArrayInt;');
-  Add('  i: longint;');
-  Add('  b: boolean;');
-  Add('begin');
-  Add('  SetLength(arr,3);');
-  Add('  arr[0]:=4;');
-  Add('  arr[1]:=length(arr)+arr[0];');
-  Add('  arr[i]:=5;');
-  Add('  arr[arr[i]]:=arr[6];');
-  Add('  i:=low(arr);');
-  Add('  i:=high(arr);');
-  Add('  b:=Assigned(arr);');
-  Add('  Arr:=default(TArrayInt);');
+  Add(['type',
+  '  TArrayInt = array of longint;',
+  'var',
+  '  Arr: TArrayInt;',
+  '  i: longint;',
+  '  b: boolean;',
+  'begin',
+  '  SetLength(arr,3);',
+  '  arr[0]:=4;',
+  '  arr[1]:=length(arr)+arr[0];',
+  '  arr[i]:=5;',
+  '  arr[arr[i]]:=arr[6];',
+  '  i:=low(arr);',
+  '  i:=high(arr);',
+  '  b:=Assigned(arr);',
+  '  Arr:=default(TArrayInt);']);
   ConvertProgram;
   CheckSource('TestArray_Dynamic',
     LinesToStr([ // statements
@@ -6704,24 +7006,25 @@ end;
 procedure TTestModule.TestArrayOfRecord;
 begin
   StartProgram(false);
-  Add('type');
-  Add('  TRec = record');
-  Add('    Int: longint;');
-  Add('  end;');
-  Add('  TArrayRec = array of TRec;');
-  Add('var');
-  Add('  Arr: TArrayRec;');
-  Add('  r: TRec;');
-  Add('  i: longint;');
-  Add('begin');
-  Add('  SetLength(arr,3);');
-  Add('  arr[0].int:=4;');
-  Add('  arr[1].int:=length(arr)+arr[2].int;');
-  Add('  arr[arr[i].int].int:=arr[5].int;');
-  Add('  arr[7]:=r;');
-  Add('  r:=arr[8];');
-  Add('  i:=low(arr);');
-  Add('  i:=high(arr);');
+  Add([
+  'type',
+  '  TRec = record',
+  '    Int: longint;',
+  '  end;',
+  '  TArrayRec = array of TRec;',
+  'var',
+  '  Arr: TArrayRec;',
+  '  r: TRec;',
+  '  i: longint;',
+  'begin',
+  '  SetLength(arr,3);',
+  '  arr[0].int:=4;',
+  '  arr[1].int:=length(arr)+arr[2].int;',
+  '  arr[arr[i].int].int:=arr[5].int;',
+  '  arr[7]:=r;',
+  '  r:=arr[8];',
+  '  i:=low(arr);',
+  '  i:=high(arr);']);
   ConvertProgram;
   CheckSource('TestArrayOfRecord',
     LinesToStr([ // statements
@@ -6748,6 +7051,70 @@ begin
     '$mod.r = new $mod.TRec($mod.Arr[8]);',
     '$mod.i = 0;',
     '$mod.i = rtl.length($mod.Arr)-1;',
+    '']));
+end;
+
+procedure TTestModule.TestArrayOfSet;
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  TFlag = (big,small);',
+  '  TSetOfFlag = set of tflag;',
+  '  TArrayFlag = array of TSetOfFlag;',
+  'procedure DoIt(const a: Tarrayflag);',
+  'begin',
+  'end;',
+  'var',
+  '  f: TFlag;',
+  '  s: TSetOfFlag;',
+  '  Arr: TArrayFlag;',
+  '  i: longint;',
+  'begin',
+  '  SetLength(arr,3);',
+  '  arr[0]:=s;',
+  '  arr[1]:=[big];',
+  '  arr[2]:=[big]+s;',
+  '  arr[3]:=s+[big];',
+  '  arr[4]:=arr[5];',
+  '  s:=arr[6];',
+  '  i:=low(arr);',
+  '  i:=high(arr);',
+  '  DoIt(arr);',
+  '  DoIt([s]);',
+  '  DoIt([[],s]);',
+  '  DoIt([s,[]]);',
+  '']);
+  ConvertProgram;
+  CheckSource('TestArrayOfSet',
+    LinesToStr([ // statements
+    'this.TFlag = {',
+    '  "0": "big",',
+    '  big: 0,',
+    '  "1": "small",',
+    '  small: 1',
+    '};',
+    'this.DoIt = function (a) {',
+    '};',
+    'this.f = 0;',
+    'this.s = {};',
+    'this.Arr = [];',
+    'this.i = 0;',
+    '']),
+    LinesToStr([ // $mod.$main
+    '$mod.Arr = rtl.arraySetLength($mod.Arr, {}, 3);',
+    '$mod.Arr[0] = rtl.refSet($mod.s);',
+    '$mod.Arr[1] = rtl.createSet($mod.TFlag.big);',
+    '$mod.Arr[2] = rtl.unionSet(rtl.createSet($mod.TFlag.big), $mod.s);',
+    '$mod.Arr[3] = rtl.unionSet($mod.s, rtl.createSet($mod.TFlag.big));',
+    '$mod.Arr[4] = rtl.refSet($mod.Arr[5]);',
+    '$mod.s = rtl.refSet($mod.Arr[6]);',
+    '$mod.i = 0;',
+    '$mod.i = rtl.length($mod.Arr) - 1;',
+    '$mod.DoIt($mod.Arr);',
+    '$mod.DoIt([rtl.refSet($mod.s)]);',
+    '$mod.DoIt([{}, rtl.refSet($mod.s)]);',
+    '$mod.DoIt([rtl.refSet($mod.s), {}]);',
     '']));
 end;
 
@@ -7147,35 +7514,43 @@ end;
 procedure TTestModule.TestArray_Concat;
 begin
   StartProgram(false);
-  Add('type');
-  Add('  integer = longint;');
-  Add('  TFlag = (big,small);');
-  Add('  TFlags = set of TFlag;');
-  Add('  TRec = record');
-  Add('    i: integer;');
-  Add('  end;');
-  Add('  TArrInt = array of integer;');
-  Add('  TArrRec = array of TRec;');
-  Add('  TArrSet = array of TFlags;');
-  Add('  TArrJSValue = array of jsvalue;');
-  Add('var');
-  Add('  ArrInt: tarrint;');
-  Add('  ArrRec: tarrrec;');
-  Add('  ArrSet: tarrset;');
-  Add('  ArrJSValue: tarrjsvalue;');
-  Add('begin');
-  Add('  arrint:=concat(arrint);');
-  Add('  arrint:=concat(arrint,arrint);');
-  Add('  arrint:=concat(arrint,arrint,arrint);');
-  Add('  arrrec:=concat(arrrec);');
-  Add('  arrrec:=concat(arrrec,arrrec);');
-  Add('  arrrec:=concat(arrrec,arrrec,arrrec);');
-  Add('  arrset:=concat(arrset);');
-  Add('  arrset:=concat(arrset,arrset);');
-  Add('  arrset:=concat(arrset,arrset,arrset);');
-  Add('  arrjsvalue:=concat(arrjsvalue);');
-  Add('  arrjsvalue:=concat(arrjsvalue,arrjsvalue);');
-  Add('  arrjsvalue:=concat(arrjsvalue,arrjsvalue,arrjsvalue);');
+  Add([
+  'type',
+  '  integer = longint;',
+  '  TFlag = (big,small);',
+  '  TFlags = set of TFlag;',
+  '  TRec = record',
+  '    i: integer;',
+  '  end;',
+  '  TArrInt = array of integer;',
+  '  TArrRec = array of TRec;',
+  '  TArrFlag = array of TFlag;',
+  '  TArrSet = array of TFlags;',
+  '  TArrJSValue = array of jsvalue;',
+  'var',
+  '  ArrInt: tarrint;',
+  '  ArrRec: tarrrec;',
+  '  ArrFlag: tarrflag;',
+  '  ArrSet: tarrset;',
+  '  ArrJSValue: tarrjsvalue;',
+  'begin',
+  '  arrint:=concat(arrint);',
+  '  arrint:=concat(arrint,arrint);',
+  '  arrint:=concat(arrint,arrint,arrint);',
+  '  arrrec:=concat(arrrec);',
+  '  arrrec:=concat(arrrec,arrrec);',
+  '  arrrec:=concat(arrrec,arrrec,arrrec);',
+  '  arrset:=concat(arrset);',
+  '  arrset:=concat(arrset,arrset);',
+  '  arrset:=concat(arrset,arrset,arrset);',
+  '  arrjsvalue:=concat(arrjsvalue);',
+  '  arrjsvalue:=concat(arrjsvalue,arrjsvalue);',
+  '  arrjsvalue:=concat(arrjsvalue,arrjsvalue,arrjsvalue);',
+  '  arrint:=concat([1],arrint);',
+  '  arrflag:=concat([big]);',
+  '  arrflag:=concat([big],arrflag);',
+  '  arrflag:=concat(arrflag,[small]);',
+  '']);
   ConvertProgram;
   CheckSource('TestArray_Concat',
     LinesToStr([ // statements
@@ -7197,57 +7572,65 @@ begin
     '};',
     'this.ArrInt = [];',
     'this.ArrRec = [];',
+    'this.ArrFlag = [];',
     'this.ArrSet = [];',
     'this.ArrJSValue = [];',
     '']),
     LinesToStr([ // $mod.$main
     '$mod.ArrInt = $mod.ArrInt;',
-    '$mod.ArrInt = $mod.ArrInt.concat($mod.ArrInt);',
-    '$mod.ArrInt = $mod.ArrInt.concat($mod.ArrInt,$mod.ArrInt);',
+    '$mod.ArrInt = rtl.arrayConcatN($mod.ArrInt, $mod.ArrInt);',
+    '$mod.ArrInt = rtl.arrayConcatN($mod.ArrInt, $mod.ArrInt, $mod.ArrInt);',
     '$mod.ArrRec = $mod.ArrRec;',
-    '$mod.ArrRec = rtl.arrayConcat($mod.TRec, $mod.ArrRec);',
     '$mod.ArrRec = rtl.arrayConcat($mod.TRec, $mod.ArrRec, $mod.ArrRec);',
+    '$mod.ArrRec = rtl.arrayConcat($mod.TRec, $mod.ArrRec, $mod.ArrRec, $mod.ArrRec);',
     '$mod.ArrSet = $mod.ArrSet;',
-    '$mod.ArrSet = rtl.arrayConcat("refSet", $mod.ArrSet);',
     '$mod.ArrSet = rtl.arrayConcat("refSet", $mod.ArrSet, $mod.ArrSet);',
+    '$mod.ArrSet = rtl.arrayConcat("refSet", $mod.ArrSet, $mod.ArrSet, $mod.ArrSet);',
     '$mod.ArrJSValue = $mod.ArrJSValue;',
-    '$mod.ArrJSValue = $mod.ArrJSValue.concat($mod.ArrJSValue);',
-    '$mod.ArrJSValue = $mod.ArrJSValue.concat($mod.ArrJSValue, $mod.ArrJSValue);',
+    '$mod.ArrJSValue = rtl.arrayConcatN($mod.ArrJSValue, $mod.ArrJSValue);',
+    '$mod.ArrJSValue = rtl.arrayConcatN($mod.ArrJSValue, $mod.ArrJSValue, $mod.ArrJSValue);',
+    '$mod.ArrInt = rtl.arrayConcatN([1], $mod.ArrInt);',
+    '$mod.ArrFlag = [$mod.TFlag.big];',
+    '$mod.ArrFlag = rtl.arrayConcatN([$mod.TFlag.big], $mod.ArrFlag);',
+    '$mod.ArrFlag = rtl.arrayConcatN($mod.ArrFlag, [$mod.TFlag.small]);',
     '']));
 end;
 
 procedure TTestModule.TestArray_Copy;
 begin
   StartProgram(false);
-  Add('type');
-  Add('  integer = longint;');
-  Add('  TFlag = (big,small);');
-  Add('  TFlags = set of TFlag;');
-  Add('  TRec = record');
-  Add('    i: integer;');
-  Add('  end;');
-  Add('  TArrInt = array of integer;');
-  Add('  TArrRec = array of TRec;');
-  Add('  TArrSet = array of TFlags;');
-  Add('  TArrJSValue = array of jsvalue;');
-  Add('var');
-  Add('  ArrInt: tarrint;');
-  Add('  ArrRec: tarrrec;');
-  Add('  ArrSet: tarrset;');
-  Add('  ArrJSValue: tarrjsvalue;');
-  Add('begin');
-  Add('  arrint:=copy(arrint);');
-  Add('  arrint:=copy(arrint,2);');
-  Add('  arrint:=copy(arrint,3,4);');
-  Add('  arrrec:=copy(arrrec);');
-  Add('  arrrec:=copy(arrrec,5);');
-  Add('  arrrec:=copy(arrrec,6,7);');
-  Add('  arrset:=copy(arrset);');
-  Add('  arrset:=copy(arrset,8);');
-  Add('  arrset:=copy(arrset,9,10);');
-  Add('  arrjsvalue:=copy(arrjsvalue);');
-  Add('  arrjsvalue:=copy(arrjsvalue,11);');
-  Add('  arrjsvalue:=copy(arrjsvalue,12,13);');
+  Add([
+  'type',
+  '  integer = longint;',
+  '  TFlag = (big,small);',
+  '  TFlags = set of TFlag;',
+  '  TRec = record',
+  '    i: integer;',
+  '  end;',
+  '  TArrInt = array of integer;',
+  '  TArrRec = array of TRec;',
+  '  TArrSet = array of TFlags;',
+  '  TArrJSValue = array of jsvalue;',
+  'var',
+  '  ArrInt: tarrint;',
+  '  ArrRec: tarrrec;',
+  '  ArrSet: tarrset;',
+  '  ArrJSValue: tarrjsvalue;',
+  'begin',
+  '  arrint:=copy(arrint);',
+  '  arrint:=copy(arrint,2);',
+  '  arrint:=copy(arrint,3,4);',
+  '  arrint:=copy([1,1],1,2);',
+  '  arrrec:=copy(arrrec);',
+  '  arrrec:=copy(arrrec,5);',
+  '  arrrec:=copy(arrrec,6,7);',
+  '  arrset:=copy(arrset);',
+  '  arrset:=copy(arrset,8);',
+  '  arrset:=copy(arrset,9,10);',
+  '  arrjsvalue:=copy(arrjsvalue);',
+  '  arrjsvalue:=copy(arrjsvalue,11);',
+  '  arrjsvalue:=copy(arrjsvalue,12,13);',
+  '  ']);
   ConvertProgram;
   CheckSource('TestArray_Copy',
     LinesToStr([ // statements
@@ -7276,6 +7659,7 @@ begin
     '$mod.ArrInt = rtl.arrayCopy(0, $mod.ArrInt, 0);',
     '$mod.ArrInt = rtl.arrayCopy(0, $mod.ArrInt, 2);',
     '$mod.ArrInt = rtl.arrayCopy(0, $mod.ArrInt, 3, 4);',
+    '$mod.ArrInt = rtl.arrayCopy(0, [1, 1], 1, 2);',
     '$mod.ArrRec = rtl.arrayCopy($mod.TRec, $mod.ArrRec, 0);',
     '$mod.ArrRec = rtl.arrayCopy($mod.TRec, $mod.ArrRec, 5);',
     '$mod.ArrRec = rtl.arrayCopy($mod.TRec, $mod.ArrRec, 6, 7);',
@@ -7291,33 +7675,37 @@ end;
 procedure TTestModule.TestArray_InsertDelete;
 begin
   StartProgram(false);
-  Add('type');
-  Add('  integer = longint;');
-  Add('  TFlag = (big,small);');
-  Add('  TFlags = set of TFlag;');
-  Add('  TRec = record');
-  Add('    i: integer;');
-  Add('  end;');
-  Add('  TArrInt = array of integer;');
-  Add('  TArrRec = array of TRec;');
-  Add('  TArrSet = array of TFlags;');
-  Add('  TArrJSValue = array of jsvalue;');
-  Add('var');
-  Add('  ArrInt: tarrint;');
-  Add('  ArrRec: tarrrec;');
-  Add('  ArrSet: tarrset;');
-  Add('  ArrJSValue: tarrjsvalue;');
-  Add('begin');
-  Add('  Insert(1,arrint,2);');
-  Add('  Insert(arrint[3],arrint,4);');
-  Add('  Insert(arrrec[5],arrrec,6);');
-  Add('  Insert(arrset[7],arrset,7);');
-  Add('  Insert(arrjsvalue[8],arrjsvalue,9);');
-  Add('  Insert(10,arrjsvalue,11);');
-  Add('  Delete(arrint,12,13);');
-  Add('  Delete(arrrec,14,15);');
-  Add('  Delete(arrset,17,18);');
-  Add('  Delete(arrjsvalue,19,10);');
+  Add([
+  'type',
+  '  integer = longint;',
+  '  TFlag = (big,small);',
+  '  TFlags = set of TFlag;',
+  '  TRec = record',
+  '    i: integer;',
+  '  end;',
+  '  TArrInt = array of integer;',
+  '  TArrRec = array of TRec;',
+  '  TArrSet = array of TFlags;',
+  '  TArrJSValue = array of jsvalue;',
+  '  TArrArrInt = array of TArrInt;',
+  'var',
+  '  ArrInt: tarrint;',
+  '  ArrRec: tarrrec;',
+  '  ArrSet: tarrset;',
+  '  ArrJSValue: tarrjsvalue;',
+  '  ArrArrInt: TArrArrInt;',
+  'begin',
+  '  Insert(1,arrint,2);',
+  '  Insert(arrint[3],arrint,4);',
+  '  Insert(arrrec[5],arrrec,6);',
+  '  Insert(arrset[7],arrset,7);',
+  '  Insert(arrjsvalue[8],arrjsvalue,9);',
+  '  Insert(10,arrjsvalue,11);',
+  '  Insert([23],arrarrint,22);',
+  '  Delete(arrint,12,13);',
+  '  Delete(arrrec,14,15);',
+  '  Delete(arrset,17,18);',
+  '  Delete(arrjsvalue,19,10);']);
   ConvertProgram;
   CheckSource('TestArray_InsertDelete',
     LinesToStr([ // statements
@@ -7341,6 +7729,7 @@ begin
     'this.ArrRec = [];',
     'this.ArrSet = [];',
     'this.ArrJSValue = [];',
+    'this.ArrArrInt = [];',
     '']),
     LinesToStr([ // $mod.$main
     '$mod.ArrInt.splice(2, 0, 1);',
@@ -7349,6 +7738,7 @@ begin
     '$mod.ArrSet.splice(7, 0, $mod.ArrSet[7]);',
     '$mod.ArrJSValue.splice(9, 0, $mod.ArrJSValue[8]);',
     '$mod.ArrJSValue.splice(11, 0, 10);',
+    '$mod.ArrArrInt.splice(22, 0, [23]);',
     '$mod.ArrInt.splice(12, 13);',
     '$mod.ArrRec.splice(14, 15);',
     '$mod.ArrSet.splice(17, 18);',
@@ -7356,10 +7746,11 @@ begin
     '']));
 end;
 
-procedure TTestModule.TestArray_DynArrayConst;
+procedure TTestModule.TestArray_DynArrayConstObjFPC;
 begin
   StartProgram(false);
   Add([
+  '{$modeswitch arrayoperators}',
   'type',
   '  integer = longint;',
   '  TArrInt = array of integer;',
@@ -7370,21 +7761,279 @@ begin
   '  Aliases: TarrStr = (''foo'',''b'');',
   '  OneInt: TArrInt = (7);',
   '  OneStr: array of integer = (7);',
-  //'  Chars: array of char = ''aoc'';',
+  '  Chars: array of char = ''aoc'';',
   '  NameCount = low(Names)+high(Names)+length(Names);',
+  'var i: integer;',
   'begin',
+  '  Ints:=[];',
+  '  Ints:=[1,1];',
+  '  Ints:=[1]+[2];',
+  '  Ints:=[2];',
+  '  Ints:=[]+ints;',
+  '  Ints:=Ints+[];',
+  '  Ints:=Ints+OneInt;',
+  '  Ints:=Ints+[1,1];',
+  '  Ints:=[i,i]+Ints;',
+  '  Ints:=[1]+[i]+[3];',
   '']);
   ConvertProgram;
-  CheckSource('TestArray_DynArrayConst',
+  CheckSource('TestArray_DynArrayConstObjFPC',
     LinesToStr([ // statements
     'this.Ints = [1, 2, 3];',
     'this.Names = ["a", "foo"];',
     'this.Aliases = ["foo", "b"];',
     'this.OneInt = [7];',
     'this.OneStr = [7];',
+    'this.Chars = ["a", "o", "c"];',
+    'this.NameCount = (0 + (rtl.length($mod.Names) - 1)) + rtl.length($mod.Names);',
+    'this.i = 0;',
+    '']),
+    LinesToStr([ // $mod.$main
+    '$mod.Ints = [];',
+    '$mod.Ints = [1, 1];',
+    '$mod.Ints = rtl.arrayConcatN([1], [2]);',
+    '$mod.Ints = [2];',
+    '$mod.Ints = rtl.arrayConcatN([], $mod.Ints);',
+    '$mod.Ints = rtl.arrayConcatN($mod.Ints, []);',
+    '$mod.Ints = rtl.arrayConcatN($mod.Ints, $mod.OneInt);',
+    '$mod.Ints = rtl.arrayConcatN($mod.Ints, [1, 1]);',
+    '$mod.Ints = rtl.arrayConcatN([$mod.i, $mod.i], $mod.Ints);',
+    '$mod.Ints = rtl.arrayConcatN(rtl.arrayConcatN([1], [$mod.i]), [3]);',
+    '']));
+end;
+
+procedure TTestModule.TestArray_DynArrayConstDelphi;
+begin
+  StartProgram(false);
+  // Note: const c = [1,1]; defines a set!
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  integer = longint;',
+  '  TArrInt = array of integer;',
+  '  TArrStr = array of string;',
+  'const',
+  '  Ints: TArrInt = [1,1,2];',
+  '  Names: array of string = [''a'',''a''];',
+  '  Aliases: TarrStr = [''foo'',''b''];',
+  '  OneInt: TArrInt = [7];',
+  '  OneStr: array of integer = [7]+[8];',
+  '  Chars: array of char = ''aoc'';',
+  '  NameCount = low(Names)+high(Names)+length(Names);',
+  'begin',
+  '']);
+  ConvertProgram;
+  CheckSource('TestArray_DynArrayConstDelphi',
+    LinesToStr([ // statements
+    'this.Ints = [1, 1, 2];',
+    'this.Names = ["a", "a"];',
+    'this.Aliases = ["foo", "b"];',
+    'this.OneInt = [7];',
+    'this.OneStr = rtl.arrayConcatN([7],[8]);',
+    'this.Chars = ["a", "o", "c"];',
     'this.NameCount = (0 + (rtl.length($mod.Names) - 1)) + rtl.length($mod.Names);',
     '']),
     LinesToStr([ // $mod.$main
+    '']));
+end;
+
+procedure TTestModule.TestArray_ArrayLitAsParam;
+begin
+  StartProgram(false);
+  Add([
+  '{$modeswitch arrayoperators}',
+  'type',
+  '  integer = longint;',
+  '  TArrInt = array of integer;',
+  '  TArrSet = array of (red,green,blue);',
+  'procedure DoOpenInt(a: array of integer); forward;',
+  'procedure DoInt(a: TArrInt);',
+  'begin',
+  '  DoInt(a+[1]);',
+  '  DoInt([1]+a);',
+  '  DoOpenInt(a);',
+  '  DoOpenInt(a+[1]);',
+  '  DoOpenInt([1]+a);',
+  'end;',
+  'procedure DoOpenInt(a: array of integer);',
+  'begin',
+  '  DoOpenInt(a+[1]);',
+  '  DoOpenInt([1]+a);',
+  '  DoInt(a);',
+  '  DoInt(a+[1]);',
+  '  DoInt([1]+a);',
+  'end;',
+  'procedure DoSet(a: TArrSet);',
+  'begin',
+  '  DoSet(a+[red]);',
+  '  DoSet([blue]+a);',
+  'end;',
+  'var',
+  '  i: TArrInt;',
+  '  s: TArrSet;',
+  'begin',
+  '  DoInt([1]);',
+  '  DoInt([1]+[2]);',
+  '  DoInt(i+[1]);',
+  '  DoInt([1]+i);',
+  '  DoOpenInt([1]);',
+  '  DoOpenInt([1]+[2]);',
+  '  DoOpenInt(i+[1]);',
+  '  DoOpenInt([1]+i);',
+  '  DoSet([red]);',
+  '  DoSet([blue]+[green]);',
+  '  DoSet(s+[blue]);',
+  '  DoSet([red]+s);',
+  '']);
+  ConvertProgram;
+  CheckSource('TestArray_ArrayLitAsParam',
+    LinesToStr([ // statements
+    'this.TArrSet$a = {',
+    '  "0": "red",',
+    '  red: 0,',
+    '  "1": "green",',
+    '  green: 1,',
+    '  "2": "blue",',
+    '  blue: 2',
+    '};',
+    'this.DoInt = function (a) {',
+    '  $mod.DoInt(rtl.arrayConcatN(a, [1]));',
+    '  $mod.DoInt(rtl.arrayConcatN([1], a));',
+    '  $mod.DoOpenInt(a);',
+    '  $mod.DoOpenInt(rtl.arrayConcatN(a, [1]));',
+    '  $mod.DoOpenInt(rtl.arrayConcatN([1], a));',
+    '};',
+    'this.DoOpenInt = function (a) {',
+    '  $mod.DoOpenInt(rtl.arrayConcatN(a, [1]));',
+    '  $mod.DoOpenInt(rtl.arrayConcatN([1], a));',
+    '  $mod.DoInt(a);',
+    '  $mod.DoInt(rtl.arrayConcatN(a, [1]));',
+    '  $mod.DoInt(rtl.arrayConcatN([1], a));',
+    '};',
+    'this.DoSet = function (a) {',
+    '  $mod.DoSet(rtl.arrayConcatN(a, [$mod.TArrSet$a.red]));',
+    '  $mod.DoSet(rtl.arrayConcatN([$mod.TArrSet$a.blue], a));',
+    '};',
+    'this.i = [];',
+    'this.s = [];',
+    '']),
+    LinesToStr([ // $mod.$main
+    '$mod.DoInt([1]);',
+    '$mod.DoInt(rtl.arrayConcatN([1], [2]));',
+    '$mod.DoInt(rtl.arrayConcatN($mod.i, [1]));',
+    '$mod.DoInt(rtl.arrayConcatN([1], $mod.i));',
+    '$mod.DoOpenInt([1]);',
+    '$mod.DoOpenInt(rtl.arrayConcatN([1], [2]));',
+    '$mod.DoOpenInt(rtl.arrayConcatN($mod.i, [1]));',
+    '$mod.DoOpenInt(rtl.arrayConcatN([1], $mod.i));',
+    '$mod.DoSet([$mod.TArrSet$a.red]);',
+    '$mod.DoSet(rtl.arrayConcatN([$mod.TArrSet$a.blue], [$mod.TArrSet$a.green]));',
+    '$mod.DoSet(rtl.arrayConcatN($mod.s, [$mod.TArrSet$a.blue]));',
+    '$mod.DoSet(rtl.arrayConcatN([$mod.TArrSet$a.red], $mod.s));',
+    '']));
+end;
+
+procedure TTestModule.TestArray_ArrayLitMultiDimAsParam;
+begin
+  StartProgram(false);
+  Add([
+  '{$modeswitch arrayoperators}',
+  'type',
+  '  integer = longint;',
+  '  TArrInt = array of integer;',
+  '  TArrArrInt = array of TArrInt;',
+  'procedure DoInt(a: TArrArrInt);',
+  'begin',
+  '  DoInt(a+[[1]]);',
+  '  DoInt([[1]]+a);',
+  '  DoInt(a);',
+  'end;',
+  'var',
+  '  i: TArrInt;',
+  '  a: TArrArrInt;',
+  'begin',
+  '  a:=[[1]];',
+  '  a:=[i];',
+  '  a:=a+[i];',
+  '  a:=[i]+a;',
+  '  a:=[[1]+i];',
+  '  a:=[[1]+[2]];',
+  '  a:=[i+[2]];',
+  '  DoInt([[1]]);',
+  '  DoInt([[1]+[2],[3,4],[5]]);',
+  '  DoInt([i+[1]]+a);',
+  '  DoInt([i]+a);',
+  '']);
+  ConvertProgram;
+  CheckSource('TestArray_ArrayLitMultiDimAsParam',
+    LinesToStr([ // statements
+    'this.DoInt = function (a) {',
+    '  $mod.DoInt(rtl.arrayConcatN(a, [[1]]));',
+    '  $mod.DoInt(rtl.arrayConcatN([[1]], a));',
+    '  $mod.DoInt(a);',
+    '};',
+    'this.i = [];',
+    'this.a = [];',
+    '']),
+    LinesToStr([ // $mod.$main
+    '$mod.a = [[1]];',
+    '$mod.a = [$mod.i];',
+    '$mod.a = rtl.arrayConcatN($mod.a, [$mod.i]);',
+    '$mod.a = rtl.arrayConcatN([$mod.i], $mod.a);',
+    '$mod.a = [rtl.arrayConcatN([1], $mod.i)];',
+    '$mod.a = [rtl.arrayConcatN([1], [2])];',
+    '$mod.a = [rtl.arrayConcatN($mod.i, [2])];',
+    '$mod.DoInt([[1]]);',
+    '$mod.DoInt([rtl.arrayConcatN([1], [2]), [3, 4], [5]]);',
+    '$mod.DoInt(rtl.arrayConcatN([rtl.arrayConcatN($mod.i, [1])], $mod.a));',
+    '$mod.DoInt(rtl.arrayConcatN([$mod.i], $mod.a));',
+    '']));
+end;
+
+procedure TTestModule.TestArray_ArrayLitStaticAsParam;
+begin
+  StartProgram(false);
+  Add([
+  '{$modeswitch arrayoperators}',
+  'type',
+  '  integer = longint;',
+  '  TArrInt = array[1..2] of integer;',
+  '  TArrArrInt = array of TArrInt;',
+  'procedure DoInt(a: TArrArrInt);',
+  'begin',
+  '  DoInt(a+[[1,2]]);',
+  '  DoInt([[1,2]]+a);',
+  '  DoInt(a);',
+  'end;',
+  'var',
+  '  i: TArrInt;',
+  '  a: TArrArrInt;',
+  'begin',
+  '  a:=[[1,1]];',
+  '  a:=[i];',
+  '  a:=a+[i];',
+  '  a:=[i]+a;',
+  '  DoInt([[1,1]]);',
+  '  DoInt([[1,2],[3,4]]);',
+  '']);
+  ConvertProgram;
+  CheckSource('TestArray_ArrayLitStaticAsParam',
+    LinesToStr([ // statements
+    'this.DoInt = function (a) {',
+    '  $mod.DoInt(rtl.arrayConcatN(a, [[1, 2]]));',
+    '  $mod.DoInt(rtl.arrayConcatN([[1, 2]], a));',
+    '  $mod.DoInt(a);',
+    '};',
+    'this.i = rtl.arraySetLength(null, 0, 2);',
+    'this.a = [];',
+    '']),
+    LinesToStr([ // $mod.$main
+    '$mod.a = [[1, 1]];',
+    '$mod.a = [$mod.i.slice(0)];',
+    '$mod.a = rtl.arrayConcatN($mod.a, [$mod.i.slice(0)]);',
+    '$mod.a = rtl.arrayConcatN([$mod.i.slice(0)], $mod.a);',
+    '$mod.DoInt([[1, 1]]);',
+    '$mod.DoInt([[1, 2], [3, 4]]);',
     '']));
 end;
 
@@ -7424,12 +8073,14 @@ begin
     '']));
 end;
 
-procedure TTestModule.TestExternalClass_TypeCastArrayToExternalArray;
+procedure TTestModule.TestExternalClass_TypeCastArrayToExternalClass;
 begin
   StartProgram(false);
   Add([
   '{$modeswitch externalclass}',
   'type',
+  '  TJSObject = class external name ''Object''',
+  '  end;',
   '  TJSArray = class external name ''Array''',
   '    class function isArray(Value: JSValue) : boolean;',
   '    function concat() : TJSArray; varargs;',
@@ -7437,44 +8088,56 @@ begin
   'var',
   '  aObj: TJSArray;',
   '  a: array of longint;',
+  '  o: TJSObject;',
   'begin',
   '  if TJSArray.isArray(65) then ;',
-  '  aObj:=TJSArray(a).concat(a);']);
+  '  aObj:=TJSArray(a).concat(a);',
+  '  o:=TJSObject(a);']);
   ConvertProgram;
-  CheckSource('TestExternalClass_TypeCastArrayToExternalArray',
+  CheckSource('TestExternalClass_TypeCastArrayToExternalClass',
     LinesToStr([ // statements
     'this.aObj = null;',
     'this.a = [];',
+    'this.o = null;',
     '']),
     LinesToStr([ // $mod.$main
     'if (Array.isArray(65)) ;',
     '$mod.aObj = $mod.a.concat($mod.a);',
+    '$mod.o = $mod.a;',
     '']));
 end;
 
-procedure TTestModule.TestExternalClass_TypeCastArrayFromExternalArray;
+procedure TTestModule.TestExternalClass_TypeCastArrayFromExternalClass;
 begin
   StartProgram(false);
-  Add('{$modeswitch externalclass}');
-  Add('type');
-  Add('  TArrStr = array of string;');
-  Add('  TJSArray = class external name ''Array''');
-  Add('  end;');
-  Add('var');
-  Add('  aObj: TJSArray;');
-  Add('  a: TArrStr;');
-  Add('begin');
-  Add('  a:=TArrStr(aObj);');
-  Add('  TArrStr(aObj)[1]:=TArrStr(aObj)[2];');
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TArrStr = array of string;',
+  '  TJSArray = class external name ''Array''',
+  '  end;',
+  '  TJSObject = class external name ''Object''',
+  '  end;',
+  'var',
+  '  aObj: TJSArray;',
+  '  a: TArrStr;',
+  '  jo: TJSObject;',
+  'begin',
+  '  a:=TArrStr(aObj);',
+  '  TArrStr(aObj)[1]:=TArrStr(aObj)[2];',
+  '  a:=TarrStr(jo);',
+  '']);
   ConvertProgram;
-  CheckSource('TestExternalClass_TypeCastArrayFromExternalArray',
+  CheckSource('TestExternalClass_TypeCastArrayFromExternalClass',
     LinesToStr([ // statements
     'this.aObj = null;',
     'this.a = [];',
+    'this.jo = null;',
     '']),
     LinesToStr([ // $mod.$main
     '$mod.a = $mod.aObj;',
     '$mod.aObj[1] = $mod.aObj[2];',
+    '$mod.a = $mod.jo;',
     '']));
 end;
 
@@ -7530,6 +8193,41 @@ begin
     ]),
     LinesToStr([ // $mod.$main
     '$mod.Rec.Bold = 123;'
+    ]));
+end;
+
+procedure TTestModule.TestRecord_VarExternal;
+begin
+  StartProgram(false);
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TRecA = record',
+  '    i: byte;',
+  '    length_: longint external name ''length'';',
+  '  end;',
+  'var Rec: TRecA;',
+  'begin',
+  '  rec.length_ := rec.length_',
+  '']);
+  ConvertProgram;
+  CheckSource('TestRecord_VarExternal',
+    LinesToStr([ // statements
+    'this.TRecA = function (s) {',
+    '  if (s) {',
+    '    this.i = s.i;',
+    '    this.length = s.length;',
+    '  } else {',
+    '    this.i = 0;',
+    '  };',
+    '  this.$equal = function (b) {',
+    '    return (this.i === b.i) && (this.length === b.length);',
+    '  };',
+    '};',
+    'this.Rec = new $mod.TRecA();',
+    '']),
+    LinesToStr([ // $mod.$main
+    '$mod.Rec.length = $mod.Rec.length;'
     ]));
 end;
 
@@ -8522,8 +9220,8 @@ begin
   ConvertProgram;
   CheckSource('TestClass_TypeAlias',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IObject", "{5B8AD21A-8000-3000-8000-000000000000}", [], null);',
-    'rtl.createInterface($mod, "IBird", "{48DF66C6-FD76-3B15-A738-D462ECC63074}", [], $mod.IObject);',
+    'rtl.createInterface($mod, "IObject", "{B92D5841-6F2A-306A-8000-000000000000}", [], null);',
+    'rtl.createInterface($mod, "IBird", "{4B0D080B-C0F6-387B-AE88-F10981585074}", [], $mod.IObject);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -10381,35 +11079,40 @@ begin
     '  TObject = class',
     '  public',
     '    Intern: longint external name ''$Intern'';',
+    '    Bracket: longint external name ''["A B"]'';',
     '  end;',
     '']),
     LinesToStr([
     '']));
 
   StartUnit(true);
-  Add('interface');
-  Add('uses unit2;');
-  Add('{$modeswitch externalclass}');
-  Add('type');
-  Add('  TCar = class(tobject)');
-  Add('  public');
-  Add('    Intern2: longint external name ''$Intern2'';');
-  Add('    procedure DoIt;');
-  Add('  end;');
-  Add('implementation');
-  Add('procedure tcar.doit;');
-  Add('begin');
-  Add('  Intern:=Intern+1;');
-  Add('  Intern2:=Intern2+2;');
-  Add('end;');
-  Add('var Obj: TCar;');
-  Add('begin');
-  Add('  obj.intern:=obj.intern+1;');
-  Add('  obj.intern2:=obj.intern2+2;');
-  Add('  with obj do begin');
-  Add('    intern:=intern+1;');
-  Add('    intern2:=intern2+2;');
-  Add('  end;');
+  Add([
+  'interface',
+  'uses unit2;',
+  '{$modeswitch externalclass}',
+  'type',
+  '  TCar = class(tobject)',
+  '  public',
+  '    Intern2: longint external name ''$Intern2'';',
+  '    procedure DoIt;',
+  '  end;',
+  'implementation',
+  'procedure tcar.doit;',
+  'begin',
+  '  Intern:=Intern+1;',
+  '  Intern2:=Intern2+2;',
+  '  Bracket:=Bracket+3;',
+  'end;',
+  'var Obj: TCar;',
+  'begin',
+  '  obj.intern:=obj.intern+1;',
+  '  obj.intern2:=obj.intern2+2;',
+  '  obj.Bracket:=obj.Bracket+3;',
+  '  with obj do begin',
+  '    intern:=intern+1;',
+  '    intern2:=intern2+2;',
+  '    Bracket:=Bracket+3;',
+  '  end;']);
   ConvertUnit;
   CheckSource('TestClass_ExternalVar',
     LinesToStr([
@@ -10418,15 +11121,18 @@ begin
     '    this.DoIt = function () {',
     '      this.$Intern = this.$Intern + 1;',
     '      this.$Intern2 = this.$Intern2 + 2;',
+    '      this["A B"] = this["A B"] + 3;',
     '    };',
     '  });',
     '']),
     LinesToStr([
     '$impl.Obj.$Intern = $impl.Obj.$Intern + 1;',
     '$impl.Obj.$Intern2 = $impl.Obj.$Intern2 + 2;',
+    '$impl.Obj["A B"] = $impl.Obj["A B"] + 3;',
     'var $with1 = $impl.Obj;',
     '$with1.$Intern = $with1.$Intern + 1;',
     '$with1.$Intern2 = $with1.$Intern2 + 2;',
+    '$with1["A B"] = $with1["A B"] + 3;',
     '']),
     LinesToStr([ // implementation
     '$impl.Obj = null;',
@@ -12019,6 +12725,51 @@ begin
     '']));
 end;
 
+procedure TTestModule.TestExternalClass_FunctionResultInTypeCast;
+begin
+  StartProgram(false);
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TBird = class external name ''Array''',
+  '  end;',
+  'function GetPtr: Pointer;',
+  'begin',
+  'end;',
+  'procedure Write(const p);',
+  'begin',
+  'end;',
+  'procedure WriteLn; varargs;',
+  'begin',
+  'end;',
+  'begin',
+  '  if TBird(GetPtr)=nil then ;',
+  '  Write(GetPtr);',
+  '  WriteLn(GetPtr);',
+  '  Write(TBird(GetPtr));',
+  '  WriteLn(TBird(GetPtr));',
+  '']);
+  ConvertProgram;
+  CheckSource('TestFunctionResultInTypeCast',
+    LinesToStr([ // statements
+    'this.GetPtr = function () {',
+    '  var Result = null;',
+    '  return Result;',
+    '};',
+    'this.Write = function (p) {',
+    '};',
+    'this.WriteLn = function () {',
+    '};',
+    '']),
+    LinesToStr([
+    'if ($mod.GetPtr() === null) ;',
+    '$mod.Write($mod.GetPtr());',
+    '$mod.WriteLn($mod.GetPtr());',
+    '$mod.Write($mod.GetPtr());',
+    '$mod.WriteLn($mod.GetPtr());',
+    '']));
+end;
+
 procedure TTestModule.TestExternalClass_NonExternalOverride;
 begin
   StartProgram(false);
@@ -12071,6 +12822,27 @@ begin
     '$mod.A.ProcA();',
     '$mod.B.ProcA();',
     '$mod.C.ProcA();',
+    '']));
+end;
+
+procedure TTestModule.TestExternalClass_OverloadHint;
+begin
+  StartProgram(false);
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TExtA = class external name ''ExtObjA''',
+  '    procedure DoIt;',
+  '    procedure DoIt(i: longint);',
+  '  end;',
+  'begin',
+  '']);
+  ConvertProgram;
+  CheckResolverUnexpectedHints(true);
+  CheckSource('TestExternalClass_OverloadHint',
+    LinesToStr([ // statements
+    '']),
+    LinesToStr([ // $mod.$main
     '']));
 end;
 
@@ -12457,27 +13229,28 @@ end;
 procedure TTestModule.TestExternalClass_FuncClassOf_New;
 begin
   StartProgram(false);
-  Add('{$modeswitch externalclass}');
-  Add('type');
-  Add('  TExtAClass = class of TExtA;');
-  Add('  TExtA = class external name ''ExtA''');
-  Add('    constructor New;');
-  Add('  end;');
-  Add('function GetCreator: TExtAClass;');
-  Add('begin');
-  Add('  Result:=TExtA;');
-  Add('end;');
-  Add('var');
-  Add('  A: texta;');
-  Add('begin');
-  Add('  a:=getcreator.new;');
-  Add('  a:=getcreator().new;');
-  Add('  a:=getcreator().new();');
-  Add('  a:=getcreator.new();');
-  Add('  with getcreator do begin');
-  Add('    a:=new;');
-  Add('    a:=new();');
-  Add('  end;');
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TExtAClass = class of TExtA;',
+  '  TExtA = class external name ''ExtA''',
+  '    constructor New;',
+  '  end;',
+  'function GetCreator: TExtAClass;',
+  'begin',
+  '  Result:=TExtA;',
+  'end;',
+  'var',
+  '  A: texta;',
+  'begin',
+  '  a:=getcreator.new;',
+  '  a:=getcreator().new;',
+  '  a:=getcreator().new();',
+  '  a:=getcreator.new();',
+  '  with getcreator do begin',
+  '    a:=new;',
+  '    a:=new();',
+  '  end;']);
   ConvertProgram;
   CheckSource('TestExternalClass_FuncClassOf_New',
     LinesToStr([ // statements
@@ -12497,6 +13270,42 @@ begin
     '$mod.A = new $with1();',
     '$mod.A = new $with1();',
     '']));
+end;
+
+procedure TTestModule.TestExternalClass_New_PasClassFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TExtA = class external name ''ExtA''',
+  '    constructor New;',
+  '  end;',
+  '  TBird = class(TExtA)',
+  '  end;',
+  'begin',
+  '  TBird.new;',
+  '']);
+  SetExpectedPasResolverError(sJSNewNotSupported,nJSNewNotSupported);
+  ConvertProgram;
+end;
+
+procedure TTestModule.TestExternalClass_New_PasClassBracketsFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TExtA = class external name ''ExtA''',
+  '    constructor New;',
+  '  end;',
+  '  TBird = class(TExtA)',
+  '  end;',
+  'begin',
+  '  TBird.new();',
+  '']);
+  SetExpectedPasResolverError(sJSNewNotSupported,nJSNewNotSupported);
+  ConvertProgram;
 end;
 
 procedure TTestModule.TestExternalClass_LocalConstSameName;
@@ -12806,7 +13615,7 @@ begin
   ConvertProgram;
   CheckSource('TestExternalClass_TypeCastToRootClass',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E00-3000-8000-000000000000}", [], null);',
+    'rtl.createInterface($mod, "IUnknown", "{B92D5841-758A-322B-B800-000000000000}", [], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -12876,8 +13685,8 @@ begin
   ConvertProgram;
   CheckSource('TestExternalClass_TypeCastToJSObject',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E00-3000-8000-000000000000}", [], null);',
-    'rtl.createInterface($mod, "IBird", "{48E3FF4A-AF76-3465-A738-D462ECC63074}", [], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IUnknown", "{B92D5841-758A-322B-B800-000000000000}", [], null);',
+    'rtl.createInterface($mod, "IBird", "{4B0D080B-C0F6-396E-AE88-000B87785074}", [], $mod.IUnknown);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -12941,6 +13750,84 @@ begin
     '']));
 end;
 
+procedure TTestModule.TestExternalClass_TypeCastToJSFunction;
+begin
+  StartProgram(false);
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TJSObject = class external name ''Object'' end;',
+  '  TJSFunction = class external name ''Function''',
+  '    function bind(thisArg: TJSObject): TJSFunction; varargs;',
+  '    function call(thisArg: TJSObject): JSValue; varargs;',
+  '  end;',
+  '  TObject = class',
+  '    procedure DoIt(i: longint);',
+  '  end;',
+  '  TFuncInt = function(o: TObject): longint;',
+  'function GetIt(o: TObject): longint;',
+  '  procedure Sub; begin end;',
+  'var',
+  '  f: TJSFunction;',
+  '  fi: TFuncInt;',
+  'begin',
+  '  fi:=TFuncInt(f);',
+  '  f:=TJSFunction(fi);',
+  '  f:=TJSFunction(@GetIt);',
+  '  f:=TJSFunction(@GetIt).bind(nil,3);',
+  '  f:=TJSFunction(@Sub);',
+  '  f:=TJSFunction(@o.doit);',
+  '  f:=TJSFunction(fi).bind(nil,4)',
+  'end;',
+  'procedure TObject.DoIt(i: longint);',
+  '  procedure Sub; begin end;',
+  'var f: TJSFunction;',
+  'begin',
+  '  f:=TJSFunction(@DoIt);',
+  '  f:=TJSFunction(@DoIt).bind(nil,13);',
+  '  f:=TJSFunction(@Sub);',
+  '  f:=TJSFunction(@GetIt);',
+  'end;',
+  'begin']);
+  ConvertProgram;
+  CheckSource('TestExternalClass_TypeCastToJSFunction',
+    LinesToStr([ // statements
+    'rtl.createClass($mod, "TObject", null, function () {',
+    '  this.$init = function () {',
+    '  };',
+    '  this.$final = function () {',
+    '  };',
+    '  this.DoIt = function (i) {',
+    '    var Self = this;',
+    '    function Sub() {',
+    '    };',
+    '    var f = null;',
+    '    f = rtl.createCallback(Self, "DoIt");',
+    '    f = rtl.createCallback(Self, "DoIt").bind(null, 13);',
+    '    f = Sub;',
+    '    f = $mod.GetIt;',
+    '  };',
+    '});',
+    'this.GetIt = function (o) {',
+    '  var Result = 0;',
+    '  function Sub() {',
+    '  };',
+    '  var f = null;',
+    '  var fi = null;',
+    '  fi = f;',
+    '  f = fi;',
+    '  f = $mod.GetIt;',
+    '  f = $mod.GetIt.bind(null, 3);',
+    '  f = Sub;',
+    '  f = rtl.createCallback(o, "DoIt");',
+    '  f = fi.bind(null, 4);',
+    '  return Result;',
+    '};',
+    '']),
+    LinesToStr([ // $mod.$main
+    '']));
+end;
+
 procedure TTestModule.TestExternalClass_CallClassFunctionOfInstanceFail;
 begin
   StartProgram(false);
@@ -12962,30 +13849,36 @@ end;
 procedure TTestModule.TestExternalClass_BracketAccessor;
 begin
   StartProgram(false);
-  Add('{$modeswitch externalclass}');
-  Add('type');
-  Add('  TJSArray = class external name ''Array2''');
-  Add('    function GetItems(Index: longint): jsvalue; external name ''[]'';');
-  Add('    procedure SetItems(Index: longint; Value: jsvalue); external name ''[]'';');
-  Add('    property Items[Index: longint]: jsvalue read GetItems write SetItems; default;');
-  Add('  end;');
-  Add('procedure DoIt(vI: JSValue; const vJ: jsvalue; var vK: jsvalue; out vL: jsvalue);');
-  Add('begin end;');
-  Add('var');
-  Add('  Arr: tjsarray;');
-  Add('  s: string;');
-  Add('  i: longint;');
-  Add('  v: jsvalue;');
-  Add('begin');
-  Add('  v:=arr[0];');
-  Add('  v:=arr.items[1];');
-  Add('  arr[2]:=s;');
-  Add('  arr.items[3]:=s;');
-  Add('  arr[4]:=i;');
-  Add('  arr[5]:=arr[6];');
-  Add('  arr.items[7]:=arr.items[8];');
-  Add('  with arr do items[9]:=items[10];');
-  Add('  doit(arr[7],arr[8],arr[9],arr[10]);');
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TJSArray = class external name ''Array2''',
+  '    function GetItems(Index: longint): jsvalue; external name ''[]'';',
+  '    procedure SetItems(Index: longint; Value: jsvalue); external name ''[]'';',
+  '    property Items[Index: longint]: jsvalue read GetItems write SetItems; default;',
+  '  end;',
+  'procedure DoIt(vI: JSValue; const vJ: jsvalue; var vK: jsvalue; out vL: jsvalue);',
+  'begin end;',
+  'var',
+  '  Arr: tjsarray;',
+  '  s: string;',
+  '  i: longint;',
+  '  v: jsvalue;',
+  'begin',
+  '  v:=arr[0];',
+  '  v:=arr.items[1];',
+  '  arr[2]:=s;',
+  '  arr.items[3]:=s;',
+  '  arr[4]:=i;',
+  '  arr[5]:=arr[6];',
+  '  arr.items[7]:=arr.items[8];',
+  '  with arr do items[9]:=items[10];',
+  '  doit(arr[7],arr[8],arr[9],arr[10]);',
+  '  with arr do begin',
+  '    v:=GetItems(14);',
+  '    setitems(15,16);',
+  '  end;',
+  '']);
   ConvertProgram;
   CheckSource('TestExternalClass_BracketAccessor',
     LinesToStr([ // statements
@@ -13025,6 +13918,81 @@ begin
     '      this.p[this.a] = v;',
     '    }',
     '});',
+    'var $with2 = $mod.Arr;',
+    '$mod.v = $with2[14];',
+    '$with2[15] = 16;',
+    '']));
+end;
+
+procedure TTestModule.TestExternalClass_BracketAccessor_Call;
+begin
+  StartProgram(false);
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TJSArray = class external name ''Array2''',
+  '    function GetItems(Index: longint): jsvalue; external name ''[]'';',
+  '    procedure SetItems(Index: longint; Value: jsvalue); external name ''[]'';',
+  '    property Items[Index: longint]: jsvalue read GetItems write SetItems; default;',
+  '  end;',
+  '  TMyArr = class(TJSArray)',
+  '    procedure DoIt;',
+  '  end;',
+  'procedure tmyarr.DoIt;',
+  'begin',
+  '  Items[1]:=Items[2];',
+  '  SetItems(3,getItems(4));',
+  'end;',
+  'var',
+  '  Arr: tmyarr;',
+  '  s: string;',
+  '  i: longint;',
+  '  v: jsvalue;',
+  'begin',
+  '  v:=arr[0];',
+  '  v:=arr.items[1];',
+  '  arr[2]:=s;',
+  '  arr.items[3]:=s;',
+  '  arr[4]:=i;',
+  '  arr[5]:=arr[6];',
+  '  arr.items[7]:=arr.items[8];',
+  '  with arr do items[9]:=items[10];',
+  '  with arr do begin',
+  '    v:=GetItems(14);',
+  '    setitems(15,16);',
+  '  end;',
+  '']);
+  ConvertProgram;
+  CheckSource('TestExternalClass_BracketAccessor_Call',
+    LinesToStr([ // statements
+    'rtl.createClassExt($mod, "TMyArr", Array2, "", function () {',
+    '  this.$init = function () {',
+    '  };',
+    '  this.$final = function () {',
+    '  };',
+    '  this.DoIt = function () {',
+    '    this[1] = this[2];',
+    '    this[3] = this[4];',
+    '  };',
+    '});',
+    'this.Arr = null;',
+    'this.s = "";',
+    'this.i = 0;',
+    'this.v = undefined;',
+    '']),
+    LinesToStr([ // $mod.$main
+    '$mod.v = $mod.Arr[0];',
+    '$mod.v = $mod.Arr[1];',
+    '$mod.Arr[2] = $mod.s;',
+    '$mod.Arr[3] = $mod.s;',
+    '$mod.Arr[4] = $mod.i;',
+    '$mod.Arr[5] = $mod.Arr[6];',
+    '$mod.Arr[7] = $mod.Arr[8];',
+    'var $with1 = $mod.Arr;',
+    '$with1[9] = $with1[10];',
+    'var $with2 = $mod.Arr;',
+    '$mod.v = $with2[14];',
+    '$with2[15] = 16;',
     '']));
 end;
 
@@ -13217,6 +14185,77 @@ begin
     '']));
 end;
 
+procedure TTestModule.TestExternalClass_ForInJSArray;
+begin
+  StartProgram(false);
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TJSInt8Array = class external name ''Int8Array''',
+  '  private',
+  '    flength: NativeInt external name ''length'';',
+  '    function getValue(Index: NativeInt): shortint; external name ''[]'';',
+  '  public',
+  '    property values[Index: NativeInt]: Shortint Read getValue; default;',
+  '    property Length: NativeInt read flength;',
+  '  end;',
+  'var',
+  '  a: TJSInt8Array;',
+  '  value: shortint;',
+  'begin',
+  '  for value in a do',
+  '    if value=3 then ;',
+  '']);
+  ConvertProgram;
+  CheckSource('TestExternalClass_ForInJSArray',
+    LinesToStr([ // statements
+    'this.a = null;',
+    'this.value = 0;',
+    '']),
+    LinesToStr([ // $mod.$main
+    'for (var $in1 = $mod.a, $l2 = 0, $end3 = rtl.length($in1) - 1; $l2 <= $end3; $l2++) {',
+    '  $mod.value = $in1[$l2];',
+    '  if ($mod.value === 3) ;',
+    '};',
+    '']));
+end;
+
+procedure TTestModule.TestExternalClass_IncompatibleArgDuplicateIdentifier;
+begin
+  AddModuleWithIntfImplSrc('unit2.pas',
+    LinesToStr([
+    '{$modeswitch externalclass}',
+    'type',
+    '  TJSBufferSource = class external name ''BufferSource''',
+    '  end;',
+    'procedure DoIt(s: TJSBufferSource); external name ''DoIt'';',
+    '']),
+    '');
+  AddModuleWithIntfImplSrc('unit3.pas',
+    LinesToStr([
+    '{$modeswitch externalclass}',
+    'type',
+    '  TJSBufferSource = class external name ''BufferSource''',
+    '  end;',
+    '']),
+    '');
+
+  StartUnit(true);
+  Add([
+  'interface',
+  'uses unit2, unit3;',
+  'procedure DoSome(s: TJSBufferSource);',
+  'implementation',
+  'procedure DoSome(s: TJSBufferSource);',
+  'begin',
+  '  DoIt(s);',
+  'end;',
+  '']);
+  SetExpectedPasResolverError('Incompatible type arg no. 1: Got "unit3.TJSBufferSource", expected "unit2.TJSBufferSource"',
+    nIncompatibleTypeArgNo);
+  ConvertUnit;
+end;
+
 procedure TTestModule.TestClassInterface_Corba;
 begin
   StartProgram(false);
@@ -13250,7 +14289,7 @@ begin
   CheckSource('TestClassInterface_Corba',
     LinesToStr([ // statements
     'rtl.createInterface($mod, "IUnknown", "{00000000-0000-0000-C000-000000000046}", [], null);',
-    'rtl.createInterface($mod, "IBird", "{B0AF836B-4E58-31BA-A735-D744B6DAA205}", ["GetSize", "SetSize", "DoIt"], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IBird", "{5BD1A53B-69BB-37EE-AF32-BEFB86D85B03}", ["GetSize", "SetSize", "DoIt"], $mod.IUnknown);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -13320,8 +14359,8 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_Overloads',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E71-32CA-B8EF-650000000000}", ["DoIt", "DoIt$1"], null);',
-    'rtl.createInterface($mod, "IBird", "{D2E3FF4A-AF76-3468-AB38-EB26B77CE676}", ["DoIt$2"], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IUnknown", "{B92D5841-758A-322B-BDC4-8A2AE2C59400}", ["DoIt", "DoIt$1"], null);',
+    'rtl.createInterface($mod, "IBird", "{8285DD5E-EA3E-396E-AE88-000B86AABF05}", ["DoIt$2"], $mod.IUnknown);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -13418,8 +14457,8 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_AncestorIntf',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E71-32CA-8000-000000000000}", ["DoIt"], null);',
-    'rtl.createInterface($mod, "IBird", "{585952B8-2CC8-3000-8000-000000000000}", ["Fly"], null);',
+    'rtl.createInterface($mod, "IUnknown", "{B92D5841-758A-322B-BDC4-8A2800000000}", ["DoIt"], null);',
+    'rtl.createInterface($mod, "IBird", "{B92D5841-6264-3AE3-BF20-000000000000}", ["Fly"], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -13465,7 +14504,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_ImplReintroduce',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IBird", "{585952B8-EF65-3000-8000-000000000000}", ["DoIt"], null);',
+    'rtl.createInterface($mod, "IBird", "{B92D5841-6264-3AE2-8594-000000000000}", ["DoIt"], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -13522,8 +14561,8 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_MethodResolution',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E75-38F5-8000-000000000000}", ["Walk"], null);',
-    'rtl.createInterface($mod, "IBird", "{F8E3FF4A-AF76-3468-BB38-1CCFAB120092}", ["Walk$1", "Fly"], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IUnknown", "{B92D5841-758A-322B-BDD7-23D600000000}", ["Walk"], null);',
+    'rtl.createInterface($mod, "IBird", "{CF8A4986-80F6-396E-AE88-000B86AAE208}", ["Walk$1", "Fly"], $mod.IUnknown);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -13576,9 +14615,9 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_AncestorLess',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E77-3872-9406-7588F5800000}", ["_AddRef", "Walk"], null);',
-    'rtl.createInterface($mod, "IBird", "{136757F2-AF76-3468-8338-1526EC563676}", [], $mod.IUnknown);',
-    'rtl.createInterface($mod, "IDog", "{136757F2-AF76-3468-8565-8D26EC563676}", [], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IUnknown", "{8F2D5841-758A-322B-BDDF-21CD521DD723}", ["_AddRef", "Walk"], null);',
+    'rtl.createInterface($mod, "IBird", "{CCE11D4C-6504-3AEE-AE88-000B86AAE675}", [], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IDog", "{CCE11D4C-6504-3AEE-AE88-000B8E5FC675}", [], $mod.IUnknown);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -13636,11 +14675,11 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_Delegation',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E00-3000-8000-000000000000}", [], null);',
-    'rtl.createInterface($mod, "IBird", "{48E3FF4A-AF76-3465-A738-D745ABE63074}", ["Fly"], $mod.IUnknown);',
-    'rtl.createInterface($mod, "IEagle", "{56CEF525-B037-3078-82F5-4C3CF0629879}", [], $mod.IBird);',
-    'rtl.createInterface($mod, "IDove", "{56CEF525-B037-3078-8169-F7ECF0629879}", [], $mod.IBird);',
-    'rtl.createInterface($mod, "ISwallow", "{56CEF525-B037-3078-90A3-CCE44C629879}", [], $mod.IBird);',
+    'rtl.createInterface($mod, "IUnknown", "{B92D5841-758A-322B-B800-000000000000}", [], null);',
+    'rtl.createInterface($mod, "IBird", "{478D080B-C0F6-396E-AE88-000B87785B07}", ["Fly"], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IEagle", "{489289DE-FDE2-34A6-8288-39119022B1B4}", [], $mod.IBird);',
+    'rtl.createInterface($mod, "IDove", "{489289DE-FDE2-34A6-8288-39118EF16074}", [], $mod.IBird);',
+    'rtl.createInterface($mod, "ISwallow", "{B89289DE-FDE2-34A6-8288-3911CBDCB359}", [], $mod.IBird);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -13666,16 +14705,16 @@ begin
     '    $mod.TObject.$final.call(this);',
     '  };',
     '  this.$intfmaps = {',
-    '    "{48E3FF4A-AF76-3465-A738-D745ABE63074}": function () {',
+    '    "{478D080B-C0F6-396E-AE88-000B87785B07}": function () {',
     '        return this.FBirdIntf;',
     '      },',
-    '    "{56CEF525-B037-3078-82F5-4C3CF0629879}": function () {',
+    '    "{489289DE-FDE2-34A6-8288-39119022B1B4}": function () {',
     '        return this.GetEagleIntf();',
     '      },',
-    '    "{56CEF525-B037-3078-8169-F7ECF0629879}": function () {',
+    '    "{489289DE-FDE2-34A6-8288-39118EF16074}": function () {',
     '        return rtl.getIntfT(this.FDoveObj, $mod.IDove);',
     '      },',
-    '    "{56CEF525-B037-3078-90A3-CCE44C629879}": function () {',
+    '    "{B89289DE-FDE2-34A6-8288-3911CBDCB359}": function () {',
     '        return rtl.getIntfT(this.GetSwallowObj(), $mod.ISwallow);',
     '      }',
     '  };',
@@ -13724,11 +14763,11 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_DelegationStatic',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E00-3000-8000-000000000000}", [], null);',
-    'rtl.createInterface($mod, "IBird", "{48E3FF4A-AF76-3465-A738-D745ABE63074}", ["Fly"], $mod.IUnknown);',
-    'rtl.createInterface($mod, "IEagle", "{56CEF525-B037-3078-82F5-4C3CF0629879}", [], $mod.IBird);',
-    'rtl.createInterface($mod, "IDove", "{56CEF525-B037-3078-8169-F7ECF0629879}", [], $mod.IBird);',
-    'rtl.createInterface($mod, "ISwallow", "{56CEF525-B037-3078-90A3-CCE44C629879}", [], $mod.IBird);',
+    'rtl.createInterface($mod, "IUnknown", "{B92D5841-758A-322B-B800-000000000000}", [], null);',
+    'rtl.createInterface($mod, "IBird", "{478D080B-C0F6-396E-AE88-000B87785B07}", ["Fly"], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IEagle", "{489289DE-FDE2-34A6-8288-39119022B1B4}", [], $mod.IBird);',
+    'rtl.createInterface($mod, "IDove", "{489289DE-FDE2-34A6-8288-39118EF16074}", [], $mod.IBird);',
+    'rtl.createInterface($mod, "ISwallow", "{B89289DE-FDE2-34A6-8288-3911CBDCB359}", [], $mod.IBird);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -13746,16 +14785,16 @@ begin
     '  this.FBirdIntf = null;',
     '  this.FDoveObj = null;',
     '  this.$intfmaps = {',
-    '    "{48E3FF4A-AF76-3465-A738-D745ABE63074}": function () {',
+    '    "{478D080B-C0F6-396E-AE88-000B87785B07}": function () {',
     '        return this.FBirdIntf;',
     '      },',
-    '    "{56CEF525-B037-3078-82F5-4C3CF0629879}": function () {',
+    '    "{489289DE-FDE2-34A6-8288-39119022B1B4}": function () {',
     '        return this.$class.GetEagleIntf();',
     '      },',
-    '    "{56CEF525-B037-3078-8169-F7ECF0629879}": function () {',
+    '    "{489289DE-FDE2-34A6-8288-39118EF16074}": function () {',
     '        return rtl.getIntfT(this.FDoveObj, $mod.IDove);',
     '      },',
-    '    "{56CEF525-B037-3078-90A3-CCE44C629879}": function () {',
+    '    "{B89289DE-FDE2-34A6-8288-3911CBDCB359}": function () {',
     '        return rtl.getIntfT(this.$class.GetSwallowObj(), $mod.ISwallow);',
     '      }',
     '  };',
@@ -13815,8 +14854,8 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_Corba_Operators',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E00-3000-8000-000000000000}", [], null);',
-    'rtl.createInterface($mod, "IBird", "{8E3C13AF-8080-3465-A738-D7460F8FE995}", ["GetItems", "SetItems"], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IUnknown", "{B92D5841-758A-322B-B800-000000000000}", [], null);',
+    'rtl.createInterface($mod, "IBird", "{D53FED90-DE59-3202-B1AE-000B87785B08}", ["GetItems", "SetItems"], $mod.IUnknown);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -13891,8 +14930,8 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_Corba_Args',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E00-3000-8000-000000000000}", [], null);',
-    'rtl.createInterface($mod, "IBird", "{48E3FF4A-AF76-3465-A738-D462ECC63074}", [], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IUnknown", "{B92D5841-758A-322B-B800-000000000000}", [], null);',
+    'rtl.createInterface($mod, "IBird", "{4B0D080B-C0F6-396E-AE88-000B87785074}", [], $mod.IUnknown);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -13986,7 +15025,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_Corba_ForIn',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E00-3000-8000-000000000000}", [], null);',
+    'rtl.createInterface($mod, "IUnknown", "{B92D5841-758A-322B-B800-000000000000}", [], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '    this.Id = 0;',
@@ -13994,8 +15033,8 @@ begin
     '  this.$final = function () {',
     '  };',
     '});',
-    'rtl.createInterface($mod, "IEnumerator", "{D2FE11F3-D2CC-36BB-A5B2-66EB7FB5CB08}", ["GetCurrent", "MoveNext"], $mod.IUnknown);',
-    'rtl.createInterface($mod, "IEnumerable", "{D20534CB-D9C0-3EA5-AA60-ACEB7D726308}", ["GetEnumerator"], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IEnumerator", "{95D7745D-ED61-3F13-BBE4-07708161999E}", ["GetCurrent", "MoveNext"], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IEnumerable", "{8CC9D45D-ED7D-3B73-96B6-290B931BB19E}", ["GetEnumerator"], $mod.IUnknown);',
     'this.o = null;',
     'this.i = null;',
     '']),
@@ -14047,7 +15086,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_AssignVar',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E77-3872-9406-776A86A09328}", ["_AddRef", "_Release"], null);',
+    'rtl.createInterface($mod, "IUnknown", "{D7ADB0E1-758A-322B-BDDF-21CD521DDFA9}", ["_AddRef", "_Release"], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -14106,7 +15145,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_AssignArg',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E77-3872-9406-776A86A09328}", ["_AddRef", "_Release"], null);',
+    'rtl.createInterface($mod, "IUnknown", "{D7ADB0E1-758A-322B-BDDF-21CD521DDFA9}", ["_AddRef", "_Release"], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -14153,7 +15192,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_FunctionResult',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E77-3872-9406-776A86A09328}", ["_AddRef", "_Release"], null);',
+    'rtl.createInterface($mod, "IUnknown", "{D7ADB0E1-758A-322B-BDDF-21CD521DDFA9}", ["_AddRef", "_Release"], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -14217,7 +15256,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_InheritedFuncResult',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E77-3872-9406-776A86A09328}", ["_AddRef", "_Release"], null);',
+    'rtl.createInterface($mod, "IUnknown", "{D7ADB0E1-758A-322B-BDDF-21CD521DDFA9}", ["_AddRef", "_Release"], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -14289,7 +15328,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_IsAsTypeCasts',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E77-3872-9406-776A86A09328}", ["_AddRef", "_Release"], null);',
+    'rtl.createInterface($mod, "IUnknown", "{D7ADB0E1-758A-322B-BDDF-21CD521DDFA9}", ["_AddRef", "_Release"], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -14351,7 +15390,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_PassAsArg',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E77-3872-9406-776A86A09328}", ["_AddRef", "_Release"], null);',
+    'rtl.createInterface($mod, "IUnknown", "{D7ADB0E1-758A-322B-BDDF-21CD521DDFA9}", ["_AddRef", "_Release"], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -14463,7 +15502,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_PassToUntypedParam',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E77-3872-9406-776A86A09328}", ["_AddRef", "_Release"], null);',
+    'rtl.createInterface($mod, "IUnknown", "{D7ADB0E1-758A-322B-BDDF-21CD521DDFA9}", ["_AddRef", "_Release"], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -14563,7 +15602,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_FunctionInExpr',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E77-3872-9406-776A86A09328}", ["_AddRef", "_Release"], null);',
+    'rtl.createInterface($mod, "IUnknown", "{D7ADB0E1-758A-322B-BDDF-21CD521DDFA9}", ["_AddRef", "_Release"], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -14651,7 +15690,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_Property',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E77-3872-9406-776A86A09328}", ["_AddRef", "_Release"], null);',
+    'rtl.createInterface($mod, "IUnknown", "{D7ADB0E1-758A-322B-BDDF-21CD521DDFA9}", ["_AddRef", "_Release"], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '    this.FAnt = null;',
@@ -14733,7 +15772,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_IntfProperty',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5406909F-9F0B-32A4-B98B-94CDDE493C91}", [',
+    'rtl.createInterface($mod, "IUnknown", "{385F5482-571B-338C-8130-4E97F330543B}", [',
     '  "_AddRef",',
     '  "_Release",',
     '  "GetBird",',
@@ -14813,11 +15852,11 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_Delegation',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E77-3872-9406-776A86A09328}", ["_AddRef", "_Release"], null);',
-    'rtl.createInterface($mod, "IBird", "{174B9F1B-B1BC-3868-8338-1709AB763676}", ["Fly"], $mod.IUnknown);',
-    'rtl.createInterface($mod, "IEagle", "{95CDEE63-AD4B-322E-B6F5-6C42ECD29875}", [], $mod.IBird);',
-    'rtl.createInterface($mod, "IDove", "{95CDEE63-AD4B-322E-B569-17F2ECD29875}", [], $mod.IBird);',
-    'rtl.createInterface($mod, "ISwallow", "{95CDEE63-AD4B-322E-84A4-ECEA48D29875}", [], $mod.IBird);',
+    'rtl.createInterface($mod, "IUnknown", "{D7ADB0E1-758A-322B-BDDF-21CD521DDFA9}", ["_AddRef", "_Release"], null);',
+    'rtl.createInterface($mod, "IBird", "{CC440C7F-7623-3DEE-AE88-000B86AAF108}", ["Fly"], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IEagle", "{4B6A41C9-B020-3D7C-B688-96D19022B1B4}", [], $mod.IBird);',
+    'rtl.createInterface($mod, "IDove", "{4B6A41C9-B020-3D7C-B688-96D18EF16074}", [], $mod.IBird);',
+    'rtl.createInterface($mod, "ISwallow", "{BB6A41C9-B020-3D7C-B688-96D1CBDCB359}", [], $mod.IBird);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -14843,16 +15882,16 @@ begin
     '    $mod.TObject.$final.call(this);',
     '  };',
     '  this.$intfmaps = {',
-    '    "{174B9F1B-B1BC-3868-8338-1709AB763676}": function () {',
+    '    "{CC440C7F-7623-3DEE-AE88-000B86AAF108}": function () {',
     '        return rtl._AddRef(this.FBirdIntf);',
     '      },',
-    '    "{95CDEE63-AD4B-322E-B6F5-6C42ECD29875}": function () {',
+    '    "{4B6A41C9-B020-3D7C-B688-96D19022B1B4}": function () {',
     '        return this.GetEagleIntf();',
     '      },',
-    '    "{95CDEE63-AD4B-322E-B569-17F2ECD29875}": function () {',
+    '    "{4B6A41C9-B020-3D7C-B688-96D18EF16074}": function () {',
     '        return rtl.queryIntfT(this.FDoveObj, $mod.IDove);',
     '      },',
-    '    "{95CDEE63-AD4B-322E-84A4-ECEA48D29875}": function () {',
+    '    "{BB6A41C9-B020-3D7C-B688-96D1CBDCB359}": function () {',
     '        return rtl.queryIntfT(this.GetSwallowObj(), $mod.ISwallow);',
     '      }',
     '  };',
@@ -14894,7 +15933,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_With',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{F1ACF9FE-4E77-3872-9406-776A86A09333}", ["_AddRef", "_Release", "GetAnt"], null);',
+    'rtl.createInterface($mod, "IUnknown", "{D7ADB00D-C6B6-39FB-BDDF-21CD521DDFA9}", ["_AddRef", "_Release", "GetAnt"], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -14947,7 +15986,7 @@ begin
   ConvertProgram;
   CheckSource('TestClassInterface_COM_ForIn',
     LinesToStr([ // statements
-    'rtl.createInterface($mod, "IUnknown", "{5D22E7CA-4E00-3000-8000-000000000000}", [], null);',
+    'rtl.createInterface($mod, "IUnknown", "{B92D5841-758A-322B-B800-000000000000}", [], null);',
     'rtl.createClass($mod, "TObject", null, function () {',
     '  this.$init = function () {',
     '    this.Id = 0;',
@@ -14955,8 +15994,8 @@ begin
     '  this.$final = function () {',
     '  };',
     '});',
-    'rtl.createInterface($mod, "IEnumerator", "{D2FE11F3-D2CC-36BB-A5B2-66EB7FB5CB08}", ["GetCurrent", "MoveNext"], $mod.IUnknown);',
-    'rtl.createInterface($mod, "IEnumerable", "{D20534CB-D9C0-3EA5-AA60-ACEB7D726308}", ["GetEnumerator"], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IEnumerator", "{95D7745D-ED61-3F13-BBE4-07708161999E}", ["GetCurrent", "MoveNext"], $mod.IUnknown);',
+    'rtl.createInterface($mod, "IEnumerable", "{8CC9D45D-ED7D-3B73-96B6-290B931BB19E}", ["GetEnumerator"], $mod.IUnknown);',
     'this.o = null;',
     'this.i = null;',
     '']),
@@ -15051,7 +16090,7 @@ begin
     '};',
     '']),
     LinesToStr([ // implementation
-    'rtl.createInterface($impl, "IUnknown", "{5D22E7CA-4E77-3872-9406-000000000000}", ["_AddRef"], null);',
+    'rtl.createInterface($impl, "IUnknown", "{B92D5841-758A-322B-BDDF-21CD52180000}", ["_AddRef"], null);',
     'rtl.createClass($impl, "TObject", null, function () {',
     '  this.$init = function () {',
     '  };',
@@ -16645,7 +17684,9 @@ begin
   '  obj:=TObject(p);',
   '  c:=TClass(p);',
   '  a:=TArrInt(p);',
-  '  p:=n;']);
+  '  p:=n;',
+  '  p:=Pointer(a);',
+  '']);
   ConvertProgram;
   CheckSource('TestPointer',
     LinesToStr([ // statements
@@ -16677,6 +17718,7 @@ begin
     '$mod.C = $mod.p;',
     '$mod.a = $mod.p;',
     '$mod.p = null;',
+    '$mod.p = $mod.a;',
     '']));
 end;
 
@@ -17453,6 +18495,56 @@ begin
     '']));
 end;
 
+procedure TTestModule.TestJSValue_ArrayLit;
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  TFlag = (big,small);',
+  '  TArray = array of JSValue;',
+  '  TObject = class end;',
+  '  TClass = class of TObject;',
+  'var',
+  '  v: jsvalue;',
+  '  a: TArray;',
+  '  o: TObject;',
+  'begin',
+  '  a:=[];',
+  '  a:=[1];',
+  '  a:=[1,2];',
+  '  a:=[big];',
+  '  a:=[1,big];',
+  '  a:=[o,nil];',
+  '']);
+  ConvertProgram;
+  CheckSource('TestJSValue_ArrayLit',
+    LinesToStr([ // statements
+    'this.TFlag = {',
+    '  "0": "big",',
+    '  big: 0,',
+    '  "1": "small",',
+    '  small: 1',
+    '};',
+    'rtl.createClass($mod, "TObject", null, function () {',
+    '  this.$init = function () {',
+    '  };',
+    '  this.$final = function () {',
+    '  };',
+    '});',
+    'this.v = undefined;',
+    'this.a = [];',
+    'this.o = null;',
+    '']),
+    LinesToStr([ // $mod.$main
+    '$mod.a = [];',
+    '$mod.a = [1];',
+    '$mod.a = [1, 2];',
+    '$mod.a = [$mod.TFlag.big];',
+    '$mod.a = [1, $mod.TFlag.big];',
+    '$mod.a = [$mod.o, null];',
+    '']));
+end;
+
 procedure TTestModule.TestJSValue_Params;
 begin
   StartProgram(false);
@@ -18176,6 +19268,70 @@ begin
     'for ($mod.key in $mod.v) {',
     '  if ($mod.key === "abc") ;',
     '};',
+    '']));
+end;
+
+procedure TTestModule.TestRTTI_IntRange;
+begin
+  Converter.Options:=Converter.Options-[coNoTypeInfo];
+  StartProgram(false);
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TTypeInfo = class external name ''rtl.tTypeInfo''',
+  '  end;',
+  '  TTypeInfoInteger = class external name ''rtl.tTypeInfoInteger''(TTypeInfo)',
+  '  end;',
+  '  TGraphicsColor = -$7FFFFFFF-1..$7FFFFFFF;',
+  '  TColor = type TGraphicsColor;',
+  'var',
+  '  p: TTypeInfo;',
+  'begin',
+  '  p:=typeinfo(TGraphicsColor);',
+  '  p:=typeinfo(TColor);',
+  '']);
+  ConvertProgram;
+  CheckSource('TestRTTI_IntRange',
+    LinesToStr([ // statements
+    '$mod.$rtti.$Int("TGraphicsColor", {',
+    '  minvalue: -2147483648,',
+    '  maxvalue: 2147483647,',
+    '  ordtype: 4',
+    '});',
+    '$mod.$rtti.$inherited("TColor", $mod.$rtti["TGraphicsColor"], {});',
+    'this.p = null;',
+    '']),
+    LinesToStr([ // $mod.$main
+    '$mod.p = $mod.$rtti["TGraphicsColor"];',
+    '$mod.p = $mod.$rtti["TColor"];',
+    '']));
+end;
+
+procedure TTestModule.TestRTTI_Double;
+begin
+  Converter.Options:=Converter.Options-[coNoTypeInfo];
+  StartProgram(false);
+  Add([
+  '{$modeswitch externalclass}',
+  'type',
+  '  TTypeInfo = class external name ''rtl.tTypeInfo''',
+  '  end;',
+  '  TFloat = type double;',
+  'var',
+  '  p: TTypeInfo;',
+  'begin',
+  '  p:=typeinfo(double);',
+  '  p:=typeinfo(TFloat);',
+  '']);
+  ConvertProgram;
+  CheckSource('TestRTTI_Double',
+    LinesToStr([ // statements
+    '$mod.$rtti.$inherited("TFloat", rtl.double, {});',
+    'this.p = null;',
+    '']),
+    LinesToStr([ // $mod.$main
+    '$mod.p = rtl.double;',
+    '$mod.p = $mod.$rtti["TFloat"];',
     '']));
 end;
 
@@ -20049,7 +21205,7 @@ begin
     'rtl.createInterface(',
     '  $mod,',
     '  "IUnknown",',
-    '  "{5D22E7CA-4E00-3000-8000-000000000000}",',
+    '  "{B92D5841-758A-322B-B800-000000000000}",',
     '  [],',
     '  null,',
     '  function () {',
@@ -20058,7 +21214,7 @@ begin
     'rtl.createInterface(',
     '  $mod,',
     '  "IBird",',
-    '  "{585952B8-45B2-3E86-BAC5-B22E86800000}",',
+    '  "{D32D5841-6264-3AE3-A2C9-B91CE922C9B9}",',
     '  ["GetItem", "SetItem"],',
     '  null,',
     '  function () {',
@@ -20122,7 +21278,7 @@ begin
     'rtl.createInterface(',
     '  $mod,',
     '  "IUnknown",',
-    '  "{06A53E33-DB48-3B02-9906-776A86A09333}",',
+    '  "{D7ADB00D-1A9B-3EDC-B123-730E661DDFA9}",',
     '  ["QueryInterface", "_AddRef", "_Release"],',
     '  null,',
     '  function () {',
@@ -20136,7 +21292,7 @@ begin
     'rtl.createInterface(',
     '  $mod,',
     '  "IBird",',
-    '  "{FF135A0E-7B4C-35B8-8737-674A0E33EF92}",',
+    '  "{9CC77572-0E45-3594-9A88-9E8D865C9E0A}",',
     '  ["GetItem", "SetItem"],',
     '  $mod.IUnknown,',
     '  function () {',

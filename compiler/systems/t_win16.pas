@@ -229,7 +229,11 @@ begin
   LinkRes.Add('option quiet');
 
   if target_dbg.id in [dbg_dwarf2,dbg_dwarf3,dbg_dwarf4] then
-    LinkRes.Add('debug dwarf');
+    LinkRes.Add('debug dwarf')
+  else if target_dbg.id=dbg_codeview then
+    LinkRes.Add('debug codeview');
+  if cs_link_separate_dbg_file in current_settings.globalswitches then
+    LinkRes.Add('option symfile');
 
   { add objectfiles, start with prt0 always }
   case current_settings.x86memorymodel of

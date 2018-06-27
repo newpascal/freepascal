@@ -683,7 +683,8 @@ const
      (mask:sto_has_helper;   str:'Has helper'),
      (mask:sto_has_generic;  str:'Has generic'),
      (mask:sto_has_operator; str:'Has operator'),
-     (mask:sto_needs_init_final;str:'Needs init final table')
+     (mask:sto_needs_init_final;str:'Needs init final table'),
+     (mask:sto_has_non_trivial_init;str:'Has non trivial init')
   );
 var
   options : tsymtableoptions;
@@ -2117,6 +2118,7 @@ begin
   writeln([space,'         Spez : ',Varspez2Str(i)]);
   writeln([space,'      Regable : ',Varregable2Str(ppufile.getbyte)]);
   writeln([space,'   Addr Taken : ',(ppufile.getbyte<>0)]);
+  writeln([space,'Escaped Scope : ',(ppufile.getbyte<>0)]);
   write  ([space,'     Var Type : ']);
   if VarDef <> nil then
     readderef('',VarDef.VarType)

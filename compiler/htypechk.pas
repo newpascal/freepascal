@@ -153,10 +153,22 @@ interface
     function token2managementoperator(optoken:ttoken):tmanagementoperator;
 
     { check operator args and result type }
+
+    type
+      toverload_check_flag = (
+        ocf_check_non_overloadable, { also check operators that are (currently) considered as
+                                      not overloadable (e.g. the "+" operator for dynamic arrays
+                                      if modeswitch arrayoperators is active) }
+        ocf_check_only              { only check whether the operator is overloaded, but don't
+                                      modify the passed in node (return true if the operator is
+                                      overloaded, false otherwise) }
+      );
+      toverload_check_flags = set of toverload_check_flag;
+
     function isbinaryoperatoroverloadable(treetyp:tnodetype;ld:tdef;lt:tnodetype;rd:tdef;rt:tnodetype) : boolean;
     function isoperatoracceptable(pf : tprocdef; optoken : ttoken) : boolean;
-    function isunaryoverloaded(var t : tnode) : boolean;
-    function isbinaryoverloaded(var t : tnode) : boolean;
+    function isunaryoverloaded(var t : tnode;ocf:toverload_check_flags) : boolean;
+    function isbinaryoverloaded(var t : tnode;ocf:toverload_check_flags) : boolean;
     function isdefaultoverloaded(var t : tnode) : boolean;
 
     { Register Allocation }
@@ -505,7 +517,9 @@ implementation
                     end;
 
                  { <dyn. array> + <dyn. array> is handled by the compiler }
-                 if (treetyp=addn) and (is_dynamic_array(ld) or is_dynamic_array(rd)) then
+                 if (m_array_operators in current_settings.modeswitches) and
+                     (treetyp=addn) and
+                     (is_dynamic_array(ld) or is_dynamic_array(rd)) then
                     begin
                       allowed:=false;
                       exit;
@@ -708,7 +722,7 @@ implementation
       end;
 
 
-    function isunaryoverloaded(var t : tnode) : boolean;
+    function isunaryoverloaded(var t : tnode;ocf:toverload_check_flags) : boolean;
       var
         ld      : tdef;
         optoken : ttoken;
@@ -730,11 +744,11 @@ implementation
         else
           inlinenumber:=in_none;
 
-        if not isunaryoperatoroverloadable(t.nodetype,inlinenumber,ld) then
+        if not (ocf_check_non_overloadable in ocf) and not isunaryoperatoroverloadable(t.nodetype,inlinenumber,ld) then
           exit;
 
         { operator overload is possible }
-        result:=true;
+        result:=not (ocf_check_only in ocf);
 
         optoken:=NOTOKEN;
         case t.nodetype of
@@ -754,8 +768,11 @@ implementation
         end;
         if (optoken=NOTOKEN) then
           begin
-            CGMessage(parser_e_operator_not_overloaded);
-            t:=cnothingnode.create;
+            if not (ocf_check_only in ocf) then
+              begin
+                CGMessage(parser_e_operator_not_overloaded);
+                t:=cnothingnode.create;
+              end;
             exit;
           end;
 
@@ -773,10 +790,13 @@ implementation
         { stop when there are no operators found }
         if candidates.count=0 then
           begin
-            CGMessage2(parser_e_operator_not_overloaded_2,ld.typename,arraytokeninfo[optoken].str);
             candidates.free;
             ppn.free;
-            t:=cnothingnode.create;
+            if not (ocf_check_only in ocf) then
+              begin
+                CGMessage2(parser_e_operator_not_overloaded_2,ld.typename,arraytokeninfo[optoken].str);
+                t:=cnothingnode.create;
+              end;
             exit;
           end;
 
@@ -791,15 +811,18 @@ implementation
         { exit when no overloads are found }
         if cand_cnt=0 then
           begin
-            CGMessage2(parser_e_operator_not_overloaded_2,ld.typename,arraytokeninfo[optoken].str);
             candidates.free;
             ppn.free;
-            t:=cnothingnode.create;
+            if not (ocf_check_only in ocf) then
+              begin
+                CGMessage2(parser_e_operator_not_overloaded_2,ld.typename,arraytokeninfo[optoken].str);
+                t:=cnothingnode.create;
+              end;
             exit;
           end;
 
         { Multiple candidates left? }
-        if cand_cnt>1 then
+        if (cand_cnt>1) and not (ocf_check_only in ocf) then
           begin
             CGMessage(type_e_cant_choose_overload_function);
 {$ifdef EXTDEBUG}
@@ -811,6 +834,13 @@ implementation
               call }
           end;
         candidates.free;
+
+        if ocf_check_only in ocf then
+          begin
+            ppn.free;
+            result:=true;
+            exit;
+          end;
 
         addsymref(operpd.procsym);
 
@@ -824,7 +854,7 @@ implementation
       end;
 
 
-    function isbinaryoverloaded(var t : tnode) : boolean;
+    function isbinaryoverloaded(var t : tnode;ocf:toverload_check_flags) : boolean;
       var
         rd,ld   : tdef;
         optoken : ttoken;
@@ -918,11 +948,14 @@ implementation
         { load easier access variables }
         ld:=tbinarynode(t).left.resultdef;
         rd:=tbinarynode(t).right.resultdef;
-        if not isbinaryoperatoroverloadable(t.nodetype,ld,tbinarynode(t).left.nodetype,rd,tbinarynode(t).right.nodetype) then
+        if not (ocf_check_non_overloadable in ocf) and
+            not isbinaryoperatoroverloadable(t.nodetype,ld,tbinarynode(t).left.nodetype,rd,tbinarynode(t).right.nodetype) then
           exit;
 
         { operator overload is possible }
-        result:=true;
+        { if we only check for the existance of the overload, then we assume that
+          it is not overloaded }
+        result:=not (ocf_check_only in ocf);
 
         case t.nodetype of
            equaln:
@@ -967,17 +1000,20 @@ implementation
              optoken:=_OP_IN;
            else
              begin
-               CGMessage(parser_e_operator_not_overloaded);
-               t:=cnothingnode.create;
+               if not (ocf_check_only in ocf) then
+                 begin
+                   CGMessage(parser_e_operator_not_overloaded);
+                   t:=cnothingnode.create;
+                 end;
                exit;
              end;
         end;
 
         default_field := has_default_field(ld) or has_default_field(rd);
-        cand_cnt:=search_operator(optoken,(optoken<>_NE) and not default_field);
+        cand_cnt:=search_operator(optoken,(optoken<>_NE) and not default_field and not (ocf_check_only in ocf));
 
         { no operator found for "<>" then search for "=" operator }
-        if (cand_cnt=0) and (optoken=_NE) then
+        if (cand_cnt=0) and (optoken=_NE) and not (ocf_check_only in ocf) then
           begin
             ppn.free;
             ppn:=nil;
@@ -989,7 +1025,15 @@ implementation
         if (cand_cnt=0) then
           begin
             ppn.free;
-            t:=cnothingnode.create;
+            if not (ocf_check_only in ocf) then
+              t:=cnothingnode.create;
+            exit;
+          end;
+
+        if ocf_check_only in ocf then
+          begin
+            ppn.free;
+            result:=true;
             exit;
           end;
 
@@ -1083,6 +1127,8 @@ implementation
                   begin
                     if (ra_addr_taken in how) then
                       tabstractvarsym(tloadnode(p).symtableentry).addr_taken:=true;
+                    if (ra_different_scope in how) then
+                      tabstractvarsym(tloadnode(p).symtableentry).different_scope:=true;
                     if (tabstractvarsym(tloadnode(p).symtableentry).varregable <> vr_none) and
                        ((not records_only) or
                         (tabstractvarsym(tloadnode(p).symtableentry).vardef.typ = recorddef)) then

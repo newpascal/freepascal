@@ -438,7 +438,7 @@ var
 
 begin
   CreateTableWithFieldType(ftString,'VARCHAR(10)');
-  TestFieldDeclaration(ftString,11);
+  TestFieldDeclaration(ftString,10*DBConnector.CharSize+1);
 
   for i := 0 to testValuesCount-1 do
     TSQLDBConnector(DBConnector).Connection.ExecuteDirect('insert into FPDEV2 (FT) values (''' + testValues[i] + ''')');
@@ -934,8 +934,9 @@ var
   i             : integer;
 
 begin
+  // Firebird has limit 32765 bytes, so this is 8191 characters when using UNICODE character set
   CreateTableWithFieldType(ftString,'VARCHAR(9000)');
-  TestFieldDeclaration(ftString,9001);
+  TestFieldDeclaration(ftString,9000*DBConnector.CharSize+1);
 
   setlength(s,9000);
   for i := 1 to 9000 do
@@ -1006,7 +1007,7 @@ begin
   with TSQLDBConnector(DBConnector).Query do
     begin
     sql.clear;
-    sql.append('insert into FPDEV2 (plant,sampling_type,batch,sampling_datetime,status,batch_commentary) values (''ZUBNE PASTE'',''OTISCI POVR￿INA'',''000037756'',''2005-07-01'',''NE ODGOVARA'',''Ovdje se upisuje komentar o kontrolnom broju..............'')');
+    sql.append('insert into FPDEV2 (plant,sampling_type,batch,sampling_datetime,status,batch_commentary) values (''ZUBNE PASTE'',''OTISCI POVRŠINA'',''000037756'',''2005-07-01'',''NE ODGOVARA'',''Ovdje se upisuje komentar o kontrolnom broju..............'')');
     ExecSQL;
 
     sql.clear;

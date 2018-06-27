@@ -38,6 +38,9 @@ unit scandir;
         verbosity: longint;
         pmessage : pmessagestaterecord;
         alignment : talignmentinfo;
+        setalloc,
+        packenum,
+        packrecords : shortint;
       end;
 
     type
@@ -973,8 +976,10 @@ unit scandir;
             current_scanner.skipspace;
             current_scanner.readstring;
             s:=pattern;
-            if c in ['+','-'] then
-              s:=s+current_scanner.readstate;
+            { don't combine the assignments to s as the method call will be
+              done before "pattern" is assigned to s and the method changes
+              "pattern" }
+            s:=s+current_scanner.readoptionalstate('+');
             if not SetCompileModeSwitch(s,false) then
               Message1(scan_w_illegal_switch,s)
           end;
@@ -1178,6 +1183,9 @@ unit scandir;
       recordpendinglocalfullswitch(switchesstatestack[switchesstatestackpos].localsw);
       recordpendingverbosityfullswitch(switchesstatestack[switchesstatestackpos].verbosity);
       recordpendingalignmentfullswitch(switchesstatestack[switchesstatestackpos].alignment);
+      recordpendingpackenum(switchesstatestack[switchesstatestackpos].packenum);
+      recordpendingpackrecords(switchesstatestack[switchesstatestackpos].packrecords);
+      recordpendingsetalloc(switchesstatestack[switchesstatestackpos].setalloc);
       pendingstate.nextmessagerecord:=switchesstatestack[switchesstatestackpos].pmessage;
       { Reset verbosity and forget previous pmeesage }
       RestoreLocalVerbosity(nil);
@@ -1216,6 +1224,9 @@ unit scandir;
       switchesstatestack[switchesstatestackpos].pmessage:= current_settings.pmessage;
       switchesstatestack[switchesstatestackpos].verbosity:=status.verbosity;
       switchesstatestack[switchesstatestackpos].alignment:=current_settings.alignment;
+      switchesstatestack[switchesstatestackpos].setalloc:=current_settings.setalloc;
+      switchesstatestack[switchesstatestackpos].packenum:=current_settings.packenum;
+      switchesstatestack[switchesstatestackpos].packrecords:=current_settings.packrecords;
       Inc(switchesstatestackpos);
     end;
 

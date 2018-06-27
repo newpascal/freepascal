@@ -122,21 +122,27 @@ Put + after a boolean switch option to enable it, - to disable it
   @&lt;x&gt;    : Read compiler options from file &lt;x&gt; in addition to the default pas2js.cfg
   -B      : Rebuild all
   -d&lt;x&gt;   : Defines the symbol &lt;x&gt;. Optional: -d&lt;x&gt;:=&lt;value&gt;
-  -i&lt;x&gt;   : Write information and halt. &lt;x&gt; is a combination of the following letters:
-    D     : Write compiler date
-    SO    : Write compiler OS
-    SP    : Write compiler host processor
-    TO    : Write target platform
-    TP    : Write target processor
-    V     : Write short compiler version
-    W     : Write full compiler version
+  -i&lt;x&gt;   : Write information and halt. &lt;x&gt; is a combination of the following:
+    -iD   : Write compiler date
+    -iSO  : Write compiler OS
+    -iSP  : Write compiler host processor
+    -iTO  : Write target platform
+    -iTP  : Write target processor
+    -iV   : Write short compiler version
+    -iW   : Write full compiler version
+    -ic   : Write list of supported JS processors usable by -P&lt;x&gt;
+    -io   : Write list of supported optimizations usable by -Oo&lt;x&gt;
+    -it   : Write list of supported targets usable by -T&lt;x&gt;
   -C&lt;x&gt;   : Code generation options. &lt;x&gt; is a combination of the following letters:
     o     : Overflow checking
     r     : Range checking
     R     : Object checks. Verify method calls and object type casts.
   -F...   Set file names and paths:
-   -Fe&lt;x&gt; : Redirect output to &lt;x&gt;
+   -Fe&lt;x&gt; : Redirect output to file &lt;x&gt;. UTF-8 encoded.
+   -FE&lt;x&gt; : Set main output path to &lt;x&gt;
    -Fi&lt;x&gt; : Add &lt;x&gt; to include paths
+   -FN&lt;x&gt; : add &lt;x&gt; to namespaces. Namespaces with trailing - are removed.
+                  Delphi calls this flag "unit scope names".
    -Fu&lt;x&gt; : Add &lt;x&gt; to unit paths
    -FU&lt;x&gt; : Set unit output path to &lt;x&gt;
   -I&lt;x&gt;   : Add &lt;x&gt; to include paths, same as -Fi
@@ -146,6 +152,7 @@ Put + after a boolean switch option to enable it, - to disable it
      -Jeconsole : Console codepage. Default.
      -Jesystem  : System codepage. On non Windows console and system are the same.
      -Jeutf-8   : Unicode UTF-8. Default when using -Fe.
+     -JeJSON    : Output compiler messages as JSON. Logo etc are outputted as-is.
    -Ji&lt;x&gt; : Insert JS file &lt;x&gt; into main JS file. E.g. -Jirtl.js. Can be given multiple times.
    -Jl    : lower case identifiers
    -Jm    : generate source maps
@@ -161,8 +168,7 @@ Put + after a boolean switch option to enable it, - to disable it
   -l      : Write logo
   -MDelphi: Delphi 7 compatibility mode
   -MObjFPC: FPC's Object Pascal compatibility mode (default)
-  -NS&lt;x&gt;  : add &lt;x&gt; to namespaces. Namespaces with trailing - are removed.
-                  Delphi calls this flag "unit scope names".
+  -NS&lt;x&gt;  : obsolete: add &lt;x&gt; to namespaces. Same as -FN&lt;x&gt;
   -n      : Do not read the default config files
   -o&lt;x&gt;   : Change main JavaScript file to &lt;x&gt;, "." means stdout
   -O&lt;x&gt;   : Optimizations:
@@ -180,26 +186,32 @@ Put + after a boolean switch option to enable it, - to disable it
     a     : Turn on assertions
     c     : Support operators like C (*=,+=,/= and -=)
     d     : Same as -Mdelphi
+    m     : Enables macro replacements
     2     : Same as -Mobjfpc (default)
+  -SI&lt;x&gt;   : Set interface style to &lt;x&gt;
+    -SIcom   : COM compatible interface (default)
+    -SIcorba : CORBA compatible interface
   -T&lt;x&gt;   : Set target platform, case insensitive.
     -Tbrowser : default
     -Tnodejs  : add pas.run(), includes -Jc
   -u&lt;x&gt;   : Undefines the symbol &lt;x&gt;
   -v&lt;x&gt;   : Be verbose. &lt;x&gt; is a combination of the following letters:
-    e     : show errors (default)
-    w     : show warnings
-    n     : show notes
-    h     : show hints
-    i     : show info
-    l     : show line numbers
-    a     : show everything
-    0     : show nothing (except errors)
-    b     : show file names with full path
-    c     : show conditionals
-    t     : show tried/used files
-    d     : show debug notes and info, enables -vni
-    q     : show message numbers
-    x     : show used tools
+    e     : Show errors (default)
+    w     : Show warnings
+    n     : Show notes
+    h     : Show hints
+    i     : Show info
+    l     : Show line numbers, needs -vi
+    a     : Show everything
+    0     : Show nothing (except errors)
+    b     : Show file names with full path
+    c     : Show conditionals
+    t     : Show tried/used files
+    d     : Show debug notes and info, enables -vni
+    q     : Show message numbers
+    x     : Show used tools
+    v     : Write pas2jsdebug.log with lots of debugging info
+    z     : Write messages to stderr, -o. still uses stdout.
   -vm&lt;x&gt;,&lt;y&gt;: Do not show messages numbered &lt;x&gt; and &lt;y&gt;.
   -?      : Show this help
   -h      : Show this help
@@ -1430,8 +1442,10 @@ function(){
     <ul>
     <li>Supported features of dynamic arrays: SetLength(), Length(), equal/notequal nil, low(), high(),
     assigned(), concat(), copy(), insert(), delete(), multi dimensional, array of record</li>
-    <li>Dynamic array constants. E.g. const a: array of byte = (1,2)</li>
-    <li>Supported features of static arrays: length(), low(), high(), assigned(), concat(), copy(), const, except const records </li>
+    <li>Dynamic array constants. E.g. in mode ObjFPC <i>const a: array of byte = (1,2)</i>.
+      In mode Delphi you must use square brackets, <i>... = [1,2]</i></li>
+    <li>Supported features of static arrays: length(), low(), high(),
+      assigned(), concat(), copy(), const, const records </li>
     <li>Open arrays are implemented as dynamic arrays.</li>
     <li>Calling <i>Concat()</i> with only one array simply returns the array
      (no cloning). Calling it with multiple arrays creates a clone.
@@ -1440,6 +1454,9 @@ function(){
      For compatibility comparing an array with <i>nil</i> checks for <i>length(a)>0</i>.</li>
     <li><i>function Assigned(array): boolean</i>  results true iff <i>length(array)>0</i>.</li>
     <li>Not yet implemented: array of const.</li>
+    <li>Assignation using constant array, e.g. <i>a:=[1,1,2];</i></li>
+    <li>String like operation: + operator concatenates arrays. e.g. <i>a:=[1]+[2];</i>.
+      This is controlled by modeswitch arrayoperators, which is enabled in mode delphi.</li>
     <li><i>function copy(array,start=0,count=max): array</i></li>
     <li><i>procedure insert(item,var array,const position)</i></li>
     <li><i>procedure delete(var array,const start,count)</i></li>
@@ -1851,6 +1868,16 @@ function(){
     <li>set types are translated to a for loop, while const sets and set variables are enumerated via a for(...in...) loop.</li>
     <li>string and array variables are enumerated via for loops.</li>
     <li>for aString in ArrayOfString do ...</li>
+    <li><i>for key in jsvalue do</i> translates to <i>for (key in jsvalue){}</i></li>
+    <li><i>for key in ExternalClass do</i><br>
+      <ul>
+        <li>If the externalclass has a ''length'' and a matching default property
+        it uses the enumeration of an array. For example
+          <i>for value in TJSArray do</i> enumerates the values of the array, not the index.
+          It checks if the array is nil.</li>
+        <li>Otherwise it translates to <i>for (key in externalclass){}</i>,
+        which enumerates the keys (property names) of the JS object.</li>
+       </ul>
     </ul>
     The class GetEnumerator function is translated like this:
     <table class="sample">
@@ -1907,8 +1934,6 @@ function(){
     Notes:
     <ul>
     <li>Not supported: operator Enumerator, member modifier enumerator (i.e. custom Current and MoveNext)</li>
-    <li><i>for key in jsvalue do</i> translates to <i>for (key in jsvalue){}</i></li>
-    <li><i>for key in externalclass do</i> translates to <i>for (key in externalclass){}</i></li>
     </ul>
     </div>
 
@@ -2393,9 +2418,11 @@ function(){
 type
   TWrapper = class
   private
-    // let's assume this object has a $Handle and an $id
+    // let's assume this object has the properties "$Handle", "$id", and "0"
   public
     Id: NativeInt; external name '$Id';
+    x: NativeInt; external name '[0]';
+    y: NativeInt; external name '["A B"]';
     function GetState(typ: longint): NativeInt; external name '$Handle.GetState';
     procedure DoIt;
   end;
@@ -2407,7 +2434,9 @@ var
   W: TWrapper;
 Begin
   W.Id := 2;
-  W.GetState(3);
+  W.x := 3;
+  W.y := 4;
+  W.GetState(5);
 End.
 </pre>
           </td>
@@ -2424,7 +2453,9 @@ function(){
   this.W = null;
   $mod.$main = function(){
     $mod.W.$Id = 2;
-    $mod.W.$Handle.GetState(3);
+    $mod.W[0] = 3;
+    $mod.W["A B"] = 4;
+    $mod.W.$Handle.GetState(5);
   };
 },
 []);
@@ -2433,6 +2464,9 @@ function(){
         </tr>
       </tbody>
     </table>
+    <ul>
+      <li>Non identifiers like "0" or "A B" must be enclosed in brackets.</li>
+    </ul>
     </div>
 
     <div class="section">
@@ -2511,6 +2545,10 @@ End.
       <li>An external class can descend from another external class.</li>
       <li>Since class types are JS objects it is possible to typecast a class type
       to the JS Object, e.g. TJSObject(TObject)</li>
+      <li>You can typecast function addresses and function references to JS
+      function, e.g. <i>TJSFunction(@SomeProc)</i>, <i>TJSFunction(OnClick)</i>.
+      Keep in mind that typecasting a method address creates a function wrapper
+      to bind the Self argument.</li>
     </ul>
     </div>
 
@@ -2729,54 +2767,59 @@ End.
     <li>{$IfDef <i>MacroName</i>}: if <i>MacroName</i> is not defined, skip to next $Else or $EndIf. Can be nested.</li>
     <li>{$IfNDef <i>MacroName</i>}: as $IfDef, except negated.</li>
     <li>{$If <i>boolean expression</i>}: if <i>expression</i> evaluates to true
-    (not '0'), skip to next $Else or $EndIf. Can be nested.<br>
-    Supported functions and operators:<br>
+      (not '0'), skip to next $Else or $EndIf. Can be nested.<br>
+      Supported functions and operators:<br>
       <ul>
-      <li>macro - replaced by its value, a simple define has value '1'</li>
-      <li>defined(macro) - '1' if defined, '0' otherwise</li>
-      <li>undefined(macro) - as <i>not defined(macro)</i></li>
-      <li>option(letter) - same as <i>{$IFOpt letter+}</i></li>
-      <li>not - first level of precedence</li>
-      <li>*, /, div, mod, and, shl, shr - second level of precedence</li>
-      <li>+, -, or, xor - third level of precedence</li>
-      <li>=, &lt;&gt;, &lt;, &gt;, &lt;=, &gt;= - fourth level of precedence</li>
-      <li>If the operands can be converted to numbers they are combined as numbers, otherwise as strings.</li>
+        <li>macro - replaced by its value, a simple define has value '1'</li>
+        <li>defined(macro) - '1' if defined, '0' otherwise</li>
+        <li>undefined(macro) - as <i>not defined(macro)</i></li>
+        <li>option(letter) - same as <i>{$IFOpt letter+}</i></li>
+        <li>not - first level of precedence</li>
+        <li>*, /, div, mod, and, shl, shr - second level of precedence</li>
+        <li>+, -, or, xor - third level of precedence</li>
+        <li>=, &lt;&gt;, &lt;, &gt;, &lt;=, &gt;= - fourth level of precedence</li>
+        <li>If the operands can be converted to numbers they are combined as numbers, otherwise as strings.</li>
       </ul>
-    Not supported functions and operators:<br>
+      Not supported functions and operators:<br>
       <ul>
-      <li>defined(Pascal identifier), undefined(Pascal identifier)</li>
-      <li>declared(Pascal identifier)</li>
-      <li>in operator</li>
+        <li>defined(Pascal identifier), undefined(Pascal identifier)</li>
+        <li>declared(Pascal identifier)</li>
+        <li>in operator</li>
       </ul>
     </li>
     <li>{$IfOpt <i>Letter+,-</i>}: if <i>expression</i> evaluates to true (not '0'), skip to next $Else or $EndIf. Can be nested.</li>
-    <li>{$Else}: If previous $IfDef was skipped, execute next block, otherwise skip.</li>
+    <li>{$Else}: If previous $IfDef, $If or $IfOpt was skipped, execute next block, otherwise skip.</li>
     <li>{$ElseIf <i>boolean expression</i>}: As $Else, except with an extra expression like $if to test. There can be multiple $elseif.</li>
     <li>{$EndIf}: ends an $IfDef block</li>
     <li>{$mode delphi} or {$mode objfpc}: Same as -Mdelphi or -Mobjfpc, but only for this unit. You can use units of both modes in a program. If present must be at the top of the unit, or after the module name.</li>
     <li>{$modeswitch externalclass}: allow declaring external classes</li>
+    <li>{$modeswitch arrayoperators}: allow + operator to concatenate arrays, default in mode delphi</li>
     <li>{$macro on|off} enables macro replacements. Only macros with a value are replaced. Macros are never replaced inside directives.</li>
     <li>{$I filename} or {$include filename} - insert include file</li>
     <li>{$Warnings on|off}</li>
     <li>{$Notes on|off}</li>
     <li>{$Hints on|off}</li>
-    <li>{$Error text}</li>
-    <li>{$Warning text}</li>
-    <li>{$Note text}</li>
-    <li>{$Hint text}</li>
-    <li>{$Message hint-text}</li>
-    <li>{$Message hint|note|warn|error|fatal text}</li>
+    <li>{$Error text} : emit an error</li>
+    <li>{$Warning text} : emit a warning</li>
+    <li>{$Note text} : emit a note</li>
+    <li>{$Hint text} : emit a hint</li>
+    <li>{$Message hint-text} :  emit a hint</li>
+    <li>{$Message hint|note|warn|error|fatal text} : emit a message</li>
     <li>{$M+}, {$TypeInfo on}: switches default visibility for class members from public to published</li>
     <li>{$ScopedEnums on|off} disabled(default): propagate enums to global scope, enable: needs fqn e.g. TEnumType.EnumValue.</li>
+    <li>{$C+} generate code for assertions</li>
+    <li>{$H+}, but not {$H-}</li>
+    <li>{$J-}, {$WriteableConst off}: Typed const become readonly. For example <i>const i:byte=3; ... i:=4</i> creates a compile time error.</li>
+    <li>{$M+} : allow published members
+    <li>{$Q+} :  not yet supported, ignored
     <li>{$R+}, {$RangeChecks on}: compile time range check hints become errors
-    and add runtime range checks for assignments.</li>
+      and add runtime range checks for assignments.</li>
     <li>{$ObjectChecks on|off}:
       <ul>
         <li>Verify method calls, i.e. check at runtime in every method if <i>Self</i> is a descendant class.</li>
         <li>Check type casts, e.g. <i>TBird(AnObject)</i> becomes <i>AnObject as TBird</i></li>
       </ul>
     </li>
-    <li>{$J-}, {$WriteableConst off}: Typed const become readonly. For example <i>const i:byte=3; ... i:=4</i> creates a compile time error.</li>
     </ul>
     Defines:
     <ul>
@@ -2840,12 +2883,13 @@ End.
     e.g. <i>uses unit1 in 'sub/Unit1.pas'</i>.<br>
     In <i>$mode objfpc</i> units can use in-filenames too and
     alias are allowed, e.g. <i>uses foo in 'bar.pas'</i>.</li>
-    <li>The built-in procedure <b>str</b> works with boolean, integer, float and enumvalue.<br>
+    <li>The intrinsic procedure <b>str</b> works with boolean, integer, float and enumvalue.<br>
     Additionally there is <b>str</b> function, that takes an arbitrary number of
     arguments and returns a concatenated string. It supports string as parameter too.
     For example s:=str(i,' ',d:1:5).<br>
     Width and precision is supported. str(i:10) will add spaces to the left to fill up to 10 characters.</b>
     str(aDouble:1:5) returns a string in decimal format with 5 digits for the fraction.</li>
+    <li>Intrinsic procedure WriteStr(out s: string; params...)</li>
     </ul>
     </div>
 
@@ -2856,7 +2900,6 @@ End.
     <li>Anonymous functions</li>
     <li>Array of const</li>
     <li>Attributes</li>
-    <li>Currency</li>
     <li>Enums with custom values</li>
     <li>Generics</li>
     <li>Global properties</li>
@@ -2867,6 +2910,7 @@ End.
     <li>Objects</li>
     <li>Operator overloading</li>
     <li>Pointer arithmetic</li>
+    <li>Package</li>
     <li>Resources</li>
     <li>RTTI extended, $RTTI</li>
     <li>Runtime checks: Overflow -Co, $Q</li>

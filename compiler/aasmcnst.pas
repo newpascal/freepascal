@@ -348,6 +348,12 @@ type
      { emits a tasmlabofs as returned by emit_*string_const }
      procedure emit_string_offset(const ll: tasmlabofs; const strlength: longint; const st: tstringtype; const winlikewidestring: boolean; const charptrdef: tdef);virtual;
 
+     { emits a tasmlabofs as returned by begin_dynarray_const }
+     procedure emit_dynarray_offset(const ll:tasmlabofs;const arrlength:asizeint;const arrdef:tdef);virtual;
+     { starts a dynamic array constant so that its data can be emitted directly afterwards }
+     function begin_dynarray_const(arrdef:tdef;var startlab:tasmlabel;out arrlengthloc:ttypedconstplaceholder):tasmlabofs;virtual;
+     function end_dynarray_const(arrdef:tdef;arrlength:asizeint;arrlengthloc:ttypedconstplaceholder):tdef;virtual;
+
      { emit a shortstring constant, and return its def }
      function emit_shortstring_const(const str: shortstring): tdef;
      { emit a pchar string constant (the characters, not a pointer to them), and return its def }
@@ -444,6 +450,12 @@ type
        supported this is equal to the header size }
      class function get_string_symofs(typ: tstringtype; winlikewidestring: boolean): pint; virtual;
 
+     { returns the offset of the array data relatve to dynamic array constant
+       labels. On most platforms, this is 0 (with the header at a negative
+       offset), but on some platforms such negative offsets are not supported
+       and thus this is equal to the header size }
+     class function get_dynarray_symofs:pint;virtual;
+
      { set the fieldvarsym whose data we will emit next; needed
        in case of variant records, so we know which part of the variant gets
        initialised. Also in case of objects, because the fieldvarsyms are spread
@@ -453,9 +465,10 @@ type
        record (also if that field is a nested anonymous record) }
      property next_field_name: TIDString write set_next_field_name;
     protected
-     { this one always return the actual offset, called by the above (and
+     { these ones always return the actual offset, called by the above (and
        overridden versions) }
      class function get_string_header_size(typ: tstringtype; winlikewidestring: boolean): pint;
+     class function get_dynarray_header_size:pint;
    end;
    ttai_typedconstbuilderclass = class of ttai_typedconstbuilder;
 
@@ -947,7 +960,14 @@ implementation
            new_section(prelist,section,secname,alignment);
          end
        else if tcalo_new_section in options then
-         new_section(prelist,section,secname,alignment)
+         begin
+           { insert ait_cutobject for smart-linking on targets
+             that do not support smarlinking based on sections,
+             like msdos }
+           if not (tf_smartlink_sections in target_info.flags) then
+             maybe_new_object_file(prelist);
+           new_section(prelist,section,secname,alignment);
+         end
        else
          prelist.concat(cai_align.Create(alignment));
 
@@ -1117,6 +1137,16 @@ implementation
      end;
 
 
+   class function ttai_typedconstbuilder.get_dynarray_symofs:pint;
+     begin
+       { darwin's linker does not support negative offsets }
+       if not (target_info.system in systems_darwin) then
+         result:=0
+       else
+         result:=get_dynarray_header_size;
+     end;
+
+
    class function ttai_typedconstbuilder.get_string_header_size(typ: tstringtype; winlikewidestring: boolean): pint;
      var
        ansistring_header_size: pint;
@@ -1149,6 +1179,16 @@ implementation
          else
            result:=0;
        end;
+     end;
+
+
+   class function ttai_typedconstbuilder.get_dynarray_header_size:pint;
+     begin
+       result:=
+         { reference count }
+         ptrsinttype.size +
+         { high value }
+         sizesinttype.size;
      end;
 
 
@@ -1674,6 +1714,53 @@ implementation
      end;
 
 
+   procedure ttai_typedconstbuilder.emit_dynarray_offset(const ll:tasmlabofs;const arrlength:asizeint;const arrdef:tdef);
+     begin
+       emit_tai(tai_const.create_sym_offset(ll.lab,ll.ofs),arrdef);
+     end;
+
+
+   function ttai_typedconstbuilder.begin_dynarray_const(arrdef:tdef;var startlab:tasmlabel;out arrlengthloc:ttypedconstplaceholder):tasmlabofs;
+     var
+       dynarray_symofs: asizeint;
+       elesize: word;
+     begin
+       result.lab:=startlab;
+       result.ofs:=0;
+       { pack the data, so that we don't add unnecessary null bytes after the
+         constant string }
+       begin_anonymous_record('',1,sizeof(TConstPtrUInt),1,1);
+       dynarray_symofs:=get_dynarray_symofs;
+       { what to do if ptrsinttype <> sizesinttype??? }
+       emit_tai(tai_const.create_sizeint(-1),ptrsinttype);
+       inc(result.ofs,ptrsinttype.size);
+       arrlengthloc:=emit_placeholder(sizesinttype);
+       inc(result.ofs,sizesinttype.size);
+       if dynarray_symofs=0 then
+         begin
+           { results in slightly more efficient code }
+           emit_tai(tai_label.create(result.lab),arrdef);
+           result.ofs:=0;
+           { create new label of the same kind (including whether or not the
+             name starts with target_asm.labelprefix in case it's AB_LOCAL,
+             so we keep the difference depending on whether the original was
+             allocated via getstatic/getlocal/getglobal datalabel) }
+           startlab:=tasmlabel.create(current_asmdata.AsmSymbolDict,startlab.name+'$dynarrlab',startlab.bind,startlab.typ);
+         end;
+       { sanity check }
+       if result.ofs<>dynarray_symofs then
+         internalerror(2018020601);
+     end;
+
+
+   function ttai_typedconstbuilder.end_dynarray_const(arrdef:tdef;arrlength:asizeint;arrlengthloc:ttypedconstplaceholder):tdef;
+     begin
+       { we emit the high value, not the count }
+       arrlengthloc.replace(tai_const.Create_sizeint(arrlength-1),sizesinttype);
+       result:=end_anonymous_record;
+     end;
+
+
    function ttai_typedconstbuilder.emit_shortstring_const(const str: shortstring): tdef;
      begin
        { we use an arraydef instead of a shortstringdef, because we don't have
@@ -2047,7 +2134,7 @@ implementation
    procedure tlowleveltypedconstplaceholder.replace(ai: tai; d: tdef);
      begin
        if d<>def then
-         internalerror(2015091001);
+         internalerror(2015091007);
        list.insertafter(ai,insertpos);
        list.remove(insertpos);
        insertpos.free;

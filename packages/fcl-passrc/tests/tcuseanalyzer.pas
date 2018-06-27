@@ -74,6 +74,7 @@ type
     procedure TestM_Class;
     procedure TestM_ClassForward;
     procedure TestM_Class_Property;
+    procedure TestM_Class_PropertyProtected;
     procedure TestM_Class_PropertyOverride;
     procedure TestM_Class_MethodOverride;
     procedure TestM_Class_MethodOverride2;
@@ -90,6 +91,7 @@ type
     procedure TestM_Hint_UnitUsed;
     procedure TestM_Hint_UnitUsedVarArgs;
     procedure TestM_Hint_ParameterNotUsed;
+    procedure TestM_Hint_ParameterInOverrideNotUsed;
     procedure TestM_Hint_ParameterAssignedButNotReadVarParam;
     procedure TestM_Hint_ParameterNotUsed_Abstract;
     procedure TestM_Hint_ParameterNotUsedTypecast;
@@ -145,6 +147,7 @@ type
     procedure TestWP_PublishedProperty;
     procedure TestWP_BuiltInFunctions;
     procedure TestWP_TypeInfo;
+    procedure TestWP_TypeInfo_PropertyEnumType;
     procedure TestWP_ForInClass;
     procedure TestWP_AssertSysUtils;
     procedure TestWP_RangeErrorSysUtils;
@@ -152,6 +155,7 @@ type
     procedure TestWP_ClassInterface_OneWayIntfToObj;
     procedure TestWP_ClassInterface_Delegation;
     procedure TestWP_ClassInterface_COM;
+    procedure TestWP_ClassInterface_COM_Unit;
     procedure TestWP_ClassInterface_Typeinfo;
     procedure TestWP_ClassInterface_TGUID;
 
@@ -1020,6 +1024,31 @@ begin
   AnalyzeProgram;
 end;
 
+procedure TTestUseAnalyzer.TestM_Class_PropertyProtected;
+begin
+  StartUnit(false);
+  Add([
+  'interface',
+  'type',
+  '  {#integer_used}integer = longint;',
+  '  {tobject_used}TObject = class',
+  '  private',
+  '    {#fb_used}Fb: integer;',
+  '    {#fc_used}Fc: integer;',
+  '    {#fd_used}Fd: integer;',
+  '    {#fe_notused}Fe: integer;',
+  '    function {#iscstored_used}IsCStored: boolean;',
+  '  protected',
+  '    property {#C_used}C: integer read FC write FD stored IsCStored;',
+  '  end;',
+  'implementation',
+  'function TObject.IsCStored: boolean;',
+  'begin',
+  '  Result:=Fb<>0;',
+  'end;']);
+  AnalyzeUnit;
+end;
+
 procedure TTestUseAnalyzer.TestM_Class_PropertyOverride;
 begin
   StartProgram(false);
@@ -1362,6 +1391,32 @@ begin
   Add('  DoIt(1);');
   AnalyzeProgram;
   CheckUseAnalyzerHint(mtHint,nPAParameterNotUsed,'Parameter "i" not used');
+  CheckUseAnalyzerUnexpectedHints;
+end;
+
+procedure TTestUseAnalyzer.TestM_Hint_ParameterInOverrideNotUsed;
+begin
+  StartProgram(true);
+  Add([
+  'type',
+  '  TObject = class',
+  '    procedure DoIt(i: longint); virtual;',
+  '  end;',
+  '  TBird = class',
+  '    procedure DoIt(j: longint); override;',
+  '  end;',
+  'procedure TObject.DoIt(i: longint);',
+  'begin',
+  'end;',
+  'procedure TBird.DoIt(j: longint);',
+  'begin',
+  'end;',
+  'var b: TBird;',
+  'begin',
+  '  TObject(b).DoIt(1);']);
+  AnalyzeProgram;
+  CheckUseAnalyzerHint(mtHint,nPAParameterInOverrideNotUsed,'Parameter "i" not used');
+  CheckUseAnalyzerHint(mtHint,nPAParameterInOverrideNotUsed,'Parameter "j" not used');
   CheckUseAnalyzerUnexpectedHints;
 end;
 
@@ -2467,6 +2522,33 @@ begin
   AnalyzeWholeProgram;
 end;
 
+procedure TTestUseAnalyzer.TestWP_TypeInfo_PropertyEnumType;
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  TObject = class end;',
+  '  {#talign_typeinfo}TAlign = (alLeft,alRight);',
+  '  {$M+}',
+  '  TPersistent = class',
+  '  private',
+  '    FAlign: TAlign;',
+  '  public',
+  '    property {#tpersistent_align_notypeinfo}Align: TAlign read FAlign write FAlign;',
+  '  end;',
+  '  {$M-}',
+  '  {#tbutton_typeinfo}TButton = class(TPersistent)',
+  '  published',
+  '    property {#tbutton_align_typeinfo}Align;',
+  '  end;',
+  'var',
+  '  {#p_notypeinfo}p: pointer;',
+  'begin',
+  '  p:=typeinfo(TButton);',
+  '']);
+  AnalyzeWholeProgram;
+end;
+
 procedure TTestUseAnalyzer.TestWP_ForInClass;
 begin
   StartProgram(false);
@@ -2714,6 +2796,63 @@ begin
   'begin',
   '  i:=e;',
   '  if i=nil then ;',
+  '']);
+  AnalyzeWholeProgram;
+end;
+
+procedure TTestUseAnalyzer.TestWP_ClassInterface_COM_Unit;
+begin
+  AddModuleWithIntfImplSrc('SysUtils.pas',
+    LinesToStr([
+    '{$interfaces com}',
+    'type',
+    '  {#tguid_used}TGuid = string;',
+    '  {#integer_used}integer = longint;',
+    '  {#iunknown_used}IUnknown = interface',
+    '    function {#iunknown_queryintf_used}QueryInterface(const iid: TGuid; out obj): Integer;',
+    '    function {#iunknown_addref_used}_AddRef: Integer;',
+    '    function {#iunknown_release_used}_Release: Integer;',
+    '    procedure {#iunknown_doit_notused}DoIt;',
+    '  end;',
+    '  IBird = interface(IUnknown)',
+    '    procedure {#ibird_fly_used}Fly;',
+    '  end;',
+    '  {#tobject_used}TObject = class',
+    '  end;',
+    '  {#tbird_used}TBird = class(TObject,IBird)',
+    '  strict private',
+    '    function {#tbird_queryintf_used}QueryInterface(const iid: TGuid; out obj): Integer;',
+    '    function {#tbird_addref_used}_AddRef: Integer;',
+    '    function {#tbird_release_used}_Release: Integer;',
+    '    procedure {#tbird_doit_notused}DoIt;',
+    '    procedure {#tbird_fly_used}Fly;',
+    '  end;',
+    '']),
+    LinesToStr([
+    'function TBird.QueryInterface(const iid: TGuid; out obj): Integer;',
+    'begin',
+    '  if iid='''' then obj:=nil;',
+    '  Result:=0;',
+    'end;',
+    'function TBird._AddRef: Integer; begin Result:=1; end;',
+    'function TBird._Release: Integer; begin Result:=2; end;',
+    'procedure TBird.DoIt; begin end;',
+    'procedure TBird.Fly; begin end;',
+    '']) );
+
+  StartProgram(true);
+  Add([
+  'uses sysutils;',
+  'type',
+  '  {#teagle_used}TEagle = class(TBird)',
+  '  end;',
+  'var',
+  '  e: TEagle;',
+  '  i: IBird;',
+  'begin',
+  '  i:=e;',
+  '  if i=nil then ;',
+  '  i.Fly;',
   '']);
   AnalyzeWholeProgram;
 end;

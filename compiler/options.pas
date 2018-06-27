@@ -1706,6 +1706,10 @@ begin
                          else
                            include(init_settings.globalswitches,cs_use_lineinfo);
                        end;
+                     'm' :
+                       begin
+                         paratargetdbg:=dbg_codeview;
+                       end;
                      'o' :
                        begin
                          if not UpdateDebugStr(copy(more,j+1,length(more)),init_settings.debugswitches) then
@@ -3209,6 +3213,16 @@ begin
     end;
 {$endif i8086}
 
+{$ifndef i8086_link_intern_debuginfo}
+  if (cs_debuginfo in init_settings.moduleswitches) and
+     (target_info.system in [system_i8086_msdos,system_i8086_win16,system_i8086_embedded]) and
+     not (cs_link_extern in init_settings.globalswitches) then
+    begin
+      Message(option_debug_info_requires_external_linker);
+      include(init_settings.globalswitches,cs_link_extern);
+    end;
+{$endif i8086_link_intern_debuginfo}
+
   if (paratargetdbg in [dbg_dwarf2,dbg_dwarf3]) and
      not(target_info.system in (systems_darwin+[system_i8086_msdos,system_i8086_embedded])) then
     begin
@@ -3588,7 +3602,6 @@ procedure read_arguments(cmd:TCmdStr);
         def_system_macro('FPC_HAS_INTERNAL_ABS_INT64');
       {$endif i8086 or i386 or x86_64 or powerpc64 or aarch64}
 
-        def_system_macro('FPC_HAS_MANAGEMENT_OPERATORS');
         def_system_macro('FPC_HAS_UNICODESTRING');
         def_system_macro('FPC_RTTI_PACKSET1');
         def_system_macro('FPC_HAS_CPSTRING');
