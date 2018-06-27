@@ -51,6 +51,9 @@ interface
        { special for handling procedure vars }
        getprocvardef : tprocvardef = nil;
 
+       { special for handling default field }
+       getdefaultfielddef : tfieldvarsym = nil;
+
     var
        { for operators }
        optoken : ttoken;

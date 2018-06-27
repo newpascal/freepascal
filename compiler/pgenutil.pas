@@ -145,6 +145,7 @@ uses
                   recorddef:
                     { delphi has own fantasy about record constraint
                       (almost non-nullable/non-nilable value type) }
+                    {NEWPASCAL_MOD
                     if m_delphi in current_settings.modeswitches then
                       case paradef.typ of
                         floatdef,enumdef,orddef:
@@ -159,6 +160,23 @@ uses
                       end
                     else
                       MessagePos(filepos,type_e_record_type_expected);
+                    }
+                    case paradef.typ of
+                      floatdef,enumdef,orddef,stringdef,setdef,variantdef,filedef:
+                        continue;
+                      arraydef:
+                        if ado_IsDynamicArray in tarraydef(paradef).arrayoptions then
+                          MessagePos(filepos,type_e_record_type_expected)
+                        else
+                          continue;
+                      objectdef:
+                        if tobjectdef(paradef).objecttype = odt_object then
+                          continue
+                        else
+                          MessagePos(filepos,type_e_record_type_expected);
+                    else
+                      MessagePos(filepos,type_e_record_type_expected);
+                    end;
                   objectdef:
                     case tobjectdef(formaldef).objecttype of
                       odt_class,

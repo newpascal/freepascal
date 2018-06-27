@@ -1326,8 +1326,20 @@ implementation
 
          if isbinaryoverloaded(hp,[]) then
            begin
-              result:=hp;
-              exit;
+             if hp.nodetype=nothingn then
+             begin
+               hp.free;
+               hp:=self;
+               if isdefaultoverloaded(hp) then
+               begin
+                 Result:=taddnode(hp).pass_typecheck;
+                 exit;
+               end;
+             end else
+             begin
+               result:=hp;
+               exit;
+             end 
            end;
          { Stop checking when an error was found in the operator checking }
          if codegenerror then

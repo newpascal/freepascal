@@ -289,13 +289,15 @@ implementation
              if assigned(tstoreddef(def_from).genconstraintdata) or
                  assigned(tstoreddef(def_to).genconstraintdata) then
                begin
-                 if def_from.typ<>def_to.typ then
-                   begin
-                     { not compatible anyway }
-                     doconv:=tc_not_possible;
-                     compare_defs_ext:=te_incompatible;
-                     exit;
-                   end;
+                 { won't work for class operatos like Equal for generic record
+                   related to bug #30534 and 24073, temporary commented }
+                 // if (def_from.typ<>def_to.typ) then
+                 //  begin
+                 //    { not compatible anyway }
+                 //    doconv:=tc_not_possible;
+                 //    compare_defs_ext:=te_incompatible;
+                 //    exit;
+                 //  end;
 
                  { maybe we are in generic type declaration/implementation.
                    In this case constraint in comparison to not specialized generic
@@ -1914,7 +1916,10 @@ implementation
           begin
             operatorpd:=search_assignment_operator(def_from,def_to,cdo_explicit in cdoptions);
             if assigned(operatorpd) then
-             eq:=te_convert_operator;
+              eq:=te_convert_operator
+            else 
+             if has_default_field(def_from) then
+               eq:=te_convert_default
           end;
 
         { update convtype for te_equal when it is not yet set }

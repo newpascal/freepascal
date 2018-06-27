@@ -79,6 +79,7 @@ interface
           getprocvardef : tprocvardef;
           getprocvardefderef : tderef;
           addrnodeflags : taddrnodeflags;
+          klammeraffe_level : integer;
           constructor create(l : tnode);virtual;
           constructor create_internal(l : tnode); virtual;
           constructor create_internal_nomark(l : tnode); virtual;
