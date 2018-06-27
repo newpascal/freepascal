@@ -53,7 +53,7 @@
 #
 # General
 #
-# 01026 is the last used one
+# 01027 is the last used one
 #
 # BeginOfTeX
 % \section{General compiler messages}
@@ -138,6 +138,10 @@ general_f_oserror=01025_F_Operating system error: $1
 % During compilation an operating system error happened which allows no further compilation.
 general_e_exception_raised=01026_E_Compilation raised exception internally
 % Compilation was aborted, due to an exception generation.
+general_t_unitscope=01027_T_Using unit scope: $1
+% When the \var{-vt} switch is used, this line tells you what unit scopes (namespaces)
+% the compiler is using when looking up units. You can add a unit scope with the
+% \var{-FN} option.
 % \end{description}
 #
 # Scanner
@@ -432,7 +436,7 @@ scan_n_changecputype=02105_N_Changed CPU type to be consistent with specified co
 #
 # Parser
 #
-# 03346 is the last used one
+# 03348 is the last used one
 #
 % \section{Parser messages}
 % This section lists all parser messages. The parser takes care of the
@@ -1571,6 +1575,13 @@ parser_e_cannot_use_hardfloat_in_a_softfloat_environment=03345_E_The HardFloat d
 parser_e_invalid_internal_function_index=03346_E_Index $1 is not a valid internal function index
 % The index specified for the \var{compilerproc} directive is not an index that's recognized
 % by the compiler.
+parser_w_operator_overloaded_hidden_3=03347_W_Operator overload hidden by internal operator: "$1" $2 "$3"
+% An operator overload is defined for the specified overload, but the internal overload by the compiler
+% takes precedence. This only happens for operators that had been overloadable before (e.g. dynamic array + dynamic array),
+% but aren't anymore due to an internal operator being defined while this behavior is controllable by a modeswitch
+% (in case of dynamic arrays that is the modeswitch \var{ArrayOperators}).
+parser_e_threadvar_must_be_class=03348_E_Thread variables inside classes or records must be class variables
+% A \var{threadvar} section inside a class or record was started without it being prefixed by \var{class}.
 %
 %
 % \end{description}
@@ -3317,7 +3328,7 @@ cg_f_internal_type_does_not_match=10066_F_Internal type "$1" does not look as ex
 #
 #  Options
 #
-# 11060 is the last used one
+# 11061 is the last used one
 #
 option_usage=11000_O_$1 [options] <inputfile> [options]
 # BeginOfTeX
@@ -3472,6 +3483,7 @@ option_invalid_target_architecture=11059_E_Unsupported target architecture -P$1,
 option_features_only_for_system_unit=11060_E_Feature switches are only supported while compiling the system unit.
 % To selected a certain feature, the system unit must be compiled with this feature enabled. All other units inherited the features set by the
 % system unit through the ppu of the system unit.
+option_debug_info_requires_external_linker=11061_N_The selected debug format is not supported by the internal linker, switching to external linking
 %\end{description}
 # EndOfTeX
 
@@ -3858,7 +3870,7 @@ J*2Cv_Var/out parameter copy-out checking
 **2FL<x>_Use <x> as dynamic linker
 **2Fm<x>_Load unicode conversion table from <x>.txt in the compiler dir
 **2FM<x>_Set the directory where to search for unicode binary files
-**2FN<x>_Add <x> to list of default namespaces
+**2FN<x>_Add <x> to list of default unit scopes (namespaces)
 **2Fo<x>_Add <x> to object path
 **2Fr<x>_Load error message file <x>
 **2FR<x>_Set resource (.res) linker to <x>
@@ -3870,11 +3882,13 @@ J*2Cv_Var/out parameter copy-out checking
 *g2gc_Generate checks for pointers (experimental, only available on some targets, might generate false positive)
 *g2gh_Use heaptrace unit (for memory leak/corruption debugging)
 *g2gl_Use line info unit (show more info with backtraces)
+*g2gm_Generate Microsoft CodeView debug information (experimental)
 *g2go<x>_Set debug information options
 *g3godwarfsets_ Enable DWARF 'set' type debug information (breaks gdb < 6.5)
 *g3gostabsabsincludes_ Store absolute/full include file paths in Stabs
 *g3godwarfmethodclassprefix_ Prefix method names in DWARF with class name
 *g3godwarfcpp_ Simulate C++ debug information in DWARF
+*g3godwarfomflinnum_ Generate line number information in OMF LINNUM records in MS LINK format in addition to the DWARF debug information (Open Watcom Debugger/Linker compatibility)
 *g2gp_Preserve case in stabs symbol names
 *g2gs_Generate Stabs debug information
 *g2gt_Trash local variables (to detect uninitialized uses; multiple 't' changes the trashing value)

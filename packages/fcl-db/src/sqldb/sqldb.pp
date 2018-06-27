@@ -694,6 +694,7 @@ type
     Procedure SetDatabase (Value : TDatabase); virtual;
     Procedure SetTransaction(Value : TDBTransaction); virtual;
     Procedure CheckDatabase;
+    function CreateQuery: TCustomSQLQuery; virtual;
   public
     constructor Create(AOwner : TComponent); override;
     destructor Destroy; override;
@@ -1237,7 +1238,7 @@ begin
   // aliases listed here are commonly used, but not recognized by CodePageNameToCodePage()
   ConnectionCharSet := LowerCase(GetConnectionCharSet);
   case ConnectionCharSet of
-    'utf8','utf-8':
+    'utf8','utf-8','utf8mb4':
       FCodePage := CP_UTF8;
     'win1250','cp1250':
       FCodePage := 1250;
@@ -3319,11 +3320,16 @@ begin
     DatabaseError(SErrNoDatabaseAvailable,Self)
 end;
 
+function TSQLScript.CreateQuery: TCustomSQLQuery;
+begin
+  Result := TCustomSQLQuery.Create(nil);
+  Result.ParamCheck := false; // Do not parse for parameters; breaks use of e.g. select bla into :bla in Firebird procedures
+end;
+
 constructor TSQLScript.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
-  FQuery := TCustomSQLQuery.Create(nil);
-  FQuery.ParamCheck := false; // Do not parse for parameters; breaks use of e.g. select bla into :bla in Firebird procedures
+  FQuery := CreateQuery;
 end;
 
 destructor TSQLScript.Destroy;

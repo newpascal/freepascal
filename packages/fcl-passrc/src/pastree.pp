@@ -147,10 +147,10 @@ type
       const Arg: Pointer); virtual;
     procedure ForEachChildCall(const aMethodCall: TOnForEachPasElement;
       const Arg: Pointer; Child: TPasElement; CheckParent: boolean); virtual;
-    function FullPath: string;
-    function ParentPath: string;
-    function FullName: string; virtual;         // Name including parent's names
-    function PathName: string; virtual;         // = Module.Name + FullName
+    function FullPath: string;                  // parent's names, until parent is not TPasDeclarations
+    function ParentPath: string;                // parent's names
+    function FullName: string; virtual;         // FullPath + Name
+    function PathName: string; virtual;         // = Module.Name + ParentPath
     function GetModule: TPasModule;
     function ElementTypeName: string; virtual;
     Function HintsString : String;
@@ -311,8 +311,15 @@ type
   public
     Declarations: TFPList; // list of TPasElement
     // Declarations contains all the following:
-    ResStrings, Types, Consts, Classes,
-    Functions, Variables, Properties, ExportSymbols: TFPList;
+    ResStrings, // TPasResString
+    Types,      // TPasType, except TPasClassType, TPasRecordType
+    Consts,     // TPasConst
+    Classes,    // TPasClassType, TPasRecordType
+    Functions,  // TPasProcedure
+    Variables,  // TPasVariable, not descendants
+    Properties, // TPasProperty
+    ExportSymbols  // TPasExportSymbol
+      : TFPList;
   end;
 
   { TPasUsesUnit - Parent is TPasSection }
@@ -695,8 +702,9 @@ type
   public
     PackMode: TPackMode;
     ObjKind: TPasObjKind;
-    AncestorType: TPasType;     // TPasClassType or TPasUnresolvedTypeRef or TPasAliasType or TPasTypeAliasType
-    HelperForType: TPasType;     // TPasClassType or TPasUnresolvedTypeRef
+    AncestorType: TPasType;   // TPasClassType or TPasUnresolvedTypeRef or TPasAliasType or TPasTypeAliasType
+                              // Note: AncestorType can be nil even though it has a default ancestor
+    HelperForType: TPasType;  // TPasClassType or TPasUnresolvedTypeRef
     IsForward: Boolean;
     IsExternal : Boolean;
     IsShortDefinition: Boolean;//class(anchestor); without end
@@ -2256,7 +2264,7 @@ begin
   p := Parent;
   while Assigned(p) and not p.InheritsFrom(TPasDeclarations) do
   begin
-    if (not (p is TPasOverloadedProc)) and (Length(p.Name) > 0) then
+    if (p.Name<>'') and (Not (p is TPasOverloadedProc)) then
       if Length(Result) > 0 then
         Result := p.Name + '.' + Result
       else
@@ -2285,7 +2293,7 @@ begin
   p := Parent;
   while Assigned(p) do
   begin
-    if (Not (p is TPasOverloadedProc)) and (Length(p.Name) > 0) then
+    if (p.Name<>'') and (Not (p is TPasOverloadedProc)) then
       if Length(Result) > 0 then
         Result := p.Name + '.' + Result
       else

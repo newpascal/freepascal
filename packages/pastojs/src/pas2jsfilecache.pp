@@ -35,6 +35,7 @@ const // Messages
   nSearchingFileFound = 203; sSearchingFileFound = 'Searching file: %s... found';
   nSearchingFileNotFound = 204; sSearchingFileNotFound = 'Searching file: %s... not found';
   nDuplicateFileFound = 205; sDuplicateFileFound = 'Duplicate file found: "%s" and "%s"';
+  nCustomJSFileNotFound = 206; sCustomJSFileNotFound = 'custom JS file not found: "%s"';
 
 type
   EPas2jsFileCache = class(Exception);
@@ -260,6 +261,7 @@ type
   TPas2jsFilesCache = class
   private
     FBaseDirectory: string;
+    FDefaultOutputPath: string;
     FDirectoryCache: TPas2jsCachedDirectories;
     FFiles: TAVLTree; // tree of TPas2jsCachedFile sorted for Filename
     FForeignUnitPaths: TStringList;
@@ -271,6 +273,7 @@ type
     FMainJSFile: string;
     FMainJSFileResolved: string; // only valid if cfsMainJSFileResolved in FStates
     FMainSrcFile: string;
+    FMainSrcFileShort: string;
     FNamespaces: TStringList;
     FNamespacesFromCmdLine: integer;
     FOnReadFile: TPas2jsReadFileEvent;
@@ -293,6 +296,7 @@ type
     procedure SetBaseDirectory(AValue: string);
     function AddSearchPaths(const Paths: string; Kind: TPas2jsSearchPathKind;
       FromCmdLine: boolean; var List: TStringList; var CmdLineCount: integer): string;
+    procedure SetDefaultOutputPath(AValue: string);
     procedure SetMainJSFile(AValue: string);
     procedure SetOptions(AValue: TP2jsFileCacheOptions);
     procedure SetSearchLikeFPC(const AValue: boolean);
@@ -330,6 +334,7 @@ type
   public
     property AllJSIntoMainJS: Boolean read GetAllJSIntoMainJS write SetAllJSIntoMainJS;
     property BaseDirectory: string read FBaseDirectory write SetBaseDirectory; // includes trailing pathdelim
+    property MainOutputPath: string read FDefaultOutputPath write SetDefaultOutputPath; // includes trailing pathdelim
     property DirectoryCache: TPas2jsCachedDirectories read FDirectoryCache;
     property ForeignUnitPaths: TStringList read FForeignUnitPaths;
     property ForeignUnitPathsFromCmdLine: integer read FForeignUnitPathsFromCmdLine;
@@ -338,6 +343,7 @@ type
     property InsertFilenames: TStringList read FInsertFilenames;
     property Log: TPas2jsLogger read FLog;
     property MainJSFile: string read FMainJSFile write SetMainJSFile;
+    property MainSrcFileShort: string read FMainSrcFileShort write FMainSrcFileShort;
     property MainSrcFile: string read FMainSrcFile write FMainSrcFile;
     property Namespaces: TStringList read FNamespaces;
     property NamespacesFromCmdLine: integer read FNamespacesFromCmdLine;
@@ -1382,6 +1388,8 @@ begin
   end else begin
     if Cache.UnitOutputPath<>'' then
       Result:=Cache.UnitOutputPath+ChangeFileExt(ExtractFileName(aUnitFilename),'.js')
+    else if Cache.MainOutputPath<>'' then
+      Result:=Cache.MainOutputPath+ChangeFileExt(ExtractFileName(aUnitFilename),'.js')
     else
       Result:=ChangeFileExt(aUnitFilename,'.js');
   end;
@@ -1505,6 +1513,7 @@ begin
   Log.RegisterMsg(mtInfo,nSearchingFileFound,sSearchingFileFound);
   Log.RegisterMsg(mtInfo,nSearchingFileNotFound,sSearchingFileNotFound);
   Log.RegisterMsg(mtFatal,nDuplicateFileFound,sDuplicateFileFound);
+  Log.RegisterMsg(mtFatal,nCustomJSFileNotFound,sCustomJSFileNotFound);
 end;
 
 function TPas2jsFilesCache.GetAllJSIntoMainJS: Boolean;
@@ -1647,6 +1656,13 @@ begin
   end;
 end;
 
+procedure TPas2jsFilesCache.SetDefaultOutputPath(AValue: string);
+begin
+  AValue:=ExpandDirectory(AValue,BaseDirectory);
+  if FDefaultOutputPath=AValue then Exit;
+  FDefaultOutputPath:=AValue;
+end;
+
 procedure TPas2jsFilesCache.SetMainJSFile(AValue: string);
 begin
   if FMainJSFile=AValue then Exit;
@@ -1738,47 +1754,54 @@ procedure TPas2jsFilesCache.FindMatchingFiles(Mask: string; MaxCount: integer;
     raise EListError.Create('found too many files "'+Mask+'". Max='+IntToStr(MaxCount)+' ['+IntToStr(id)+']');
   end;
 
-var
-  p, StartP, i: Integer;
-  Filename, CurMask: String;
-  Dir: TPas2jsCachedDirectory;
-  Entry: TPas2jsCachedDirectoryEntry;
+  procedure Find(aMask: string; p: integer);
+  var
+    Dir: TPas2jsCachedDirectory;
+    StartP, i: Integer;
+    CurMask, Filename: String;
+    Entry: TPas2jsCachedDirectoryEntry;
+  begin
+    while p<=length(aMask) do begin
+      if aMask[p] in ['*','?'] then
+      begin
+        while (p>1) and not (aMask[p-1] in AllowDirectorySeparators) do dec(p);
+        Dir:=DirectoryCache.GetDirectory(LeftStr(aMask,p-1),true,false);
+        StartP:=p;
+        while (p<=length(aMask)) and not (aMask[p] in AllowDirectorySeparators) do
+          inc(p);
+        CurMask:=copy(aMask,StartP,p-StartP);
+        for i:=0 to Dir.Count-1 do begin
+          Entry:=Dir.Entries[i];
+          if (Entry.Name='') or (Entry.Name='.') or (Entry.Name='..') then continue;
+          if not MatchGlobbing(CurMask,Entry.Name) then continue;
+          Filename:=Dir.Path+Entry.Name;
+          if p>length(aMask) then
+          begin
+            // e.g. /path/unit*.pas
+            if Files.Count>=MaxCount then
+              TooMany(20180126091916);
+            Files.Add(Filename);
+          end else begin
+            // e.g. /path/sub*path/...
+            Find(Filename+copy(aMask,p,length(aMask)),length(Filename)+1);
+          end;
+        end;
+        exit;
+      end;
+      inc(p);
+    end;
+    // mask has no placeholder -> search directly
+    if DirectoryCache.FileExists(aMask) then
+    begin
+      if Files.Count>=MaxCount then
+        TooMany(20180126091913);
+      Files.Add(aMask);
+    end;
+  end;
+
 begin
   Mask:=ResolveDots(Mask);
-  p:=1;
-  while p<=length(Mask) do begin
-    if Mask[p] in ['*','?'] then
-    begin
-      while (p>1) and not (Mask[p-1] in AllowDirectorySeparators) do dec(p);
-      Dir:=DirectoryCache.GetDirectory(LeftStr(Mask,p-1),true,false);
-      StartP:=p;
-      while (p<=length(Mask)) and not (Mask[p] in AllowDirectorySeparators) do inc(p);
-      CurMask:=copy(Mask,StartP,p-StartP);
-      for i:=0 to Dir.Count-1 do begin
-        Entry:=Dir.Entries[i];
-        if not MatchGlobbing(CurMask,Entry.Name) then continue;
-        Filename:=Dir.Path+Entry.Name;
-        if p>length(Mask) then
-        begin
-          // e.g. /path/unit*.pas
-          if Files.Count>=MaxCount then
-            TooMany(20180126091916);
-          Files.Add(Filename);
-        end else begin
-          // e.g. /path/sub*path/...
-          FindMatchingFiles(Filename+copy(Mask,p,length(Mask)),MaxCount,Files);
-        end;
-      end;
-      exit;
-    end;
-    inc(p);
-  end;
-  if DirectoryCache.FileExists(Mask) then
-  begin
-    if Files.Count>=MaxCount then
-      TooMany(20180126091913);
-    Files.Add(Mask);
-  end;
+  Find(Mask,1);
 end;
 
 constructor TPas2jsFilesCache.Create(aLog: TPas2jsLogger);
@@ -1900,21 +1923,31 @@ begin
       FMainJSFileResolved:=''
     else begin
       FMainJSFileResolved:=MainJSFile;
-      if FMainJSFileResolved='' then
+      if FMainJSFileResolved<>'' then
       begin
-        // no option -o
-        if UnitOutputPath<>'' then
+        // has option -o
+        if ExtractFilePath(FMainJSFileResolved)='' then
         begin
-          // option -FU and no -o => put into UnitOutputPath
-          FMainJSFileResolved:=UnitOutputPath+ChangeFileExt(ExtractFilename(MainSrcFile),'.js')
-        end else begin
-          // no -FU and no -o => put into source directory
-          FMainJSFileResolved:=ChangeFileExt(MainSrcFile,'.js');
+          // -o<FileWithoutPath>
+          if MainOutputPath<>'' then
+            FMainJSFileResolved:=MainOutputPath+FMainJSFileResolved
+          else if UnitOutputPath<>'' then
+            FMainJSFileResolved:=UnitOutputPath+FMainJSFileResolved;
         end;
       end else begin
-        // has option -o
-        if (ExtractFilePath(FMainJSFileResolved)='') and (UnitOutputPath<>'') then
-          FMainJSFileResolved:=UnitOutputPath+FMainJSFileResolved;
+        // no option -o
+        FMainJSFileResolved:=ChangeFileExt(MainSrcFile,'.js');
+        if MainOutputPath<>'' then
+        begin
+          // option -FE and no -o => put into MainOutputPath
+          FMainJSFileResolved:=MainOutputPath+ExtractFilename(FMainJSFileResolved)
+        end else if UnitOutputPath<>'' then
+        begin
+          // option -FU and no -o => put into UnitOutputPath
+          FMainJSFileResolved:=UnitOutputPath+ExtractFilename(FMainJSFileResolved)
+        end else begin
+          // no -FU and no -o => put into source directory
+        end;
       end;
     end;
     Include(FStates,cfsMainJSFileResolved);
@@ -1977,7 +2010,10 @@ begin
     for i:=0 to InsertFilenames.Count-1 do begin
       Filename:=FileResolver.FindCustomJSFileName(ResolveDots(InsertFilenames[i]));
       if Filename='' then
-        raise EFileNotFoundError.Create('invalid custom JS file name "'+InsertFilenames[i]+'"');
+      begin
+        Log.LogMsg(nCustomJSFileNotFound,[InsertFilenames[i]]);
+        raise EFileNotFoundError.Create('');
+      end;
       aFile:=LoadFile(Filename);
       if aFile.Source='' then continue;
       aWriter.WriteFile(aFile.Source,Filename);
@@ -2052,6 +2088,7 @@ procedure TPas2jsFilesCache.SaveToFile(ms: TMemoryStream; Filename: string);
 var
   s: string;
   l: Int64;
+  i: Integer;
 begin
   if Assigned(OnWriteFile) then
   begin
@@ -2066,7 +2103,20 @@ begin
     OnWriteFile(Filename,s);
   end else
   begin
-    ms.SaveToFile(Filename);
+    try
+      ms.SaveToFile(Filename);
+    except
+      on E: Exception do begin
+        i:=GetLastOSError;
+        if i<>0 then
+          Log.LogPlain('Note: '+SysErrorMessage(i));
+        if not SysUtils.DirectoryExists(ChompPathDelim(ExtractFilePath(Filename))) then
+          Log.LogPlain('Note: file cache inconsistency: folder does not exist "'+ChompPathDelim(ExtractFilePath(Filename))+'"');
+        if SysUtils.FileExists(Filename) and not FileIsWritable(Filename) then
+          Log.LogPlain('Note: file is not writable "'+Filename+'"');
+        raise;
+      end;
+    end;
   end;
 end;
 

@@ -18,11 +18,11 @@ uses
 {$endif unix}
 {$else def USE_INTERNAL_UNICODE}
 uses
- {$ifdef USE_FPWIDESTRING_UNIT}
-  fpwidestring,
- {$endif}
  {$ifdef USE_UNICODEDUCET_UNIT}
   unicodeducet,
+ {$endif}
+ {$ifdef USE_FPWIDESTRING_UNIT}
+  fpwidestring,
  {$endif}
  {$ifdef USE_CPALL_UNIT}
   cpall,
@@ -36,11 +36,13 @@ uses
 begin
   // this test can be only run with the compiler built right now on the
   // same system
+{$if not defined(FPC_CROSSCOMPILING) and not defined(FPC_CPUCROSSCOMPILING)}
   if StringCodePage(AnsiString('test')) <> DefaultSystemCodePage then
   begin
     WriteLn(StringCodePage(AnsiString('test')), ' <> ', DefaultSystemCodePage);
     halt(1);
   end;
+{$endif}
   Writeln('ok');
 end.
 

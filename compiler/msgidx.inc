@@ -26,6 +26,7 @@ const
   general_f_ioerror=01024;
   general_f_oserror=01025;
   general_e_exception_raised=01026;
+  general_t_unitscope=01027;
   scan_f_end_of_file=02000;
   scan_f_string_exceeds_line=02001;
   scan_f_illegal_char=02002;
@@ -456,6 +457,8 @@ const
   parser_e_packages_not_supported=03344;
   parser_e_cannot_use_hardfloat_in_a_softfloat_environment=03345;
   parser_e_invalid_internal_function_index=03346;
+  parser_w_operator_overloaded_hidden_3=03347;
+  parser_e_threadvar_must_be_class=03348;
   type_e_mismatch=04000;
   type_e_incompatible_types=04001;
   type_e_not_equal_types=04002;
@@ -1046,6 +1049,7 @@ const
   option_gc_incompatible_with_release_flag=11058;
   option_invalid_target_architecture=11059;
   option_features_only_for_system_unit=11060;
+  option_debug_info_requires_external_linker=11061;
   wpo_cant_find_file=12000;
   wpo_begin_processing=12001;
   wpo_end_processing=12002;
@@ -1099,9 +1103,9 @@ const
   option_info=11024;
   option_help_pages=11025;
 
-  MsgTxtSize = 81884;
+  MsgTxtSize = 82423;
 
   MsgIdxMax : array[1..20] of longint=(
-    27,106,347,126,96,59,142,34,221,67,
-    61,20,30,1,1,1,1,1,1,1
+    28,106,349,126,96,59,142,34,221,67,
+    62,20,30,1,1,1,1,1,1,1
   );

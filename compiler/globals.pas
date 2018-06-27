@@ -54,7 +54,8 @@ interface
          [m_delphi,m_class,m_objpas,m_result,m_string_pchar,
           m_pointer_2_procedure,m_autoderef,m_tp_procvar,m_initfinal,m_default_ansistring,
           m_out,m_default_para,m_duplicate_names,m_hintdirective,
-          m_property,m_default_inline,m_except,m_advanced_records];
+          m_property,m_default_inline,m_except,m_advanced_records,
+          m_array_operators];
        delphiunicodemodeswitches = delphimodeswitches + [m_systemcodepage,m_default_unicodestring];
        fpcmodeswitches =
          [m_fpc,m_string_pchar,m_nested_comment,m_repeat_forward,
@@ -213,6 +214,15 @@ interface
         property items[I:longint]:TLinkRec read getlinkrec; default;
       end;
 
+      tpendingstateflag = (
+        psf_alignment_changed,
+        psf_verbosity_full_switched,
+        psf_local_switches_changed,
+        psf_packenum_changed,
+        psf_packrecords_changed,
+        psf_setalloc_changed
+      );
+      tpendingstateflags = set of tpendingstateflag;
 
       tpendingstate = record
         nextverbositystr : shortstring;
@@ -221,9 +231,10 @@ interface
         nextcallingstr : shortstring;
         nextmessagerecord : pmessagestaterecord;
         nextalignment : talignmentinfo;
-        alignmentchanged,
-        verbosityfullswitched,
-        localswitcheschanged : boolean;
+        nextpackenum : shortint;
+        nextpackrecords : shortint;
+        nextsetalloc : shortint;
+        flags : tpendingstateflags;
       end;
 
 
@@ -411,7 +422,11 @@ interface
         optimizerswitches : [];
         genwpoptimizerswitches : [];
         dowpoptimizerswitches : [];
+{$ifdef i8086}
+        debugswitches : [ds_dwarf_sets,ds_dwarf_omf_linnum];
+{$else i8086}
         debugswitches : [ds_dwarf_sets];
+{$endif i8086}
 
         setalloc : 0;
         packenum : 4;

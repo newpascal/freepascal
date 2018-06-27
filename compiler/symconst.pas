@@ -111,6 +111,9 @@ const
   pfVmt      = 1024;
   pfResult   = 2048;
 
+  riifNonTrivialChild          = 1;
+  riifParentHasNonTrivialChild = 2;
+
   unknown_level         = 0;
   main_program_level    = 1;
   normal_function_level = 2;
@@ -635,8 +638,11 @@ type
     sto_has_helper,       { contains at least one helper symbol }
     sto_has_generic,      { contains at least one generic symbol }
     sto_has_operator,     { contains at least one operator overload }
-    sto_needs_init_final  { the symtable needs initialization and/or
+    sto_needs_init_final, { the symtable needs initialization and/or
                             finalization of variables/constants }
+    sto_has_non_trivial_init { contains at least on managed type that is not
+                               initialized to zero (e.g. a record with management
+                               operators }
   );
   tsymtableoptions = set of tsymtableoption;
 
@@ -808,14 +814,8 @@ inherited_objectoptions : tobjectoptions = [oo_has_virtual,oo_has_private,oo_has
              oo_can_have_published];
 {$endif not jvm}
 
-{$ifdef i386}
-   { we only take this into account on i386, on other platforms we always
-     push in the same order
-   }
-   pushleftright_pocalls : tproccalloptions = [pocall_register,pocall_pascal];
-{$endif}
-{$ifdef i8086}
-   { we only take this into account on i386, on other platforms we always
+{$if defined(i8086) or defined(i386)}
+   { we only take this into account on i8086 and i386, on other platforms we always
      push in the same order
    }
    pushleftright_pocalls : tproccalloptions = [pocall_register,pocall_pascal];

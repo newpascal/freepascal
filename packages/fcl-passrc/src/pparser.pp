@@ -264,7 +264,9 @@ type
     procedure DumpCurToken(Const Msg : String; IndentAction : TIndentAction = iaNone);
     function GetCurrentModeSwitches: TModeSwitches;
     Procedure SetCurrentModeSwitches(AValue: TModeSwitches);
-    function GetVariableModifiers(Parent: TPasElement; Out VarMods: TVariableModifiers; Out LibName, ExportName: TPasExpr; ExternalClass : Boolean): string;
+    function GetVariableModifiers(Parent: TPasElement;
+      Out VarMods: TVariableModifiers; Out LibName, ExportName: TPasExpr;
+      const AllowedMods: TVariableModifiers): string;
     function GetVariableValueAndLocation(Parent : TPasElement; Out Value: TPasExpr; Out AbsoluteExpr: TPasExpr; Out Location: String): Boolean;
     procedure HandleProcedureModifier(Parent: TPasElement; pm : TProcedureModifier);
     procedure HandleProcedureTypeModifier(ProcType: TPasProcedureType; ptm : TProcTypeModifier);
@@ -339,6 +341,7 @@ type
     function AddUseUnit(ASection: TPasSection; const NamePos: TPasSourcePos;
       AUnitName : string; NameExpr: TPasExpr; InFileExpr: TPrimitiveExpr): TPasElement;
     procedure CheckImplicitUsedUnits(ASection: TPasSection);
+    procedure FinishedModule; virtual;
     // Overload handling
     procedure AddProcOrFunction(Decs: TPasDeclarations; AProc: TPasProcedure);
     function  CheckIfOverloaded(AParent: TPasElement; const AName: String): TPasElement;
@@ -2019,7 +2022,7 @@ function TPasParser.ParseExpIdent(AParent: TPasElement): TPasExpr;
       begin
       N:=LowerCase(TPrimitiveExpr(P).Value);
       // We should actually resolve this to system.NNN
-      Result:=(N='write') or (N='str') or (N='writeln');
+      Result:=(N='write') or (N='str') or (N='writeln') or (N='writestr');
       end;
   end;
 
@@ -2786,7 +2789,7 @@ begin
       {$ENDIF}
       end;
     if HasFinished then
-      Engine.FinishScope(stModule,Module);
+      FinishedModule;
   finally
     if HasFinished then
       FCurModule:=nil; // clear module if there is an error or finished parsing
@@ -2883,7 +2886,7 @@ begin
     if Section.PendingUsedIntf<>nil then
       HasFinished:=false;
     if HasFinished then
-      Engine.FinishScope(stModule,CurModule);
+      FinishedModule;
   finally
     if HasFinished then
       FCurModule:=nil; // clear module if there is an error or finished parsing
@@ -2966,7 +2969,7 @@ begin
       exit;
       end;
     ParseDeclarations(Section);
-    Engine.FinishScope(stModule,Module);
+    FinishedModule;
   finally
     if HasFinished then
       FCurModule:=nil; // clear module if there is an error or finished parsing
@@ -3014,7 +3017,7 @@ begin
     if not HasFinished then
       exit;
     ParseDeclarations(Section);
-    Engine.FinishScope(stModule,Module);
+    FinishedModule;
   finally
     if HasFinished then
       FCurModule:=nil; // clear module if there is an error or finished parsing
@@ -3573,6 +3576,13 @@ begin
     end;
 end;
 
+procedure TPasParser.FinishedModule;
+begin
+  if Scanner<>nil then
+    Scanner.FinishedModule;
+  Engine.FinishScope(stModule,CurModule);
+end;
+
 // Starts after the "uses" token
 procedure TPasParser.ParseUsesList(ASection: TPasSection);
 var
@@ -3680,6 +3690,7 @@ begin
           and TPasClassType(Parent).IsExternal
           and (TPasClassType(Parent).ObjKind=okClass) then
         // typed const without expression is allowed in external class
+        Result.IsConst:=true
       else if CurToken=tkSemicolon then
         begin
         NextToken;
@@ -3702,6 +3713,7 @@ begin
             if not (CurToken in [tkChar,tkString,tkIdentifier]) then
               ParseExcTokenError(TokenInfos[tkString]);
             Result.ExportName:=DoParseExpression(Parent);
+            Result.IsConst:=true; // external const is readonly
             end
           else if CurToken=tkSemicolon then
             // external;
@@ -4053,7 +4065,7 @@ end;
 
 function TPasParser.GetVariableModifiers(Parent: TPasElement; out
   VarMods: TVariableModifiers; out LibName, ExportName: TPasExpr;
-  ExternalClass: Boolean): string;
+  const AllowedMods: TVariableModifiers): string;
 
 Var
   S : String;
@@ -4064,7 +4076,7 @@ begin
   ExportName := nil;
   VarMods := [];
   NextToken;
-  If CurTokenIsIdentifier('cvar') and not ExternalClass then
+  If (vmCVar in AllowedMods) and CurTokenIsIdentifier('cvar') then
     begin
     Result:=';cvar';
     Include(VarMods,vmcvar);
@@ -4072,11 +4084,11 @@ begin
     NextToken;
     end;
   s:=LowerCase(CurTokenText);
-  if s='external' then
+  if (vmExternal in AllowedMods) and (s='external') then
     ExtMod:=vmExternal
-  else if (s='public') and not externalclass then
+  else if (vmPublic in AllowedMods) and (s='public') then
     ExtMod:=vmPublic
-  else if (s='export') and not externalclass then
+  else if (vmExport in AllowedMods) and (s='export') then
     ExtMod:=vmExport
   else
     begin
@@ -4101,7 +4113,7 @@ begin
   // external libname name exportname;
   // external name exportname;
   if (ExtMod=vmExternal) and (CurToken in [tkString,tkIdentifier])
-      and Not (CurTokenIsIdentifier('name')) and not ExternalClass then
+      and Not (CurTokenIsIdentifier('name')) then
     begin
     Result := Result + ' ' + CurTokenText;
     LibName:=DoParseExpression(Parent);
@@ -4127,9 +4139,9 @@ var
   VarType: TPasType;
   VarEl: TPasVariable;
   H : TPasMemberHints;
-  VarMods: TVariableModifiers;
+  VarMods, AllowedVarMods: TVariableModifiers;
   D,Mods,AbsoluteLocString: string;
-  OldForceCaret,ok,ExternalClass: Boolean;
+  OldForceCaret,ok,ExternalStruct: Boolean;
 
 begin
   Value:=Nil;
@@ -4177,25 +4189,30 @@ begin
       begin
       // multiple variables
       if Value<>nil then
-        ParseExc(nParserOnlyOneVariableCanBeAbsolute,SParserOnlyOneVariableCanBeAbsolute);
-      if Value<>nil then
         ParseExc(nParserOnlyOneVariableCanBeInitialized,SParserOnlyOneVariableCanBeInitialized);
+      if AbsoluteExpr<>nil then
+        ParseExc(nParserOnlyOneVariableCanBeAbsolute,SParserOnlyOneVariableCanBeAbsolute);
       end;
     TPasVariable(VarList[OldListCount]).Expr:=Value;
     Value:=nil;
 
     // Note: external members are allowed for non external classes too
-    ExternalClass:=(msExternalClass in CurrentModeSwitches)
-                    and (Parent is TPasClassType);
+    ExternalStruct:=(msExternalClass in CurrentModeSwitches)
+                    and ((Parent is TPasClassType) or (Parent is TPasRecordType));
 
     H:=H+CheckHint(Nil,False);
-    if Full or Externalclass then
+    if Full or ExternalStruct then
       begin
       NextToken;
       If Curtoken<>tkSemicolon then
         UnGetToken;
       VarEl:=TPasVariable(VarList[0]);
-      Mods:=GetVariableModifiers(VarEl,VarMods,aLibName,aExpName,ExternalClass);
+      AllowedVarMods:=[];
+      if ExternalStruct then
+        AllowedVarMods:=[vmExternal]
+      else
+        AllowedVarMods:=[vmCVar,vmExternal,vmPublic,vmExport];
+      Mods:=GetVariableModifiers(VarEl,VarMods,aLibName,aExpName,AllowedVarMods);
       if (mods='') and (CurToken<>tkSemicolon) then
         NextToken;
       end
@@ -4457,6 +4474,7 @@ begin
       end;
     if CurToken = EndToken then
       break;
+    CheckToken(tkSemicolon);
   end;
 end;
 
@@ -4562,7 +4580,7 @@ begin
     else
       begin
       AddModifier;
-      NextToken;  // Should be export name string.
+      NextToken;  // Should be "public name string".
       if not (CurToken in [tkString,tkIdentifier]) then
         ParseExcTokenError(TokenInfos[tkString]);
       E:=DoParseExpression(Parent);

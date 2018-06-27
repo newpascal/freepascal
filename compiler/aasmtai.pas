@@ -232,6 +232,7 @@ interface
 {$if defined(arm) or defined(aarch64)}
        ,top_conditioncode
        ,top_shifterop
+       ,top_realconst
 {$endif defined(arm) or defined(aarch64)}
 {$ifdef m68k}
        { m68k only }
@@ -357,7 +358,9 @@ interface
           available on the specified CPU; this represents directives such as
           NASM's 'CPU 686' or MASM/TASM's '.686p'. Might not be supported by
           all assemblers. }
-        asd_cpu
+        asd_cpu,
+        { for the OMF object format }
+        asd_omf_linnum_line
       );
 
       TAsmSehDirective=(
@@ -395,7 +398,9 @@ interface
         { ARM }
         'thumb_func',
         'code',
-        'cpu'
+        'cpu',
+        { for the OMF object format }
+        'omf_line'
       );
       sehdirectivestr : array[TAsmSehDirective] of string[16]=(
         '.seh_proc','.seh_endproc',
@@ -431,6 +436,7 @@ interface
         {$if defined(arm) or defined(aarch64)}
             top_shifterop : (shifterop : pshifterop);
             top_conditioncode : (cc : TAsmCond);
+            top_realconst : (val_real:bestreal);
         {$endif defined(arm) or defined(aarch64)}
         {$ifdef m68k}
             top_regset : (dataregset,addrregset,fpuregset: tcpuregisterset);

@@ -765,12 +765,15 @@ begin
       else
         NewType := ftString;
 {$IFDEF MYSQL50_UP}
-      if AField^.charsetnr = 63 then //BINARY vs. CHAR, VARBINARY vs. VARCHAR
+      if AField^.charsetnr = 63 then begin //BINARY vs. CHAR, VARBINARY vs. VARCHAR
         if NewType = ftFixedChar then
           NewType := ftBytes
         else
           NewType := ftVarBytes;
-      NewSize := ASize div FConnectionCharsetInfo.mbmaxlen;
+        NewSize := ASize;
+      end
+      else
+        NewSize := ASize div FConnectionCharsetInfo.mbmaxlen;
 {$ELSE}
       NewSize := ASize;
 {$ENDIF}
@@ -1167,31 +1170,34 @@ begin
   if not assigned(Transaction) then
     DatabaseError(SErrConnTransactionnSet);
 
-  qry := tsqlquery.Create(nil);
-  qry.transaction := Transaction;
-  qry.database := Self;
-  with qry do
-    begin
-    ParseSQL := False;
-    sql.clear;
-    sql.add('show index from ' +  TableName);
-    open;
-    end;
-  while not qry.eof do with IndexDefs.AddIndexDef do
-    begin
-    Name := trim(qry.fieldbyname('Key_name').asstring);
-    Fields := trim(qry.fieldbyname('Column_name').asstring);
-    If Name = 'PRIMARY' then options := options + [ixPrimary];
-    If qry.fieldbyname('Non_unique').asinteger = 0 then options := options + [ixUnique];
-    qry.next;
-    while (name = trim(qry.fieldbyname('Key_name').asstring)) and (not qry.eof) do
+  qry := TSQLQuery.Create(nil);
+  qry.Transaction := Transaction;
+  qry.Database := Self;
+  try
+    with qry do
       begin
-      Fields := Fields + ';' + trim(qry.fieldbyname('Column_name').asstring);
-      qry.next;
+      ParseSQL := False;
+      SQL.Clear;
+      SQL.Add('show index from ' +  TableName);
+      Open;
       end;
-    end;
-  qry.close;
-  qry.free;
+    while not qry.Eof do with IndexDefs.AddIndexDef do
+      begin
+      Name := trim(qry.FieldByName('Key_name').AsString);
+      Fields := trim(qry.FieldByName('Column_name').AsString);
+      If Name = 'PRIMARY' then Options := Options + [ixPrimary];
+      If qry.FieldByName('Non_unique').AsInteger = 0 then Options := Options + [ixUnique];
+      qry.Next;
+      while (Name = trim(qry.FieldByName('Key_name').AsString)) and (not qry.Eof) do
+        begin
+        Fields := Fields + ';' + trim(qry.FieldByName('Column_name').AsString);
+        qry.Next;
+        end;
+      end;
+    qry.Close;
+  finally
+    qry.Free;
+  end;
 end;
 
 function TConnectionName.RowsAffected(cursor: TSQLCursor): TRowsCount;

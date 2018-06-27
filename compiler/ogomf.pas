@@ -55,7 +55,6 @@ interface
       private
         FFrameGroup: string;
         FOmfFixup: TOmfSubRecord_FIXUP;
-        function GetGroupIndex(const groupname: string): Integer;
       public
         destructor Destroy; override;
 
@@ -75,27 +74,31 @@ interface
         FOverlayName: string;
         FCombination: TOmfSegmentCombination;
         FUse: TOmfSegmentUse;
-        FPrimaryGroup: string;
+        FPrimaryGroup: TObjSectionGroup;
         FSortOrder: Integer;
         FMZExeUnifiedLogicalSegment: TMZExeUnifiedLogicalSegment;
+        FLinNumEntries: TOmfSubRecord_LINNUM_MsLink_LineNumberList;
         function GetOmfAlignment: TOmfSegmentAlignment;
       public
         constructor create(AList:TFPHashObjectList;const Aname:string;Aalign:longint;Aoptions:TObjSectionOptions);override;
+        destructor destroy;override;
         function MemPosStr(AImageBase: qword): string;override;
         property ClassName: string read FClassName;
         property OverlayName: string read FOverlayName;
         property OmfAlignment: TOmfSegmentAlignment read GetOmfAlignment;
         property Combination: TOmfSegmentCombination read FCombination;
         property Use: TOmfSegmentUse read FUse;
-        property PrimaryGroup: string read FPrimaryGroup;
+        property PrimaryGroup: TObjSectionGroup read FPrimaryGroup;
         property SortOrder: Integer read FSortOrder write FSortOrder;
         property MZExeUnifiedLogicalSegment: TMZExeUnifiedLogicalSegment read FMZExeUnifiedLogicalSegment write FMZExeUnifiedLogicalSegment;
+        property LinNumEntries: TOmfSubRecord_LINNUM_MsLink_LineNumberList read FLinNumEntries;
       end;
 
       { TOmfObjData }
 
       TOmfObjData = class(TObjData)
       private
+        FMainSource: TPathStr;
         class function CodeSectionName(const aname:string): string;
       public
         constructor create(const n:string);override;
@@ -106,6 +109,7 @@ interface
         function createsection(atype:TAsmSectionType;const aname:string='';aorder:TAsmSectionOrder=secorder_default):TObjSection;override;
         function reffardatasection:TObjSection;
         procedure writeReloc(Data:TRelocDataInt;len:aword;p:TObjSymbol;Reloctype:TObjRelocationType);override;
+        property MainSource: TPathStr read FMainSource;
       end;
 
       { TOmfObjOutput }
@@ -117,13 +121,14 @@ interface
         FGroups: TFPHashObjectList;
         procedure AddSegment(const name,segclass,ovlname: string;
           Alignment: TOmfSegmentAlignment; Combination: TOmfSegmentCombination;
-          Use: TOmfSegmentUse; Size: aword);
-        procedure AddGroup(const groupname: string; seglist: array of const);
-        procedure AddGroup(const groupname: string; seglist: TSegmentList);
+          Use: TOmfSegmentUse; Size: TObjSectionOfs);
+        procedure AddGroup(group: TObjSectionGroup);
         procedure WriteSections(Data:TObjData);
         procedure WriteSectionContentAndFixups(sec: TObjSection);
+        procedure WriteLinNumRecords(sec: TOmfObjSection);
 
         procedure section_count_sections(p:TObject;arg:pointer);
+        procedure group_count_groups(p:TObject;arg:pointer);
         procedure WritePUBDEFs(Data: TObjData);
         procedure WriteEXTDEFs(Data: TObjData);
 
@@ -145,7 +150,9 @@ interface
         FLNames: TOmfOrderedNameCollection;
         FExtDefs: TFPHashObjectList;
         FPubDefs: TFPHashObjectList;
+        FFixupThreads: TOmfThreads;
         FRawRecord: TOmfRawRecord;
+        FCOMENTRecord: TOmfRecord_COMENT;
         FCaseSensitiveSegments: Boolean;
         FCaseSensitiveSymbols: Boolean;
 
@@ -157,7 +164,7 @@ interface
         function ReadExtDef(RawRec: TOmfRawRecord; objdata:TObjData): Boolean;
         function ReadPubDef(RawRec: TOmfRawRecord; objdata:TObjData): Boolean;
         function ReadModEnd(RawRec: TOmfRawRecord; objdata:TObjData): Boolean;
-        function ReadLEDataAndFixups(RawRec: TOmfRawRecord; objdata:TObjData): Boolean;
+        function ReadLeOrLiDataAndFixups(RawRec: TOmfRawRecord; objdata:TObjData): Boolean;
         function ImportOmfFixup(objdata: TObjData; objsec: TOmfObjSection; Fixup: TOmfSubRecord_FIXUP): Boolean;
 
         property LNames: TOmfOrderedNameCollection read FLNames;
@@ -273,8 +280,10 @@ interface
         FMZFlatContentSection: TMZExeSection;
         FExeUnifiedLogicalSegments: TFPHashObjectList;
         FExeUnifiedLogicalGroups: TFPHashObjectList;
+        FDwarfUnifiedLogicalSegments: TFPHashObjectList;
         FHeader: TMZExeHeader;
         function GetMZFlatContentSection: TMZExeSection;
+        procedure CalcDwarfUnifiedLogicalSegmentsForSection(const SecName: TSymStr);
         procedure CalcExeUnifiedLogicalSegments;
         procedure CalcExeGroups;
         procedure CalcSegments_MemBasePos;
@@ -289,13 +298,16 @@ interface
         procedure FillHeaderData;
         function writeExe:boolean;
         function writeCom:boolean;
+        function writeDebugElf:boolean;
         property ExeUnifiedLogicalSegments: TFPHashObjectList read FExeUnifiedLogicalSegments;
         property ExeUnifiedLogicalGroups: TFPHashObjectList read FExeUnifiedLogicalGroups;
+        property DwarfUnifiedLogicalSegments: TFPHashObjectList read FExeUnifiedLogicalSegments;
         property Header: TMZExeHeader read FHeader;
       protected
         procedure Load_Symbol(const aname:string);override;
         procedure DoRelocationFixup(objsec:TObjSection);override;
         procedure Order_ObjSectionList(ObjSectionList : TFPObjectList;const aPattern:string);override;
+        procedure MemPos_ExeSection(const aname:string);override;
         procedure MemPos_EndExeSection;override;
         function writeData:boolean;override;
       public
@@ -314,7 +326,7 @@ implementation
        SysUtils,
        cutils,verbose,globals,
        fmodule,aasmtai,aasmdata,
-       ogmap,owomflib,
+       ogmap,owomflib,elfbase,
        version
        ;
 
@@ -337,6 +349,34 @@ implementation
       $20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20);
 
 {****************************************************************************
+                                TTISTrailer
+****************************************************************************}
+
+    const
+      TIS_TRAILER_SIGNATURE: array[1..4] of char='TIS'#0;
+      TIS_TRAILER_VENDOR_TIS=0;
+      TIS_TRAILER_TYPE_TIS_DWARF=0;
+
+    type
+      TTISTrailer=record
+        tis_signature: array[1..4] of char;
+        tis_vendor,
+        tis_type,
+        tis_size: LongWord;
+      end;
+
+    procedure MayBeSwapTISTrailer(var h: TTISTrailer);
+      begin
+        if source_info.endian<>target_info.endian then
+          with h do
+            begin
+              tis_vendor:=swapendian(tis_vendor);
+              tis_type:=swapendian(tis_type);
+              tis_size:=swapendian(tis_size);
+            end;
+      end;
+
+{****************************************************************************
                                 TOmfObjSymbol
 ****************************************************************************}
 
@@ -354,14 +394,6 @@ implementation
 {****************************************************************************
                                 TOmfRelocation
 ****************************************************************************}
-
-    function TOmfRelocation.GetGroupIndex(const groupname: string): Integer;
-      begin
-        if groupname='DGROUP' then
-          Result:=1
-        else
-          internalerror(2014040703);
-      end;
 
     destructor TOmfRelocation.Destroy;
       begin
@@ -396,10 +428,10 @@ implementation
               begin
                 FOmfFixup.TargetMethod:=ftmSegmentIndexNoDisp;
                 FOmfFixup.TargetDatum:=ObjSection.Index;
-                if TOmfObjSection(ObjSection).PrimaryGroup<>'' then
+                if TOmfObjSection(ObjSection).PrimaryGroup<>nil then
                   begin
                     FOmfFixup.FrameMethod:=ffmGroupIndex;
-                    FOmfFixup.FrameDatum:=GetGroupIndex(TOmfObjSection(ObjSection).PrimaryGroup);
+                    FOmfFixup.FrameDatum:=TOmfObjSection(ObjSection).PrimaryGroup.index;
                   end
                 else
                   FOmfFixup.FrameMethod:=ffmTarget;
@@ -407,10 +439,10 @@ implementation
             else
               begin
                 FOmfFixup.FrameMethod:=ffmTarget;
-                if TOmfObjSection(ObjSection).PrimaryGroup<>'' then
+                if TOmfObjSection(ObjSection).PrimaryGroup<>nil then
                   begin
                     FOmfFixup.TargetMethod:=ftmGroupIndexNoDisp;
-                    FOmfFixup.TargetDatum:=GetGroupIndex(TOmfObjSection(ObjSection).PrimaryGroup);
+                    FOmfFixup.TargetDatum:=TOmfObjSection(ObjSection).PrimaryGroup.index;
                   end
                 else
                   begin
@@ -463,7 +495,7 @@ implementation
               internalerror(2015041401);
             FOmfFixup.FrameMethod:=ffmTarget;
             FOmfFixup.TargetMethod:=ftmGroupIndexNoDisp;
-            FOmfFixup.TargetDatum:=GetGroupIndex(group.Name);
+            FOmfFixup.TargetDatum:=group.index;
           end
         else
          internalerror(2015040702);
@@ -499,6 +531,13 @@ implementation
         inherited create(AList, Aname, Aalign, Aoptions);
         FCombination:=scPublic;
         FUse:=suUse16;
+        FLinNumEntries:=TOmfSubRecord_LINNUM_MsLink_LineNumberList.Create;
+      end;
+
+    destructor TOmfObjSection.destroy;
+      begin
+        FLinNumEntries.Free;
+        inherited destroy;
       end;
 
     function TOmfObjSection.MemPosStr(AImageBase: qword): string;
@@ -532,6 +571,7 @@ implementation
         CObjSymbol:=TOmfObjSymbol;
         CObjSection:=TOmfObjSection;
         createsectiongroup('DGROUP');
+        FMainSource:=current_module.mainsource;
       end;
 
     function TOmfObjData.sectiontype2options(atype: TAsmSectiontype): TObjSectionOptions;
@@ -554,27 +594,70 @@ implementation
       end;
 
     function TOmfObjData.sectionname(atype:TAsmSectiontype;const aname:string;aorder:TAsmSectionOrder):string;
+      var
+        sep : string[3];
+        secname : string;
       begin
         if (atype=sec_user) then
           Result:=aname
-        else if omf_secnames[atype]=omf_secnames[sec_code] then
-          Result:=CodeSectionName(aname)
-        else if omf_segclass(atype)='FAR_DATA' then
-          Result:=current_module.modulename^ + '_DATA'
         else
-          Result:=omf_secnames[atype];
+          begin
+            if omf_secnames[atype]=omf_secnames[sec_code] then
+              secname:=CodeSectionName(aname)
+            else if omf_segclass(atype)='FAR_DATA' then
+              secname:=current_module.modulename^ + '_DATA'
+            else
+              secname:=omf_secnames[atype];
+            if create_smartlink_sections and (aname<>'') then
+              begin
+                case aorder of
+                  secorder_begin :
+                    sep:='.b_';
+                  secorder_end :
+                    sep:='.z_';
+                  else
+                    sep:='.n_';
+                end;
+                result:=UpCase(secname+sep+aname);
+              end
+            else
+              result:=secname;
+          end;
       end;
 
     function TOmfObjData.createsection(atype: TAsmSectionType; const aname: string; aorder: TAsmSectionOrder): TObjSection;
+      var
+        is_new: Boolean;
+        primary_group: String;
+        grp: TObjSectionGroup;
       begin
+        is_new:=TObjSection(ObjSectionList.Find(sectionname(atype,aname,aorder)))=nil;
         Result:=inherited createsection(atype, aname, aorder);
-        TOmfObjSection(Result).FClassName:=sectiontype2class(atype);
-        if atype=sec_stack then
-          TOmfObjSection(Result).FCombination:=scStack
-        else if atype in [sec_debug_frame,sec_debug_info,sec_debug_line,sec_debug_abbrev,sec_debug_aranges,sec_debug_ranges] then
-          TOmfObjSection(Result).FUse:=suUse32;
-        if section_belongs_to_dgroup(atype) then
-          TOmfObjSection(Result).FPrimaryGroup:='DGROUP';
+        if is_new then
+          begin
+            TOmfObjSection(Result).FClassName:=sectiontype2class(atype);
+            if atype=sec_stack then
+              TOmfObjSection(Result).FCombination:=scStack
+            else if atype in [sec_debug_frame,sec_debug_info,sec_debug_line,sec_debug_abbrev,sec_debug_aranges,sec_debug_ranges] then
+              begin
+                TOmfObjSection(Result).FUse:=suUse32;
+                TOmfObjSection(Result).SizeLimit:=high(longword);
+              end;
+            primary_group:=omf_section_primary_group(atype,aname);
+            if primary_group<>'' then
+              begin
+                { find the primary group, if it already exists, else create it }
+                grp:=nil;
+                if GroupsList<>nil then
+                  grp:=TObjSectionGroup(GroupsList.Find(primary_group));
+                if grp=nil then
+                  grp:=createsectiongroup(primary_group);
+                { add the current section to the group }
+                SetLength(grp.members,Length(grp.members)+1);
+                grp.members[High(grp.members)]:=Result;
+                TOmfObjSection(Result).FPrimaryGroup:=grp;
+              end;
+          end;
       end;
 
     function TOmfObjData.reffardatasection: TObjSection;
@@ -670,7 +753,7 @@ implementation
 
     procedure TOmfObjOutput.AddSegment(const name, segclass, ovlname: string;
         Alignment: TOmfSegmentAlignment; Combination: TOmfSegmentCombination;
-        Use: TOmfSegmentUse; Size: aword);
+        Use: TOmfSegmentUse; Size: TObjSectionOfs);
       var
         s: TOmfRecord_SEGDEF;
       begin
@@ -685,42 +768,19 @@ implementation
         s.SegmentLength:=Size;
       end;
 
-    procedure TOmfObjOutput.AddGroup(const groupname: string; seglist: array of const);
+    procedure TOmfObjOutput.AddGroup(group: TObjSectionGroup);
       var
         g: TOmfRecord_GRPDEF;
+        seglist: TSegmentList;
         I: Integer;
-        SegListStr: TSegmentList;
       begin
         g:=TOmfRecord_GRPDEF.Create;
-        Groups.Add(groupname,g);
-        g.GroupNameIndex:=LNames.Add(groupname);
-        SetLength(SegListStr,Length(seglist));
-        for I:=0 to High(seglist) do
-          begin
-            case seglist[I].VType of
-              vtString:
-                SegListStr[I]:=Segments.FindIndexOf(seglist[I].VString^);
-              vtAnsiString:
-                SegListStr[I]:=Segments.FindIndexOf(AnsiString(seglist[I].VAnsiString));
-              vtWideString:
-                SegListStr[I]:=Segments.FindIndexOf(AnsiString(WideString(seglist[I].VWideString)));
-              vtUnicodeString:
-                SegListStr[I]:=Segments.FindIndexOf(AnsiString(UnicodeString(seglist[I].VUnicodeString)));
-              else
-                internalerror(2015040402);
-            end;
-          end;
-        g.SegmentList:=SegListStr;
-      end;
-
-    procedure TOmfObjOutput.AddGroup(const groupname: string; seglist: TSegmentList);
-      var
-        g: TOmfRecord_GRPDEF;
-      begin
-        g:=TOmfRecord_GRPDEF.Create;
-        Groups.Add(groupname,g);
-        g.GroupNameIndex:=LNames.Add(groupname);
-        g.SegmentList:=Copy(seglist);
+        Groups.Add(group.Name,g);
+        g.GroupNameIndex:=LNames.Add(group.Name);
+        SetLength(seglist,Length(group.members));
+        for I:=Low(group.members) to High(group.members) do
+          seglist[I]:=group.members[I].index;
+        g.SegmentList:=seglist;
       end;
 
     procedure TOmfObjOutput.WriteSections(Data: TObjData);
@@ -732,6 +792,7 @@ implementation
           begin
             sec:=TObjSection(Data.ObjSectionList[i]);
             WriteSectionContentAndFixups(sec);
+            WriteLinNumRecords(TOmfObjSection(sec));
           end;
       end;
 
@@ -744,6 +805,7 @@ implementation
         ChunkFixupStart,ChunkFixupEnd: Integer;
         SegIndex: Integer;
         NextOfs: Integer;
+        Is32BitLEDATA: Boolean;
         I: Integer;
       begin
         if (oso_data in sec.SecOptions) then
@@ -774,11 +836,28 @@ implementation
                   Dec(ChunkFixupEnd);
                 end;
               { write LEDATA record }
-              RawRecord.RecordType:=RT_LEDATA;
+              Is32BitLEDATA:=TOmfObjSection(sec).Use=suUse32;
+              if Is32BitLEDATA then
+                RawRecord.RecordType:=RT_LEDATA32
+              else
+                RawRecord.RecordType:=RT_LEDATA;
               NextOfs:=RawRecord.WriteIndexedRef(0,SegIndex);
-              RawRecord.RawData[NextOfs]:=Byte(ChunkStart);
-              RawRecord.RawData[NextOfs+1]:=Byte(ChunkStart shr 8);
-              Inc(NextOfs,2);
+              if Is32BitLEDATA then
+                begin
+                  RawRecord.RawData[NextOfs]:=Byte(ChunkStart);
+                  RawRecord.RawData[NextOfs+1]:=Byte(ChunkStart shr 8);
+                  RawRecord.RawData[NextOfs+2]:=Byte(ChunkStart shr 16);
+                  RawRecord.RawData[NextOfs+3]:=Byte(ChunkStart shr 24);
+                  Inc(NextOfs,4);
+                end
+              else
+                begin
+                  if ChunkStart>$ffff then
+                    internalerror(2018052201);
+                  RawRecord.RawData[NextOfs]:=Byte(ChunkStart);
+                  RawRecord.RawData[NextOfs+1]:=Byte(ChunkStart shr 8);
+                  Inc(NextOfs,2);
+                end;
               sec.data.read(RawRecord.RawData[NextOfs], ChunkLen);
               Inc(NextOfs, ChunkLen);
               RawRecord.RecordLength:=NextOfs+1;
@@ -807,9 +886,45 @@ implementation
           end;
       end;
 
+    procedure TOmfObjOutput.WriteLinNumRecords(sec: TOmfObjSection);
+      var
+        SegIndex: Integer;
+        RawRecord: TOmfRawRecord;
+        LinNumRec: TOmfRecord_LINNUM_MsLink;
+      begin
+        if (oso_data in sec.SecOptions) then
+          begin
+            if sec.Data=nil then
+              internalerror(200403073);
+            if sec.LinNumEntries.Count=0 then
+              exit;
+            SegIndex:=Segments.FindIndexOf(sec.Name);
+            RawRecord:=TOmfRawRecord.Create;
+            LinNumRec:=TOmfRecord_LINNUM_MsLink.Create;
+            LinNumRec.BaseGroup:=0;
+            LinNumRec.BaseSegment:=SegIndex;
+            LinNumRec.LineNumberList:=sec.LinNumEntries;
+
+            while LinNumRec.NextIndex<sec.LinNumEntries.Count do
+              begin
+                LinNumRec.EncodeTo(RawRecord);
+                RawRecord.WriteTo(FWriter);
+              end;
+
+            LinNumRec.Free;
+            RawRecord.Free;
+          end;
+      end;
+
     procedure TOmfObjOutput.section_count_sections(p: TObject; arg: pointer);
       begin
         TOmfObjSection(p).index:=pinteger(arg)^;
+        inc(pinteger(arg)^);
+      end;
+
+    procedure TOmfObjOutput.group_count_groups(p: TObject; arg: pointer);
+      begin
+        TObjSectionGroup(p).index:=pinteger(arg)^;
         inc(pinteger(arg)^);
       end;
 
@@ -821,7 +936,6 @@ implementation
         PublicNameElem: TOmfPublicNameElement;
         RawRecord: TOmfRawRecord;
         PubDefRec: TOmfRecord_PUBDEF;
-        PrimaryGroupName: string;
       begin
         RawRecord:=TOmfRawRecord.Create;
         SetLength(PubNamesForSection,Data.ObjSectionList.Count);
@@ -835,7 +949,14 @@ implementation
               begin
                 PublicNameElem:=TOmfPublicNameElement.Create(PubNamesForSection[objsym.objsection.index-1],objsym.Name);
                 PublicNameElem.PublicOffset:=objsym.offset;
-              end;
+                PublicNameElem.IsLocal:=False;
+              end
+            else if objsym.bind=AB_LOCAL then
+              begin
+                PublicNameElem:=TOmfPublicNameElement.Create(PubNamesForSection[objsym.objsection.index-1],objsym.Name);
+                PublicNameElem.PublicOffset:=objsym.offset;
+                PublicNameElem.IsLocal:=True;
+              end
           end;
 
         for i:=0 to Data.ObjSectionList.Count-1 do
@@ -843,9 +964,8 @@ implementation
             begin
               PubDefRec:=TOmfRecord_PUBDEF.Create;
               PubDefRec.BaseSegmentIndex:=i+1;
-              PrimaryGroupName:=TOmfObjSection(Data.ObjSectionList[i]).PrimaryGroup;
-              if PrimaryGroupName<>'' then
-                PubDefRec.BaseGroupIndex:=Groups.FindIndexOf(PrimaryGroupName)
+              if TOmfObjSection(Data.ObjSectionList[i]).PrimaryGroup<>nil then
+                PubDefRec.BaseGroupIndex:=Groups.FindIndexOf(TOmfObjSection(Data.ObjSectionList[i]).PrimaryGroup.Name)
               else
                 PubDefRec.BaseGroupIndex:=0;
               PubDefRec.PublicNames:=PubNamesForSection[i];
@@ -907,26 +1027,36 @@ implementation
         RawRecord: TOmfRawRecord;
         Header: TOmfRecord_THEADR;
         Translator_COMENT: TOmfRecord_COMENT;
+        DebugFormat_COMENT: TOmfRecord_COMENT;
         LinkPassSeparator_COMENT: TOmfRecord_COMENT;
         LNamesRec: TOmfRecord_LNAMES;
         ModEnd: TOmfRecord_MODEND;
         I: Integer;
         SegDef: TOmfRecord_SEGDEF;
         GrpDef: TOmfRecord_GRPDEF;
-        DGroupSegments: TSegmentList;
-        nsections: Integer;
+        nsections,ngroups: Integer;
+        objsym: TObjSymbol;
       begin
         { calc amount of sections we have and set their index, starting with 1 }
         nsections:=1;
         data.ObjSectionList.ForEachCall(@section_count_sections,@nsections);
+        { calc amount of groups we have and set their index, starting with 1 }
+        ngroups:=1;
+        data.GroupsList.ForEachCall(@group_count_groups,@ngroups);
         { maximum amount of sections supported in the omf format is $7fff }
         if (nsections-1)>$7fff then
           internalerror(2015040701);
+        { maximum amount of groups supported in the omf format is $7fff }
+        if (ngroups-1)>$7fff then
+          internalerror(2018062101);
 
         { write header record }
         RawRecord:=TOmfRawRecord.Create;
         Header:=TOmfRecord_THEADR.Create;
-        Header.ModuleName:=Data.Name;
+        if cs_debuginfo in current_settings.moduleswitches then
+          Header.ModuleName:=TOmfObjData(Data).MainSource
+        else
+          Header.ModuleName:=Data.Name;
         Header.EncodeTo(RawRecord);
         RawRecord.WriteTo(FWriter);
         Header.Free;
@@ -940,6 +1070,18 @@ implementation
         RawRecord.WriteTo(FWriter);
         Translator_COMENT.Free;
 
+        if (target_dbg.id=dbg_codeview) or
+           ((ds_dwarf_omf_linnum in current_settings.debugswitches) and
+            (target_dbg.id in [dbg_dwarf2,dbg_dwarf3,dbg_dwarf4])) then
+          begin
+            DebugFormat_COMENT:=TOmfRecord_COMENT.Create;
+            DebugFormat_COMENT.CommentClass:=CC_NewOmfExtension;
+            DebugFormat_COMENT.CommentString:='';
+            DebugFormat_COMENT.EncodeTo(RawRecord);
+            RawRecord.WriteTo(FWriter);
+            DebugFormat_COMENT.Free;
+          end;
+
         LNames.Clear;
         LNames.Add('');  { insert an empty string, which has index 1 }
         FSegments.Clear;
@@ -947,21 +1089,11 @@ implementation
         FGroups.Clear;
         FGroups.Add('',nil);
 
+        for i:=0 to Data.GroupsList.Count-1 do
+          AddGroup(TObjSectionGroup(Data.GroupsList[I]));
         for i:=0 to Data.ObjSectionList.Count-1 do
           with TOmfObjSection(Data.ObjSectionList[I]) do
             AddSegment(Name,ClassName,OverlayName,OmfAlignment,Combination,Use,Size);
-
-
-        { create group "DGROUP" }
-        SetLength(DGroupSegments,0);
-        for i:=0 to Data.ObjSectionList.Count-1 do
-          with TOmfObjSection(Data.ObjSectionList[I]) do
-            if PrimaryGroup='DGROUP' then
-              begin
-                SetLength(DGroupSegments,Length(DGroupSegments)+1);
-                DGroupSegments[High(DGroupSegments)]:=index;
-              end;
-        AddGroup('DGROUP',DGroupSegments);
 
         { write LNAMES record(s) }
         LNamesRec:=TOmfRecord_LNAMES.Create;
@@ -1021,7 +1153,7 @@ implementation
       begin
         inherited create(AWriter);
         cobjdata:=TOmfObjData;
-        FLNames:=TOmfOrderedNameCollection.Create;
+        FLNames:=TOmfOrderedNameCollection.Create(False);
         FSegments:=TFPHashObjectList.Create;
         FSegments.Add('',nil);
         FGroups:=TFPHashObjectList.Create;
@@ -1190,6 +1322,8 @@ implementation
             exit;
           end;
         objsec.Size:=SegDefRec.SegmentLength;
+        if SegClassName='DWARF' then
+          objsec.SecOptions:=objsec.SecOptions+[oso_debug];
         if (SegClassName='HEAP') or
            (SegClassName='STACK') or (SegDefRec.Combination=scStack) or
            (SegClassName='BEGDATA') or
@@ -1312,7 +1446,10 @@ implementation
             if not CaseSensitiveSymbols then
               symname:=UpCase(symname);
             objsym:=objdata.CreateSymbol(symname);
-            objsym.bind:=AB_GLOBAL;
+            if PubDefElem.IsLocal then
+              objsym.bind:=AB_LOCAL
+            else
+              objsym.bind:=AB_GLOBAL;
             objsym.typ:=AT_FUNCTION;
             objsym.group:=basegroup;
             objsym.objsection:=objsec;
@@ -1401,7 +1538,7 @@ implementation
         Result:=True;
       end;
 
-    function TOmfObjInput.ReadLEDataAndFixups(RawRec: TOmfRawRecord; objdata: TObjData): Boolean;
+    function TOmfObjInput.ReadLeOrLiDataAndFixups(RawRec: TOmfRawRecord; objdata: TObjData): Boolean;
       var
         Is32Bit: Boolean;
         NextOfs: Integer;
@@ -1409,91 +1546,135 @@ implementation
         EnumeratedDataOffset: DWord;
         BlockLength: Integer;
         objsec: TOmfObjSection;
-        FixupRawRec: TOmfRawRecord;
+        FixupRawRec: TOmfRawRecord=nil;
         Fixup: TOmfSubRecord_FIXUP;
+        Thread: TOmfSubRecord_THREAD;
+        FixuppWithoutLeOrLiData: Boolean=False;
       begin
         Result:=False;
-        if not (RawRec.RecordType in [RT_LEDATA,RT_LEDATA32]) then
-          internalerror(2015040301);
-        Is32Bit:=RawRec.RecordType=RT_LEDATA32;
-        NextOfs:=RawRec.ReadIndexedRef(0,SegmentIndex);
-        if Is32Bit then
-          begin
-            if (NextOfs+3)>=RawRec.RecordLength then
-              internalerror(2015040504);
-            EnumeratedDataOffset := RawRec.RawData[NextOfs]+
-                                   (RawRec.RawData[NextOfs+1] shl 8)+
-                                   (RawRec.RawData[NextOfs+2] shl 16)+
-                                   (RawRec.RawData[NextOfs+3] shl 24);
-            Inc(NextOfs,4);
-          end
-        else
-          begin
-            if (NextOfs+1)>=RawRec.RecordLength then
-              internalerror(2015040504);
-            EnumeratedDataOffset := RawRec.RawData[NextOfs]+
-                                   (RawRec.RawData[NextOfs+1] shl 8);
-            Inc(NextOfs,2);
-          end;
-        BlockLength:=RawRec.RecordLength-NextOfs-1;
-        if BlockLength<0 then
-          internalerror(2015060501);
-        if BlockLength>1024 then
-          begin
-            InputError('LEDATA contains more than 1024 bytes of data');
-            exit;
-          end;
+        case RawRec.RecordType of
+          RT_LEDATA,RT_LEDATA32:
+            begin
+              Is32Bit:=RawRec.RecordType=RT_LEDATA32;
+              NextOfs:=RawRec.ReadIndexedRef(0,SegmentIndex);
+              if Is32Bit then
+                begin
+                  if (NextOfs+3)>=RawRec.RecordLength then
+                    internalerror(2015040504);
+                  EnumeratedDataOffset := RawRec.RawData[NextOfs]+
+                                         (RawRec.RawData[NextOfs+1] shl 8)+
+                                         (RawRec.RawData[NextOfs+2] shl 16)+
+                                         (RawRec.RawData[NextOfs+3] shl 24);
+                  Inc(NextOfs,4);
+                end
+              else
+                begin
+                  if (NextOfs+1)>=RawRec.RecordLength then
+                    internalerror(2015040504);
+                  EnumeratedDataOffset := RawRec.RawData[NextOfs]+
+                                         (RawRec.RawData[NextOfs+1] shl 8);
+                  Inc(NextOfs,2);
+                end;
+              BlockLength:=RawRec.RecordLength-NextOfs-1;
+              if BlockLength<0 then
+                internalerror(2015060501);
+              if BlockLength>1024 then
+                begin
+                  InputError('LEDATA contains more than 1024 bytes of data');
+                  exit;
+                end;
 
-        if (SegmentIndex<1) or (SegmentIndex>objdata.ObjSectionList.Count) then
-          begin
-            InputError('Segment index in LEDATA field is out of range');
-            exit;
-          end;
-        objsec:=TOmfObjSection(objdata.ObjSectionList[SegmentIndex-1]);
+              if (SegmentIndex<1) or (SegmentIndex>objdata.ObjSectionList.Count) then
+                begin
+                  InputError('Segment index in LEDATA field is out of range');
+                  exit;
+                end;
+              objsec:=TOmfObjSection(objdata.ObjSectionList[SegmentIndex-1]);
 
-        objsec.SecOptions:=objsec.SecOptions+[oso_Data];
-        if (objsec.Data.Size>EnumeratedDataOffset) then
-          begin
-            InputError('LEDATA enumerated data offset field out of sequence');
-            exit;
-          end;
-        if (EnumeratedDataOffset+BlockLength)>objsec.Size then
-          begin
-            InputError('LEDATA goes beyond the segment size declared in the SEGDEF record');
-            exit;
-          end;
-        objsec.Data.seek(EnumeratedDataOffset);
-        objsec.Data.write(RawRec.RawData[NextOfs],BlockLength);
+              objsec.SecOptions:=objsec.SecOptions+[oso_Data];
+              if (objsec.Data.Size>EnumeratedDataOffset) then
+                begin
+                  InputError('LEDATA enumerated data offset field out of sequence');
+                  exit;
+                end;
+              if (EnumeratedDataOffset+BlockLength)>objsec.Size then
+                begin
+                  InputError('LEDATA goes beyond the segment size declared in the SEGDEF record');
+                  exit;
+                end;
+              objsec.Data.seek(EnumeratedDataOffset);
+              objsec.Data.write(RawRec.RawData[NextOfs],BlockLength);
+            end;
+          RT_LIDATA,RT_LIDATA32:
+            begin
+              InputError('LIDATA records are not supported');
+              exit;
+            end;
+          RT_FIXUPP,RT_FIXUPP32:
+            begin
+              FixuppWithoutLeOrLiData:=True;
+              { a hack, used to indicate, that we must process this record       }
+              { (RawRec) first in the FIXUPP record processing loop that follows }
+              FixupRawRec:=RawRec;
+            end;
+          else
+            internalerror(2015040301);
+        end;
 
-        { also read all the FIXUPP records that may follow }
-        while PeekNextRecordType in [RT_FIXUPP,RT_FIXUPP32] do
+        { also read all the FIXUPP records that may follow;                     }
+        { (FixupRawRec=RawRec) indicates that we must process RawRec first, but }
+        { without freeing it                                                    }
+        while (FixupRawRec=RawRec) or (PeekNextRecordType in [RT_FIXUPP,RT_FIXUPP32]) do
           begin
-            FixupRawRec:=TOmfRawRecord.Create;
-            FixupRawRec.ReadFrom(FReader);
-            if not FRawRecord.VerifyChecksumByte then
+            if FixupRawRec<>RawRec then
               begin
-                InputError('Invalid checksum in OMF record');
-                FixupRawRec.Free;
-                exit;
+                FixupRawRec:=TOmfRawRecord.Create;
+                FixupRawRec.ReadFrom(FReader);
+                if not FRawRecord.VerifyChecksumByte then
+                  begin
+                    InputError('Invalid checksum in OMF record');
+                    FixupRawRec.Free;
+                    exit;
+                  end;
               end;
             NextOfs:=0;
+            Thread:=TOmfSubRecord_THREAD.Create;
             Fixup:=TOmfSubRecord_FIXUP.Create;
             Fixup.Is32Bit:=FixupRawRec.RecordType=RT_FIXUPP32;
             Fixup.DataRecordStartOffset:=EnumeratedDataOffset;
             while NextOfs<(FixupRawRec.RecordLength-1) do
               begin
-                NextOfs:=Fixup.ReadAt(FixupRawRec,NextOfs);
-                if Fixup.FrameDeterminedByThread or Fixup.TargetDeterminedByThread then
+                if (FixupRawRec.RawData[NextOfs] and $80)<>0 then
                   begin
-                    InputError('Fixups determined by thread not supported');
-                    Fixup.Free;
-                    FixupRawRec.Free;
-                    exit;
+                    { FIXUP subrecord }
+                    if FixuppWithoutLeOrLiData then
+                      begin
+                        InputError('FIXUP subrecord without previous LEDATA or LIDATA record');
+                        Fixup.Free;
+                        Thread.Free;
+                        if FixupRawRec<>RawRec then
+                          FixupRawRec.Free;
+                        exit;
+                      end;
+                    NextOfs:=Fixup.ReadAt(FixupRawRec,NextOfs);
+                    Fixup.ResolveByThread(FFixupThreads);
+                    ImportOmfFixup(objdata,objsec,Fixup);
+                  end
+                else
+                  begin
+                    { THREAD subrecord }
+                    NextOfs:=Thread.ReadAt(FixupRawRec,NextOfs);
+                    Thread.ApplyTo(FFixupThreads);
                   end;
-                ImportOmfFixup(objdata,objsec,Fixup);
               end;
             Fixup.Free;
-            FixupRawRec.Free;
+            Thread.Free;
+            if FixupRawRec<>RawRec then
+              FixupRawRec.Free;
+            { always set it to null, so that we read the next record on the next }
+            { loop iteration (this ensures that FixupRawRec<>RawRec, without     }
+            { freeing RawRec)                                                    }
+            FixupRawRec:=nil;
           end;
         Result:=True;
       end;
@@ -1685,7 +1866,7 @@ implementation
             end;
             if RelocType=RELOC_NONE then
               begin
-                InputError('Unsupported fixup location type '+tostr(Ord(Fixup.LocationType))+' with mode '+tostr(ord(Fixup.Mode))+' in external reference to '+sym.Name);
+                InputError('Unsupported fixup location type '+tostr(Ord(Fixup.LocationType))+' with mode '+tostr(ord(Fixup.Mode)));
                 exit;
               end;
             reloc:=TOmfRelocation.CreateSection(Fixup.LocationOffset,target_section,RelocType);
@@ -1750,7 +1931,7 @@ implementation
             end;
             if RelocType=RELOC_NONE then
               begin
-                InputError('Unsupported fixup location type '+tostr(Ord(Fixup.LocationType))+' with mode '+tostr(ord(Fixup.Mode))+' in external reference to '+sym.Name);
+                InputError('Unsupported fixup location type '+tostr(Ord(Fixup.LocationType))+' with mode '+tostr(ord(Fixup.Mode)));
                 exit;
               end;
             reloc:=TOmfRelocation.CreateGroup(Fixup.LocationOffset,target_group,RelocType);
@@ -1784,9 +1965,10 @@ implementation
       begin
         inherited create;
         cobjdata:=TOmfObjData;
-        FLNames:=TOmfOrderedNameCollection.Create;
+        FLNames:=TOmfOrderedNameCollection.Create(True);
         FExtDefs:=TFPHashObjectList.Create;
         FPubDefs:=TFPHashObjectList.Create;
+        FFixupThreads:=TOmfThreads.Create;
         FRawRecord:=TOmfRawRecord.Create;
         CaseSensitiveSegments:=False;
         CaseSensitiveSymbols:=True;
@@ -1794,7 +1976,9 @@ implementation
 
     destructor TOmfObjInput.destroy;
       begin
+        FCOMENTRecord.Free;
         FRawRecord.Free;
+        FFixupThreads.Free;
         FPubDefs.Free;
         FExtDefs.Free;
         FLNames.Free;
@@ -1821,6 +2005,11 @@ implementation
         InputFileName:=AReader.FileName;
         objdata:=CObjData.Create(InputFileName);
         result:=false;
+        { the TOmfObjData constructor creates a group 'DGROUP', which is to be
+          used by the code generator, when writing files. When reading object
+          files, however, we need to start with an empty list of groups, so
+          let's clear the group list now. }
+        objdata.GroupsList.Clear;
         LNames.Clear;
         ExtDefs.Clear;
         FRawRecord.ReadFrom(FReader);
@@ -1841,6 +2030,7 @@ implementation
               InputError('Invalid checksum in OMF record');
               exit;
             end;
+          FreeAndNil(FCOMENTRecord);
           case FRawRecord.RecordType of
             RT_LNAMES:
               if not ReadLNames(FRawRecord) then
@@ -1853,27 +2043,60 @@ implementation
                 exit;
             RT_COMENT:
               begin
-                {todo}
+                FCOMENTRecord:=TOmfRecord_COMENT.Create;
+                FCOMENTRecord.DecodeFrom(FRawRecord);
+                case FCOMENTRecord.CommentClass of
+                  CC_OmfExtension:
+                    begin
+                      {todo: handle these as well...}
+                    end;
+                  CC_LIBMOD:
+                    begin
+                      {todo: do we need to read the module name here?}
+                    end;
+                  CC_EXESTR:
+                    begin
+                      InputError('EXESTR record (Executable String Record) is not supported');
+                      exit;
+                    end;
+                  CC_INCERR:
+                    begin
+                      InputError('Invalid object file (contains indication of error encountered during incremental compilation)');
+                      exit;
+                    end;
+                  CC_NOPAD:
+                    begin
+                      InputError('NOPAD (No Segment Padding) record is not supported');
+                      exit;
+                    end;
+                  CC_WKEXT:
+                    begin
+                      InputError('Weak externals are not supported');
+                      exit;
+                    end;
+                  CC_LZEXT:
+                    begin
+                      InputError('Lazy externals are not supported');
+                      exit;
+                    end;
+                  else
+                    begin
+                      {the rest are ignored for now...}
+                    end;
+                end;
               end;
             RT_EXTDEF:
               if not ReadExtDef(FRawRecord,objdata) then
                 exit;
+            RT_LPUBDEF,RT_LPUBDEF32,
             RT_PUBDEF,RT_PUBDEF32:
               if not ReadPubDef(FRawRecord,objdata) then
                 exit;
-            RT_LEDATA,RT_LEDATA32:
-              if not ReadLEDataAndFixups(FRawRecord,objdata) then
-                exit;
-            RT_LIDATA,RT_LIDATA32:
-              begin
-                InputError('LIDATA records are not supported');
-                exit;
-              end;
+            RT_LEDATA,RT_LEDATA32,
+            RT_LIDATA,RT_LIDATA32,
             RT_FIXUPP,RT_FIXUPP32:
-              begin
-                InputError('FIXUPP record is invalid, because it does not follow a LEDATA or LIDATA record');
+              if not ReadLeOrLiDataAndFixups(FRawRecord,objdata) then
                 exit;
-              end;
             RT_MODEND,RT_MODEND32:
               if not ReadModEnd(FRawRecord,objdata) then
                 exit;
@@ -2121,6 +2344,32 @@ implementation
         result:=FMZFlatContentSection;
       end;
 
+    procedure TMZExeOutput.CalcDwarfUnifiedLogicalSegmentsForSection(const SecName: TSymStr);
+      var
+        ExeSec: TMZExeSection;
+        ObjSec: TOmfObjSection;
+        UniSeg: TMZExeUnifiedLogicalSegment;
+        i: Integer;
+      begin
+        ExeSec:=TMZExeSection(FindExeSection(SecName));
+        for i:=0 to ExeSec.ObjSectionList.Count-1 do
+          begin
+            ObjSec:=TOmfObjSection(ExeSec.ObjSectionList[i]);
+            UniSeg:=TMZExeUnifiedLogicalSegment(DwarfUnifiedLogicalSegments.Find(ObjSec.Name));
+            if not assigned(UniSeg) then
+              begin
+                UniSeg:=TMZExeUnifiedLogicalSegment.Create(DwarfUnifiedLogicalSegments,ObjSec.Name);
+                UniSeg.MemPos:=0;
+              end;
+            UniSeg.AddObjSection(ObjSec);
+          end;
+        for i:=0 to DwarfUnifiedLogicalSegments.Count-1 do
+          begin
+            UniSeg:=TMZExeUnifiedLogicalSegment(DwarfUnifiedLogicalSegments[i]);
+            UniSeg.CalcMemPos;
+          end;
+      end;
+
     procedure TMZExeOutput.CalcExeUnifiedLogicalSegments;
       var
         ExeSec: TMZExeSection;
@@ -2223,30 +2472,49 @@ implementation
 
     procedure TMZExeOutput.WriteMap_SegmentsAndGroups;
       var
-        i: Integer;
+        i, LongestGroupName, LongestSegmentName, LongestClassName: Integer;
         UniSeg: TMZExeUnifiedLogicalSegment;
         UniGrp: TMZExeUnifiedLogicalGroup;
+        GroupColumnSize, SegmentColumnSize, ClassColumnSize: LongInt;
       begin
+        LongestGroupName:=0;
+        for i:=0 to ExeUnifiedLogicalGroups.Count-1 do
+          begin
+            UniGrp:=TMZExeUnifiedLogicalGroup(ExeUnifiedLogicalGroups[i]);
+            LongestGroupName:=max(LongestGroupName,Length(UniGrp.Name));
+          end;
+        LongestSegmentName:=0;
+        LongestClassName:=0;
+        for i:=0 to ExeUnifiedLogicalSegments.Count-1 do
+          begin
+            UniSeg:=TMZExeUnifiedLogicalSegment(ExeUnifiedLogicalSegments[i]);
+            LongestSegmentName:=max(LongestSegmentName,Length(UniSeg.SegName));
+            LongestClassName:=max(LongestClassName,Length(UniSeg.SegClass));
+          end;
+        GroupColumnSize:=max(32,LongestGroupName+1);
+        SegmentColumnSize:=max(23,LongestSegmentName+1);
+        ClassColumnSize:=max(15,LongestClassName+1);
         exemap.AddHeader('Groups list');
         exemap.Add('');
-        exemap.Add(PadSpace('Group',32)+PadSpace('Address',21)+'Size');
-        exemap.Add(PadSpace('=====',32)+PadSpace('=======',21)+'====');
+        exemap.Add(PadSpace('Group',GroupColumnSize)+PadSpace('Address',21)+'Size');
+        exemap.Add(PadSpace('=====',GroupColumnSize)+PadSpace('=======',21)+'====');
         exemap.Add('');
         for i:=0 to ExeUnifiedLogicalGroups.Count-1 do
           begin
             UniGrp:=TMZExeUnifiedLogicalGroup(ExeUnifiedLogicalGroups[i]);
-            exemap.Add(PadSpace(UniGrp.Name,32)+PadSpace(UniGrp.MemPosStr,21)+HexStr(UniGrp.Size,8));
+            exemap.Add(PadSpace(UniGrp.Name,GroupColumnSize)+PadSpace(UniGrp.MemPosStr,21)+HexStr(UniGrp.Size,8));
           end;
         exemap.Add('');
+        GroupColumnSize:=max(15,LongestGroupName+1);
         exemap.AddHeader('Segments list');
         exemap.Add('');
-        exemap.Add(PadSpace('Segment',23)+PadSpace('Class',15)+PadSpace('Group',15)+PadSpace('Address',16)+'Size');
-        exemap.Add(PadSpace('=======',23)+PadSpace('=====',15)+PadSpace('=====',15)+PadSpace('=======',16)+'====');
+        exemap.Add(PadSpace('Segment',SegmentColumnSize)+PadSpace('Class',ClassColumnSize)+PadSpace('Group',GroupColumnSize)+PadSpace('Address',16)+'Size');
+        exemap.Add(PadSpace('=======',SegmentColumnSize)+PadSpace('=====',ClassColumnSize)+PadSpace('=====',GroupColumnSize)+PadSpace('=======',16)+'====');
         exemap.Add('');
         for i:=0 to ExeUnifiedLogicalSegments.Count-1 do
           begin
             UniSeg:=TMZExeUnifiedLogicalSegment(ExeUnifiedLogicalSegments[i]);
-            exemap.Add(PadSpace(UniSeg.SegName,23)+PadSpace(UniSeg.SegClass,15)+PadSpace(UniSeg.PrimaryGroup,15)+PadSpace(UniSeg.MemPosStr,16)+HexStr(UniSeg.Size,8));
+            exemap.Add(PadSpace(UniSeg.SegName,SegmentColumnSize)+PadSpace(UniSeg.SegClass,ClassColumnSize)+PadSpace(UniSeg.PrimaryGroup,GroupColumnSize)+PadSpace(UniSeg.MemPosStr,16)+HexStr(UniSeg.Size,8));
           end;
         exemap.Add('');
       end;
@@ -2434,6 +2702,152 @@ implementation
         Result:=True;
       end;
 
+    function TMZExeOutput.writeDebugElf: boolean;
+      label
+        cleanup;
+      var
+        debugsections: array of TMZExeSection;
+        debugsections_count: Word;
+        elfsections_count: Word;
+        elfsechdrs: array of TElf32sechdr;
+        shstrndx: Word;
+        next_section_ofs, elf_start_pos, elf_end_pos: LongWord;
+        ElfHeader: TElf32header;
+        shstrtabsect_data: TDynamicArray=Nil;
+        I, elfsecidx, J: Integer;
+        ObjSec: TOmfObjSection;
+        tis_trailer: TTISTrailer;
+      begin
+        { mark the offset of the start of the ELF image }
+        elf_start_pos:=Writer.Size;
+
+        { count the debug sections }
+        debugsections_count:=0;
+        for I:=0 to ExeSectionList.Count-1 do
+          if oso_debug in TMZExeSection(ExeSectionList[I]).SecOptions then
+            Inc(debugsections_count);
+
+        { extract them into the debugsections array }
+        SetLength(debugsections,debugsections_count);
+        debugsections_count:=0;
+        for I:=0 to ExeSectionList.Count-1 do
+          if oso_debug in TMZExeSection(ExeSectionList[I]).SecOptions then
+            begin
+              debugsections[debugsections_count]:=TMZExeSection(ExeSectionList[I]);
+              Inc(debugsections_count);
+            end;
+
+        { prepare/allocate elf section headers }
+        elfsections_count:=debugsections_count+2;
+        SetLength(elfsechdrs,elfsections_count);
+        for I:=0 to elfsections_count-1 do
+          FillChar(elfsechdrs[I],SizeOf(elfsechdrs[I]),0);
+        shstrndx:=elfsections_count-1;
+        shstrtabsect_data:=tdynamicarray.Create(SectionDataMaxGrow);
+        shstrtabsect_data.writestr(#0);
+        next_section_ofs:=SizeOf(ElfHeader)+elfsections_count*SizeOf(TElf32sechdr);
+        for I:=0 to debugsections_count-1 do
+          begin
+            elfsecidx:=I+1;
+            with elfsechdrs[elfsecidx] do
+              begin
+                sh_name:=shstrtabsect_data.Pos;
+                sh_type:=SHT_PROGBITS;
+                sh_flags:=0;
+                sh_addr:=0;
+                sh_offset:=next_section_ofs;
+                sh_size:=debugsections[I].Size;
+                sh_link:=0;
+                sh_info:=0;
+                sh_addralign:=0;
+                sh_entsize:=0;
+              end;
+            Inc(next_section_ofs,debugsections[I].Size);
+            shstrtabsect_data.writestr(debugsections[I].Name+#0);
+          end;
+        with elfsechdrs[shstrndx] do
+          begin
+            sh_name:=shstrtabsect_data.Pos;
+            shstrtabsect_data.writestr('.shstrtab'#0);
+            sh_type:=SHT_STRTAB;
+            sh_flags:=0;
+            sh_addr:=0;
+            sh_offset:=next_section_ofs;
+            sh_size:=shstrtabsect_data.Size;
+            sh_link:=0;
+            sh_info:=0;
+            sh_addralign:=0;
+            sh_entsize:=0;
+          end;
+
+        { write header }
+        FillChar(ElfHeader,SizeOf(ElfHeader),0);
+        ElfHeader.e_ident[EI_MAG0]:=ELFMAG0; { = #127'ELF' }
+        ElfHeader.e_ident[EI_MAG1]:=ELFMAG1;
+        ElfHeader.e_ident[EI_MAG2]:=ELFMAG2;
+        ElfHeader.e_ident[EI_MAG3]:=ELFMAG3;
+        ElfHeader.e_ident[EI_CLASS]:=ELFCLASS32;
+        ElfHeader.e_ident[EI_DATA]:=ELFDATA2LSB;
+        ElfHeader.e_ident[EI_VERSION]:=1;
+        ElfHeader.e_ident[EI_OSABI]:=ELFOSABI_NONE;
+        ElfHeader.e_ident[EI_ABIVERSION]:=0;
+        ElfHeader.e_type:=ET_EXEC;
+        ElfHeader.e_machine:=EM_386;
+        ElfHeader.e_version:=1;
+        ElfHeader.e_entry:=0;
+        ElfHeader.e_phoff:=0;
+        ElfHeader.e_shoff:=SizeOf(ElfHeader);
+        ElfHeader.e_flags:=0;
+        ElfHeader.e_ehsize:=SizeOf(ElfHeader);
+        ElfHeader.e_phentsize:=SizeOf(TElf32proghdr);
+        ElfHeader.e_phnum:=0;
+        ElfHeader.e_shentsize:=SizeOf(TElf32sechdr);
+        ElfHeader.e_shnum:=elfsections_count;
+        ElfHeader.e_shstrndx:=shstrndx;
+        MaybeSwapHeader(ElfHeader);
+        Writer.write(ElfHeader,sizeof(ElfHeader));
+
+        { write section headers }
+        for I:=0 to elfsections_count-1 do
+          begin
+            MaybeSwapSecHeader(elfsechdrs[I]);
+            Writer.write(elfsechdrs[I],SizeOf(elfsechdrs[I]));
+          end;
+
+        { write section data }
+        for J:=0 to debugsections_count-1 do
+          begin
+            debugsections[J].DataPos:=Writer.Size;
+            for i:=0 to debugsections[J].ObjSectionList.Count-1 do
+              begin
+                ObjSec:=TOmfObjSection(debugsections[J].ObjSectionList[i]);
+                if assigned(ObjSec.Data) then
+                  FWriter.writearray(ObjSec.Data);
+              end;
+          end;
+        { write .shstrtab section data }
+        Writer.writearray(shstrtabsect_data);
+
+        { mark the offset past the end of the ELF image }
+        elf_end_pos:=Writer.Size;
+
+        { write TIS trailer (not part of the ELF image) }
+        FillChar(tis_trailer,sizeof(tis_trailer),0);
+        with tis_trailer do
+          begin
+            tis_signature:=TIS_TRAILER_SIGNATURE;
+            tis_vendor:=TIS_TRAILER_VENDOR_TIS;
+            tis_type:=TIS_TRAILER_TYPE_TIS_DWARF;
+            tis_size:=(elf_end_pos-elf_start_pos)+sizeof(tis_trailer);
+          end;
+        MayBeSwapTISTrailer(tis_trailer);
+        Writer.write(tis_trailer,sizeof(tis_trailer));
+
+        Result:=True;
+cleanup:
+        shstrtabsect_data.Free;
+      end;
+
     procedure TMZExeOutput.Load_Symbol(const aname: string);
       var
         dgroup: TObjSectionGroup;
@@ -2567,7 +2981,15 @@ implementation
                 if objreloc.FrameGroup<>'' then
                   framebase:=TMZExeUnifiedLogicalGroup(ExeUnifiedLogicalGroups.Find(objreloc.FrameGroup)).MemPos
                 else
-                  framebase:=TOmfObjSection(objreloc.objsection).MZExeUnifiedLogicalSegment.MemBasePos;
+                  begin
+                    if assigned(TOmfObjSection(objreloc.objsection).MZExeUnifiedLogicalSegment) then
+                      framebase:=TOmfObjSection(objreloc.objsection).MZExeUnifiedLogicalSegment.MemBasePos
+                    else
+                      begin
+                        framebase:=0;
+                        Comment(V_Warning,'Encountered an OMF reference to a section, that has been removed by smartlinking: '+TOmfObjSection(objreloc.objsection).Name);
+                      end;
+                  end;
                 case objreloc.typ of
                   RELOC_ABSOLUTE16,RELOC_ABSOLUTE32,RELOC_SEG,RELOC_FARPTR,RELOC_FARPTR48:
                     fixupamount:=target-framebase;
@@ -2674,6 +3096,19 @@ implementation
         ObjSectionList.Sort(@IOmfObjSectionClassNameCompare);
       end;
 
+    procedure TMZExeOutput.MemPos_ExeSection(const aname: string);
+      begin
+        { overlay all .exe sections on top of each other. In practice, the MZ
+          formats doesn't have sections, so really, everything goes to a single
+          section, called .MZ_flat_content. All the remaining sections, that we
+          use are the debug sections, which go to a separate ELF file, appended
+          after the end of the .exe. They live in a separate address space, with
+          each section starting at virtual offset 0. So, that's why we always
+          set CurrMemPos to 0 before each section here. }
+        CurrMemPos:=0;
+        inherited MemPos_ExeSection(aname);
+      end;
+
     procedure TMZExeOutput.MemPos_EndExeSection;
       var
         SecName: TSymStr='';
@@ -2681,22 +3116,49 @@ implementation
         if assigned(CurrExeSec) then
           SecName:=CurrExeSec.Name;
         inherited MemPos_EndExeSection;
-        if SecName='.MZ_flat_content' then
-          begin
-            CalcExeUnifiedLogicalSegments;
-            CalcExeGroups;
-            CalcSegments_MemBasePos;
-            if assigned(exemap) then
-              WriteMap_SegmentsAndGroups;
-          end;
+        case SecName of
+          '.MZ_flat_content':
+            begin
+              CalcExeUnifiedLogicalSegments;
+              CalcExeGroups;
+              CalcSegments_MemBasePos;
+              if assigned(exemap) then
+                WriteMap_SegmentsAndGroups;
+            end;
+          '.debug_info',
+          '.debug_abbrev',
+          '.debug_line',
+          '.debug_aranges':
+            begin
+              CalcDwarfUnifiedLogicalSegmentsForSection(SecName);
+              with TMZExeSection(FindExeSection(SecName)) do
+                SecOptions:=SecOptions+[oso_debug];
+            end;
+          '':
+            {nothing to do};
+          else
+            internalerror(2018061401);
+        end;
       end;
 
     function TMZExeOutput.writeData: boolean;
       begin
-        if apptype=app_com then
-          Result:=WriteCom
-        else
-          Result:=WriteExe;
+        Result:=False;
+        if ExeWriteMode in [ewm_exefull,ewm_exeonly] then
+          begin
+            if apptype=app_com then
+              Result:=WriteCom
+            else
+              Result:=WriteExe;
+            if not Result then
+              exit;
+          end;
+        if ((cs_debuginfo in current_settings.moduleswitches) and
+            (target_dbg.id in [dbg_dwarf2,dbg_dwarf3,dbg_dwarf4])) and
+           ((ExeWriteMode=ewm_dbgonly) or
+            ((ExeWriteMode=ewm_exefull) and
+              not(cs_link_strip in current_settings.globalswitches))) then
+          Result:=writeDebugElf;
       end;
 
     constructor TMZExeOutput.create;
@@ -2709,12 +3171,14 @@ implementation
         MaxMemPos:=$9FFFF;
         FExeUnifiedLogicalSegments:=TFPHashObjectList.Create;
         FExeUnifiedLogicalGroups:=TFPHashObjectList.Create;
+        FDwarfUnifiedLogicalSegments:=TFPHashObjectList.Create;
         FHeader:=TMZExeHeader.Create;
       end;
 
     destructor TMZExeOutput.destroy;
       begin
         FHeader.Free;
+        FDwarfUnifiedLogicalSegments.Free;
         FExeUnifiedLogicalGroups.Free;
         FExeUnifiedLogicalSegments.Free;
         inherited destroy;
@@ -2743,7 +3207,7 @@ implementation
             asmbin : '';
             asmcmd : '';
             supported_targets : [system_i8086_msdos,system_i8086_embedded];
-            flags : [af_outputbinary,af_no_debug];
+            flags : [af_outputbinary,af_smartlink_sections];
             labelprefix : '..@';
             comment : '; ';
             dollarsign: '$';

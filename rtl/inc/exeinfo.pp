@@ -36,11 +36,14 @@ type
     isopen    : boolean;
     nsects    : longint;
     sechdrofs,
-    secstrofs : ptruint;
-    processaddress : ptruint;
+    secstrofs : {$ifdef cpui8086}longword{$else}ptruint{$endif};
+    processaddress : {$ifdef cpui8086}word{$else}ptruint{$endif};
+{$ifdef cpui8086}
+    processsegment : word;
+{$endif cpui8086}
     FunctionRelative: boolean;
     // Offset of the binary image forming permanent offset to all retrieved values
-    ImgOffset: ptruint;
+    ImgOffset: {$ifdef cpui8086}longword{$else}ptruint{$endif};
     filename  : string;
     // Allocate static buffer for reading data
     buf       : array[0..4095] of byte;
@@ -53,14 +56,18 @@ function FindExeSection(var e:TExeFile;const secname:string;var secofs,seclen:lo
 function CloseExeFile(var e:TExeFile):boolean;
 function ReadDebugLink(var e:TExeFile;var dbgfn:string):boolean;
 
+{$ifdef CPUI8086}
+procedure GetModuleByAddr(addr: farpointer; var baseaddr: farpointer; var filename: string);
+{$else CPUI8086}
 procedure GetModuleByAddr(addr: pointer; var baseaddr: pointer; var filename: string);
+{$endif CPUI8086}
 
 implementation
 
 uses
   strings{$ifdef windows},windows{$endif windows};
 
-{$ifdef unix}
+{$if defined(unix)}
 
   procedure GetModuleByAddr(addr: pointer; var baseaddr: pointer; var filename: string);
     begin
@@ -73,8 +80,7 @@ uses
         end;
     end;
 
-{$else unix}
-{$ifdef windows}
+{$elseif defined(windows)}
 
   var
     Tmm: TMemoryBasicInformation;
@@ -101,19 +107,13 @@ uses
         end;
     end;
 
-{$else windows}
+{$elseif defined(morphos)}
 
-{$ifdef morphos}
   procedure startsymbol; external name '_start';
-{$endif}
 
   procedure GetModuleByAddr(addr: pointer; var baseaddr: pointer; var filename: string);
     begin
-{$ifdef morphos}
       baseaddr:= @startsymbol;
-{$else}
-      baseaddr:= nil;
-{$endif}
 {$ifdef FPC_HAS_FEATURE_COMMANDARGS}
       filename:=ParamStr(0);
 {$else FPC_HAS_FEATURE_COMMANDARGS}
@@ -121,8 +121,31 @@ uses
 {$endif FPC_HAS_FEATURE_COMMANDARGS}
     end;
 
-{$endif windows}
-{$endif unix}
+{$elseif defined(msdos)}
+
+  procedure GetModuleByAddr(addr: farpointer; var baseaddr: farpointer; var filename: string);
+    begin
+      baseaddr:=Ptr(PrefixSeg+16,0);
+      filename:=ParamStr(0);
+    end;
+
+{$else}
+
+{$ifdef CPUI8086}
+  procedure GetModuleByAddr(addr: farpointer; var baseaddr: farpointer; var filename: string);
+{$else CPUI8086}
+  procedure GetModuleByAddr(addr: pointer; var baseaddr: pointer; var filename: string);
+{$endif CPUI8086}
+    begin
+      baseaddr:= nil;
+{$ifdef FPC_HAS_FEATURE_COMMANDARGS}
+      filename:=ParamStr(0);
+{$else FPC_HAS_FEATURE_COMMANDARGS}
+      filename:='';
+{$endif FPC_HAS_FEATURE_COMMANDARGS}
+    end;
+
+{$endif}
 
 {****************************************************************************
                              Executable Loaders
@@ -139,6 +162,10 @@ uses
 {$endif}
 
 {$if defined(morphos)}
+  {$define ELF32}
+{$endif}
+
+{$if defined(msdos)}
   {$define ELF32}
 {$endif}
 
@@ -163,7 +190,7 @@ uses
                               DOS Stub
 ****************************************************************************}
 
-{$if defined(EMX) or defined(PE32) or defined(PE32PLUS) or defined(GO32V2)}
+{$if defined(EMX) or defined(PE32) or defined(PE32PLUS) or defined(GO32V2) or defined(MSDOS)}
 type
   tdosheader = packed record
      e_magic : word;
@@ -817,7 +844,7 @@ type
 
 {$ifdef FIND_BASEADDR_ELF}
 var
-  LocalJmpBuf : Jmp_Buf;  
+  LocalJmpBuf : Jmp_Buf;
 procedure LocalError;
 begin
   Longjmp(LocalJmpBuf,1);
@@ -922,31 +949,58 @@ end;
 {$endif FIND_BASEADDR_ELF}
 
 function OpenElf(var e:TExeFile):boolean;
+{$ifdef MSDOS}
+const
+  ParagraphSize = 512;
+{$endif MSDOS}
 var
   elfheader : telfheader;
   elfsec    : telfsechdr;
   phdr      : telfproghdr;
   i         : longint;
+{$ifdef MSDOS}
+  DosHeader : tdosheader;
+  BRead     : cardinal;
+{$endif MSDOS}
 begin
   OpenElf:=false;
+{$ifdef MSDOS}
   { read and check header }
-  if e.size<sizeof(telfheader) then
+  if E.Size < SizeOf (DosHeader) then
+   Exit;
+  BlockRead (E.F, DosHeader, SizeOf (DosHeader), BRead);
+  if BRead <> SizeOf (DosHeader) then
+   Exit;
+  if DosHeader.E_Magic = $5A4D then
+  begin
+   E.ImgOffset := LongWord(DosHeader.e_cp) * ParagraphSize;
+   if DosHeader.e_cblp > 0 then
+    E.ImgOffset := E.ImgOffset + DosHeader.e_cblp - ParagraphSize;
+  end;
+{$endif MSDOS}
+  { read and check header }
+  if e.size<(sizeof(telfheader)+e.ImgOffset) then
    exit;
+  seek(e.f,e.ImgOffset);
   blockread(e.f,elfheader,sizeof(telfheader));
  if elfheader.magic0123<>{$ifdef ENDIAN_LITTLE}$464c457f{$else}$7f454c46{$endif} then
    exit;
   if elfheader.e_shentsize<>sizeof(telfsechdr) then
    exit;
   { read section names }
-  seek(e.f,elfheader.e_shoff+elfheader.e_shstrndx*cardinal(sizeof(telfsechdr)));
+  seek(e.f,e.ImgOffset+elfheader.e_shoff+elfheader.e_shstrndx*cardinal(sizeof(telfsechdr)));
   blockread(e.f,elfsec,sizeof(telfsechdr));
   e.secstrofs:=elfsec.sh_offset;
   e.sechdrofs:=elfheader.e_shoff;
   e.nsects:=elfheader.e_shnum;
 
+{$ifdef MSDOS}
+  { e.processaddress is already initialized to 0 }
+  e.processsegment:=PrefixSeg+16;
+{$else MSDOS}
   { scan program headers to find the image base address }
   e.processaddress:=High(e.processaddress);
-  seek(e.f,elfheader.e_phoff);
+  seek(e.f,e.ImgOffset+elfheader.e_phoff);
   for i:=1 to elfheader.e_phnum do
     begin
       blockread(e.f,phdr,sizeof(phdr));
@@ -956,6 +1010,7 @@ begin
 
   if e.processaddress = High(e.processaddress) then
     e.processaddress:=0;
+{$endif MSDOS}
 
   OpenElf:=true;
 end;
@@ -970,19 +1025,19 @@ var
   bufsize,i  : longint;
 begin
   FindSectionElf:=false;
-  seek(e.f,e.sechdrofs);
+  seek(e.f,e.ImgOffset+e.sechdrofs);
   for i:=1 to e.nsects do
    begin
      blockread(e.f,elfsec,sizeof(telfsechdr));
      fillchar(secnamebuf,sizeof(secnamebuf),0);
      oldofs:=filepos(e.f);
-     seek(e.f,e.secstrofs+elfsec.sh_name);
+     seek(e.f,e.ImgOffset+e.secstrofs+elfsec.sh_name);
      blockread(e.f,secnamebuf,sizeof(secnamebuf)-1,bufsize);
      seek(e.f,oldofs);
      secname:=strpas(secnamebuf);
      if asecname=secname then
        begin
-         secofs:=elfsec.sh_offset;
+         secofs:=e.ImgOffset+elfsec.sh_offset;
          seclen:=elfsec.sh_size;
          FindSectionElf:=true;
          exit;

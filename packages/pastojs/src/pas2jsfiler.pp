@@ -160,6 +160,7 @@ const
     'ISOLikeIO',
     'ISOLikeProgramsPara',
     'ISOLikeMod',
+    'ArrayOperators',
     'ExternalClass',
     'PrefixedAttributes',
     'IgnoreAttributes'
@@ -587,6 +588,7 @@ type
     function GetDefaultProcTypeModifiers(ProcType: TPasProcedureType): TProcTypeModifiers; virtual;
     function GetDefaultExprHasEvalValue(Expr: TPasExpr): boolean; virtual;
     function GetSrcCheckSum(aFilename: string): TPCUSourceFileChecksum; virtual;
+    function GetDefaultRefName(El: TPasElement): string; virtual;
     function GetElementReference(El: TPasElement; AutoCreate: boolean = true): TPCUFilerElementRef;
     function CreateElementRef(El: TPasElement): TPCUFilerElementRef; virtual;
     procedure AddedBuiltInRef(Ref: TPCUFilerElementRef); virtual;
@@ -1766,6 +1768,24 @@ begin
   Result:=ComputeChecksum(p,Cnt);
 end;
 
+function TPCUFiler.GetDefaultRefName(El: TPasElement): string;
+var
+  C: TClass;
+begin
+  Result:=El.Name;
+  if Result<>'' then exit;
+  // some elements without name can be referred to:
+  C:=El.ClassType;
+  if C=TInterfaceSection then
+    Result:='Interface'
+  else if C=TPasArrayType then
+    Result:='Array' // anonymous array
+  else if C.InheritsFrom(TPasProcedureType) and (El.Parent is TPasProcedure) then
+    Result:='Type'
+  else
+    Result:='';
+end;
+
 function TPCUFiler.GetElementReference(El: TPasElement; AutoCreate: boolean
   ): TPCUFilerElementRef;
 var
@@ -2014,6 +2034,10 @@ begin
     else
       FLastNewExt.NextNewExt:=Result;
     FLastNewExt:=Result;
+    {$IF defined(VerbosePCUFiler) or defined(VerbosePJUFiler) or defined(VerbosePas2JS)}
+    if (El.Name='') and (GetDefaultRefName(El)='') then
+      RaiseMsg(20180623091608,El);
+    {$ENDIF}
     end;
 end;
 
@@ -2283,7 +2307,7 @@ procedure TPCUWriter.WriteModule(Obj: TJSONObject; aModule: TPasModule;
   begin
     {$IF defined(VerbosePJUFiler) or defined(VerbosePCUFiler) or defined(VerboseUnitQueue)}
     {AllowWriteln}
-    writeln('TPCUWriter.WriteModule Ref.Element=',GetElementFullPath(Ref.Element),' Pending=',GetObjName(Ref.Pending),' ErrorEl=',GetElementFullPath(Ref.Pending.ErrorEl));
+    writeln('TPCUWriter.WriteModule Ref.Element=',GetElementDbgPath(Ref.Element),' Pending=',GetObjName(Ref.Pending),' ErrorEl=',GetElementDbgPath(Ref.Pending.ErrorEl));
     if Ref.Pending is TPCUWriterPendingElRefObj then
       begin
       PendObj:=TPCUWriterPendingElRefObj(Ref.Pending);
@@ -3760,13 +3784,14 @@ procedure TPCUWriter.WriteExtRefSignature(Ref: TPCUFilerElementRef;
   end;
 
 var
-  Parent: TPasElement;
+  Parent, El: TPasElement;
   C: TClass;
 begin
   //writeln('TPCUWriter.WriteExtRefSignature START ',GetObjName(Ref.Element));
   if aContext=nil then ;
   // write member index
-  Parent:=Ref.Element.Parent;
+  El:=Ref.Element;
+  Parent:=El.Parent;
   C:=Parent.ClassType;
   if C.InheritsFrom(TPasDeclarations) then
     WriteMemberIndex(TPasDeclarations(Parent).Declarations,Ref.Element,Ref.Obj)
@@ -3810,10 +3835,11 @@ begin
   // check name
   Name:=Resolver.GetOverloadName(El);
   if Name='' then
-    if El is TInterfaceSection then
-      Name:='Interface'
-    else
+    begin
+    Name:=GetDefaultRefName(El);
+    if Name='' then
       RaiseMsg(20180308174850,El,GetObjName(El));
+    end;
   // write
   Ref.Obj:=TJSONObject.Create;
   Ref.Obj.Add('Name',Name);
@@ -5331,7 +5357,10 @@ begin
   ReadDeclarations(Obj,Section,aContext);
   Scope.Finished:=true;
   if Section is TInterfaceSection then
+    begin
+    ResolvePending;
     Resolver.NotifyPendingUsedInterfaces;
+    end;
 end;
 
 procedure TPCUReader.ReadDeclarations(Obj: TJSONObject; Section: TPasSection;
@@ -5341,6 +5370,7 @@ var
   i: Integer;
   Data: TJSONData;
   El: TPasElement;
+  C: TClass;
 begin
   if not ReadArray(Obj,'Declarations',Arr,Section) then exit;
   {$IFDEF VerbosePCUFiler}
@@ -5353,6 +5383,26 @@ begin
       RaiseMsg(20180207182304,Section,IntToStr(i)+' '+GetObjName(Data));
     El:=ReadElement(TJSONObject(Data),Section,aContext);
     Section.Declarations.Add(El);
+    C:=El.ClassType;
+    if C=TPasResString then
+      Section.ResStrings.Add(El)
+    else if C=TPasConst then
+      Section.Consts.Add(El)
+    else if C=TPasClassType then
+      Section.Classes.Add(El)
+    else if C=TPasRecordType then
+      Section.Classes.Add(El)
+    else if C.InheritsFrom(TPasType) then
+      // not TPasClassType, TPasRecordType !
+      Section.Types.Add(El)
+    else if C.InheritsFrom(TPasProcedure) then
+      Section.Functions.Add(El)
+    else if C=TPasVariable then
+      Section.Variables.Add(El)
+    else if C=TPasProperty then
+      Section.Properties.Add(El)
+    else if C=TPasExportSymbol then
+      Section.ExportSymbols.Add(El);
     end;
 end;
 
@@ -7353,6 +7403,7 @@ begin
     PendingIdentifierScope:=TPCUReaderPendingIdentifierScope(FPendingIdentifierScopes[i]);
     ReadIdentifierScopeArray(PendingIdentifierScope.Arr,PendingIdentifierScope.Scope);
     end;
+  FPendingIdentifierScopes.Clear;
 
   Node:=FElementRefs.FindLowest;
   while Node<>nil do
@@ -7535,13 +7586,13 @@ var
   Data: TJSONData;
   i: Integer;
 begin
-  {$IFDEF VerbosePCUFiler}
-  writeln('TPCUReader.ReadJSONHeader START ');
-  {$ENDIF}
   FResolver:=aResolver;
   FParser:=Resolver.CurrentParser;
   FScanner:=FParser.Scanner;
   FJSON:=Obj;
+  {$IF defined(VerbosePCUFiler) or defined(VerboseUnitQueue)}
+  writeln('TPCUReader.ReadJSONHeader START ');
+  {$ENDIF}
 
   ReadHeaderMagic(Obj);
   ReadHeaderVersion(Obj);
@@ -7583,8 +7634,8 @@ var
   Obj, SubObj: TJSONObject;
   aContext: TPCUReaderContext;
 begin
-  {$IFDEF VerbosePCUFiler}
-  writeln('TPCUReader.ReadJSONContinue START');
+  {$IF defined(VerbosePCUFiler) or defined(VerboseUnitQueue)}
+  writeln('TPCUReader.ReadContinue START ',Resolver.RootElement.Name);
   {$ENDIF}
   Obj:=JSON;
   if not ReadObject(Obj,'Module',SubObj,nil) then
@@ -7595,8 +7646,8 @@ begin
   finally
     aContext.Free;
   end;
-  {$IFDEF VerbosePCUFiler}
-  writeln('TPCUReader.ReadJSONContinue END');
+  {$IF defined(VerbosePCUFiler) or defined(VerboseUnitQueue)}
+  writeln('TPCUReader.ReadContinue END');
   {$ENDIF}
 end;
 
