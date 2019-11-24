@@ -1,13 +1,17 @@
 *.bak
 *.exe
 *.ppu
+*.pcp
 *.o
 *.s
 *.fpm
+*.a
 *.hex
 *.elf
 *.bin
 *.so
+*.dll
+*.ppl
 .*.swp
 *~
 *.lps
@@ -20,6 +24,7 @@
 *.orig
 *.rej
 *.patch
+*.diff
 *.lst
 fpcmade.*
 *-stamp.*
@@ -61,3 +66,5 @@ lazbuild
 units
 /tests/output
 !/tests/test/units
+bin/
+fpmake
